@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 import tkinter as tk
 from tkinter import ttk
 from sales_logic import draft_followup, qualify_lead
+from health_check import collect as collect_health
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434/api/chat")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:0.6b")
@@ -156,8 +157,10 @@ class App(tk.Tk):
         notebook.pack(fill="both", expand=True, padx=18, pady=8)
         chat_frame = ttk.Frame(notebook)
         crm_frame = ttk.Frame(notebook)
+        status_frame = ttk.Frame(notebook)
         notebook.add(chat_frame, text="Conversa")
         notebook.add(crm_frame, text="CRM")
+        notebook.add(status_frame, text="Status")
 
         self.chat = tk.Text(chat_frame, wrap="word", state="disabled", font=("Segoe UI", 11))
         self.chat.pack(fill="both", expand=True, pady=8)
@@ -191,7 +194,30 @@ class App(tk.Tk):
         ttk.Button(actions, text="Gerar follow-up", command=self.generate_followup).pack(side="left")
         ttk.Button(actions, text="Atualizar lista", command=self.refresh_leads).pack(side="right")
         self.refresh_leads()
+        self._build_status(status_frame)
         self._write("Sistema", "Aplicação pronta. O modelo e o navegador são locais.")
+
+    def _build_status(self, frame: ttk.Frame) -> None:
+        ttk.Label(frame, text="Diagnóstico dos serviços locais", font=("Segoe UI", 13, "bold")).pack(anchor="w", padx=12, pady=(14, 8))
+        self.status_text = tk.Text(frame, height=8, state="disabled", font=("Consolas", 10))
+        self.status_text.pack(fill="x", padx=12, pady=8)
+        ttk.Button(frame, text="Atualizar status", command=self.refresh_status).pack(anchor="w", padx=12, pady=8)
+        self.refresh_status()
+
+    def refresh_status(self) -> None:
+        if not hasattr(self, "status_text"):
+            return
+        status = collect_health()
+        lines = [
+            f"Ollama (porta): {'OK' if status['ollama_port'] else 'indisponível'}",
+            f"Ollama (API):   {'OK' if status['ollama_api'] else 'indisponível'}",
+            f"BrowserOS MCP:  {'OK' if status['browseros_mcp_port'] else 'indisponível'}",
+            f"Modelo:         {status['model']}",
+        ]
+        self.status_text.configure(state="normal")
+        self.status_text.delete("1.0", "end")
+        self.status_text.insert("1.0", "\n".join(lines))
+        self.status_text.configure(state="disabled")
 
     def save_lead(self) -> None:
         name = self.lead_name.get().strip()
