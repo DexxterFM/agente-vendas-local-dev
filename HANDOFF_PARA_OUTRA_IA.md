@@ -12,16 +12,21 @@ camada de engenharia reversa e investigação.
 - Projeto local: `C:\Users\denis\Documents\opencode\sales_agent_unified`
 - Aplicação: `app.py`
 - Build: `build.ps1`
-- Executável já gerado em `..\dist\SalesAgentLocal.exe`
+- Executável atualizado em `dist\SalesAgentLocalV2.exe`
 - Ollama local disponível em `http://127.0.0.1:11434`
 - Modelo leve usado nos testes: `qwen3:0.6b`
 - BrowserOS MCP: `http://127.0.0.1:9210/mcp`
 - REA registrado no Codex e skill instalada
 - Memória inicial implementada em SQLite
+- CRM de leads com qualificação determinística e rascunho de follow-up
+- Aba Status com diagnóstico de Ollama, BrowserOS e modelo ativo
+- Inicializador único em `run_local.ps1`
+- Briefing visual do frontend em `CONTEXTO_FRONTEND_PARA_IA.md`
 
 ## Teste já realizado
 
-O agente conseguiu abrir e ler `https://example.com` através do BrowserOS MCP.
+O agente conseguiu abrir e ler `https://example.com` através do BrowserOS MCP,
+inclusive pelo fluxo direto `Agent.run("Abra https://example.com e leia a página")`.
 O Ollama e o BrowserOS são acessados por HTTP local. O Open WebUI não é
 necessário para a execução da aplicação compilada.
 
@@ -38,13 +43,13 @@ necessário para a execução da aplicação compilada.
 
 ## Próximas tarefas prioritárias
 
-1. Criar camadas separadas: `core/agent.py`, `core/tools.py`, `core/memory.py`,
+1. (Evolução futura) Criar camadas separadas: `core/agent.py`, `core/tools.py`, `core/memory.py`,
    `adapters/ollama.py`, `adapters/browseros.py` e `ui/desktop.py`.
 2. Adicionar configuração por arquivo `.env.example`, sem chaves reais.
 3. Criar supervisor para detectar/iniciar Ollama e BrowserOS sem duplicar
    processos.
 4. Adicionar painel de saúde: Ollama, BrowserOS MCP, REA e SQLite.
-5. Integrar REA via MCP para analisar os componentes atuais e registrar
+5. Integrar REA via MCP na aplicação para analisar os componentes atuais e registrar
    relatórios com evidências.
 6. Adicionar entidades de vendas: lead, cliente, produto, conversa,
    oportunidade, follow-up e consentimento.
@@ -69,7 +74,19 @@ necessário para a execução da aplicação compilada.
 ```powershell
 python .\app.py
 .\build.ps1
+powershell -ExecutionPolicy Bypass -File .\run_local.ps1
 ```
+
+## Prompt para continuar em outra IA
+
+Você está continuando o projeto local `C:\Users\denis\Documents\opencode\sales_agent_unified`.
+Leia primeiro `HANDOFF_PARA_OUTRA_IA.md`, `README.md` e
+`CONTEXTO_FRONTEND_PARA_IA.md`. Preserve o código existente e faça mudanças
+incrementais. A versão atual já conversa com Ollama, abre e lê URLs HTTPS pelo
+BrowserOS, mantém memória SQLite, possui CRM e foi validada com 8 testes.
+Não recrie o projeto do zero. Antes de alterar arquitetura, execute os testes e
+verifique o estado do Git. Nunca exponha credenciais nem execute ações externas
+irreversíveis sem confirmação humana explícita.
 
 ## Critério de conclusão
 
