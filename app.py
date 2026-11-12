@@ -69,6 +69,20 @@ SYSTEM = ("Você é o agente de vendas local. Responda apenas JSON válido.\n"
           "envie mensagens, compre, publique, exclua ou altere dados.")
 
 
+def parse_decision(content: str) -> dict:
+    """Extrai a decisão JSON sem permitir que texto livre vire ação externa."""
+    match = re.search(r"\{.*\}", content, re.S)
+    if not match:
+        return {"action": "answer", "text": content.strip()}
+    try:
+        decision = json.loads(match.group(0))
+    except json.JSONDecodeError:
+        return {"action": "answer", "text": content.strip()}
+    if decision.get("action") not in {"answer", "navigate"}:
+        return {"action": "answer", "text": "Ação não autorizada nesta versão."}
+    return decision
+
+
 class Agent:
     def __init__(self, memory: Memory) -> None:
         self.memory = memory
@@ -79,8 +93,7 @@ class Agent:
         messages.append({"role": "user", "content": text})
         _, body = post(OLLAMA_URL, {"model": OLLAMA_MODEL, "stream": False, "messages": messages})
         content = json.loads(body)["message"]["content"]
-        match = re.search(r"\{.*\}", content, re.S)
-        decision = json.loads(match.group(0)) if match else {"action": "answer", "text": content}
+        decision = parse_decision(content)
         if decision.get("action") != "navigate":
             return str(decision.get("text", "Não consegui concluir a solicitação."))
         url = str(decision.get("url", ""))
