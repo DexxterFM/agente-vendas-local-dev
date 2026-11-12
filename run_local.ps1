@@ -20,7 +20,9 @@ if (-not (Test-Port 9210) -and (Test-Path $browserServer) -and (Test-Path $brows
 
 Start-Sleep -Seconds 3
 python .\health_check.py
-if (Test-Path .\dist\SalesAgentLocal.exe) {
+if (Test-Path .\dist\SalesAgentLocalV2.exe) {
+  Start-Process -FilePath (Join-Path $root "dist\SalesAgentLocalV2.exe")
+} elseif (Test-Path .\dist\SalesAgentLocal.exe) {
   Start-Process -FilePath (Join-Path $root "dist\SalesAgentLocal.exe")
 } else {
   python .\app.py

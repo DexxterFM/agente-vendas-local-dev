@@ -4,7 +4,7 @@ import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from app import Memory, parse_decision
+from app import Memory, explicit_navigation, parse_decision
 from sales_logic import draft_followup, qualify_lead
 
 
@@ -19,6 +19,10 @@ class CoreTests(unittest.TestCase):
     def test_navigation_requires_structured_json(self):
         decision = parse_decision('resultado {"action":"navigate","url":"https://example.com"}')
         self.assertEqual(decision["url"], "https://example.com")
+
+    def test_explicit_navigation_extracts_https_url(self):
+        self.assertEqual(explicit_navigation("Abra https://example.com e leia a página."), "https://example.com")
+        self.assertIsNone(explicit_navigation("Quero informações sobre o produto."))
 
     def test_memory_persists_messages(self):
         with tempfile.TemporaryDirectory() as folder:

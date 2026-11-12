@@ -7,7 +7,7 @@ Execute com `python .\\sales_agent_unified\\app.py`.
 Pré-requisitos: Ollama com o modelo definido em `OLLAMA_MODEL` e BrowserOS neo
 com MCP em `http://127.0.0.1:9210/mcp`.
 
-Executável compilado: `dist\\SalesAgentLocal.exe`.
+Executável compilado: `dist\\SalesAgentLocalV2.exe`.
 
 Para iniciar a aplicação e tentar ativar os serviços locais automaticamente: `powershell -ExecutionPolicy Bypass -File .\\run_local.ps1`.
 

@@ -121,11 +121,23 @@ def parse_decision(content: str) -> dict:
     return decision
 
 
+def explicit_navigation(text: str) -> str | None:
+    """Detecta um pedido explícito de abrir uma URL, sem transformar texto casual em ação."""
+    if not re.search(r"\b(abra|abrir|navegue|navegar|acesse|acessar)\b", text.lower()):
+        return None
+    match = re.search(r"https://[^\s<>\"']+", text, re.I)
+    return match.group(0).rstrip(".,);]}") if match else None
+
+
 class Agent:
     def __init__(self, memory: Memory) -> None:
         self.memory = memory
 
     def run(self, text: str) -> str:
+        direct_url = explicit_navigation(text)
+        if direct_url:
+            result = BrowserOS().run(f"const page = await browser.open({json.dumps(direct_url)}); return await page.read();")
+            return json.dumps(result, ensure_ascii=False)
         messages = [{"role": "system", "content": SYSTEM}]
         messages.extend({"role": role, "content": content} for role, content in self.memory.recent())
         messages.append({"role": "user", "content": text})
