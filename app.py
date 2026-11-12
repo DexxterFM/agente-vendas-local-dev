@@ -10,6 +10,7 @@ import uuid
 from datetime import datetime, timezone
 import tkinter as tk
 from tkinter import ttk
+from sales_logic import qualify_lead
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434/api/chat")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:0.6b")
@@ -93,7 +94,9 @@ SYSTEM = ("Você é o agente de vendas local. Responda apenas JSON válido.\n"
           "Formato: {\\\"action\\\":\\\"answer\\\",\\\"text\\\":\\\"...\\\"} ou "
           "{\\\"action\\\":\\\"navigate\\\",\\\"url\\\":\\\"https://...\\\"}.\n"
           "Use navigate somente para URL HTTPS fornecida pelo usuário. Não faça login, "
-          "envie mensagens, compre, publique, exclua ou altere dados.")
+          "envie mensagens, compre, publique, exclua ou altere dados.\n"
+          "Seja cordial, objetivo, consultivo e nunca invente preço, prazo ou condição.\n"
+          "Qualifique o interesse, identifique a necessidade e proponha o próximo passo.")
 
 
 def parse_decision(content: str) -> dict:

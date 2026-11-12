@@ -5,6 +5,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from app import Memory, parse_decision
+from sales_logic import draft_followup, qualify_lead
 
 
 class CoreTests(unittest.TestCase):
@@ -49,6 +50,16 @@ class CoreTests(unittest.TestCase):
             finally:
                 memory.db.close()
                 os.chdir(old)
+
+    def test_lead_qualification_is_deterministic(self):
+        result = qualify_lead("Quero comprar hoje, qual o preço e posso pagar por Pix?")
+        self.assertEqual(result.stage, "hot")
+        self.assertGreaterEqual(result.score, 60)
+
+    def test_followup_uses_stage(self):
+        text = draft_followup("Ana", "Plano Premium", "warm")
+        self.assertIn("Ana", text)
+        self.assertIn("Plano Premium", text)
 
 
 if __name__ == "__main__":
