@@ -6,3 +6,4 @@ dist/
 *.spec
 .env
 .venv/
+reverse-engineering/*.json
