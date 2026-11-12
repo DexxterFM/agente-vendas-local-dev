@@ -1,0 +1,18 @@
+Você está continuando o projeto Sales Agent Local Unificado. Leia primeiro
+HANDOFF_PARA_OUTRA_IA.md e README.md. Não recrie o projeto do zero.
+
+Objetivo: transformar a versão atual em uma única aplicação Windows para um
+agente de vendas local usando Ollama, BrowserOS neo MCP, SQLite e REA.
+
+Estado: app.py já possui UI Tkinter, cliente Ollama, cliente MCP BrowserOS,
+memória SQLite e navegação/leitura HTTPS. O build.ps1 gera SalesAgentLocal.exe.
+
+Próximo passo obrigatório: refatorar em camadas, adicionar supervisor de
+serviços, painel de saúde, entidades de vendas, persona configurável, auditoria
+e confirmação humana para todas as ações de escrita. Use REA para investigar os
+componentes existentes antes de substituí-los. Preserve o funcionamento atual
+de abrir e ler example.com.
+
+Não use APIs online por padrão. Não exponha credenciais. Não envie mensagens,
+publique, compre, faça login ou apague dados sem confirmação explícita no
+momento da ação.

@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+sales_agent.sqlite3
+build/
+dist/
+*.spec
+.env
+.venv/
