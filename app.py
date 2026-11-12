@@ -34,9 +34,13 @@ def sse_json(text: str) -> dict:
 
 
 class Memory:
-    def __init__(self) -> None:
-        self.db = sqlite3.connect(DB_PATH, check_same_thread=False)
+    def __init__(self, db_path: str | None = None) -> None:
+        self.db = sqlite3.connect(db_path or DB_PATH, check_same_thread=False)
         self.db.execute("create table if not exists messages (id integer primary key, role text, content text, created_at text)")
+        self.db.execute("create table if not exists leads (id integer primary key, name text not null, contact text, stage text not null default 'new', notes text, created_at text not null)")
+        self.db.execute("create table if not exists products (id integer primary key, name text not null, price real, active integer not null default 1, created_at text not null)")
+        self.db.execute("create table if not exists opportunities (id integer primary key, lead_id integer not null, product_id integer, stage text not null default 'qualification', value real, next_action text, created_at text not null)")
+        self.db.execute("create table if not exists followups (id integer primary key, lead_id integer not null, due_at text not null, task text not null, done integer not null default 0, created_at text not null)")
         self.db.commit()
 
     def add(self, role: str, content: str) -> None:
@@ -45,6 +49,29 @@ class Memory:
 
     def recent(self, limit: int = 12) -> list[tuple[str, str]]:
         return list(reversed(self.db.execute("select role,content from messages order by id desc limit ?", (limit,)).fetchall()))
+
+    def add_lead(self, name: str, contact: str = "", notes: str = "") -> int:
+        cursor = self.db.execute("insert into leads(name,contact,notes,created_at) values(?,?,?,?)", (name, contact, notes, datetime.now(timezone.utc).isoformat()))
+        self.db.commit()
+        return int(cursor.lastrowid)
+
+    def list_leads(self) -> list[tuple]:
+        return self.db.execute("select id,name,contact,stage,notes from leads order by id desc").fetchall()
+
+    def add_product(self, name: str, price: float | None = None) -> int:
+        cursor = self.db.execute("insert into products(name,price,created_at) values(?,?,?)", (name, price, datetime.now(timezone.utc).isoformat()))
+        self.db.commit()
+        return int(cursor.lastrowid)
+
+    def add_opportunity(self, lead_id: int, product_id: int | None = None, value: float | None = None, next_action: str = "") -> int:
+        cursor = self.db.execute("insert into opportunities(lead_id,product_id,value,next_action,created_at) values(?,?,?,?,?)", (lead_id, product_id, value, next_action, datetime.now(timezone.utc).isoformat()))
+        self.db.commit()
+        return int(cursor.lastrowid)
+
+    def add_followup(self, lead_id: int, due_at: str, task: str) -> int:
+        cursor = self.db.execute("insert into followups(lead_id,due_at,task,created_at) values(?,?,?,?)", (lead_id, due_at, task, datetime.now(timezone.utc).isoformat()))
+        self.db.commit()
+        return int(cursor.lastrowid)
 
 
 class BrowserOS:

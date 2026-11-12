@@ -24,9 +24,28 @@ class CoreTests(unittest.TestCase):
             old = os.getcwd()
             os.chdir(folder)
             try:
-                memory = Memory()
+                memory = Memory(os.path.join(folder, "test.sqlite3"))
                 memory.add("user", "teste")
                 self.assertEqual(memory.recent(), [("user", "teste")])
+            finally:
+                memory.db.close()
+                os.chdir(old)
+
+    def test_sales_entities_persist(self):
+        with tempfile.TemporaryDirectory() as folder:
+            old = os.getcwd()
+            os.chdir(folder)
+            try:
+                memory = Memory(os.path.join(folder, "test.sqlite3"))
+                lead_id = memory.add_lead("Cliente teste", "5511999999999", "interessado")
+                product_id = memory.add_product("Produto teste", 99.90)
+                opportunity_id = memory.add_opportunity(lead_id, product_id, 99.90, "enviar proposta")
+                followup_id = memory.add_followup(lead_id, "2030-01-01", "retornar contato")
+                self.assertGreater(lead_id, 0)
+                self.assertGreater(product_id, 0)
+                self.assertGreater(opportunity_id, 0)
+                self.assertGreater(followup_id, 0)
+                self.assertEqual(memory.list_leads()[0][1], "Cliente teste")
             finally:
                 memory.db.close()
                 os.chdir(old)
