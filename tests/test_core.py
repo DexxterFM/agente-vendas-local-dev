@@ -47,6 +47,8 @@ class CoreTests(unittest.TestCase):
                 self.assertGreater(opportunity_id, 0)
                 self.assertGreater(followup_id, 0)
                 self.assertEqual(memory.list_leads()[0][1], "Cliente teste")
+                memory.update_lead_stage(lead_id, "hot", "score=80")
+                self.assertEqual(memory.get_lead(lead_id)[3:5], ("hot", "score=80"))
             finally:
                 memory.db.close()
                 os.chdir(old)

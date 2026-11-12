@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime, timezone
 import tkinter as tk
 from tkinter import ttk
-from sales_logic import qualify_lead
+from sales_logic import draft_followup, qualify_lead
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434/api/chat")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:0.6b")
@@ -58,6 +58,13 @@ class Memory:
 
     def list_leads(self) -> list[tuple]:
         return self.db.execute("select id,name,contact,stage,notes from leads order by id desc").fetchall()
+
+    def get_lead(self, lead_id: int) -> tuple | None:
+        return self.db.execute("select id,name,contact,stage,notes from leads where id=?", (lead_id,)).fetchone()
+
+    def update_lead_stage(self, lead_id: int, stage: str, notes: str = "") -> None:
+        self.db.execute("update leads set stage=?, notes=? where id=?", (stage, notes, lead_id))
+        self.db.commit()
 
     def add_product(self, name: str, price: float | None = None) -> int:
         cursor = self.db.execute("insert into products(name,price,created_at) values(?,?,?)", (name, price, datetime.now(timezone.utc).isoformat()))
@@ -170,12 +177,19 @@ class App(tk.Tk):
         self.lead_name.grid(row=0, column=1, padx=6, pady=6)
         self.lead_contact.grid(row=0, column=3, padx=6, pady=6)
         ttk.Button(form, text="Salvar lead", command=self.save_lead).grid(row=0, column=4, padx=8, pady=6)
+        ttk.Label(form, text="Mensagem para qualificar").grid(row=1, column=0, padx=6, pady=6, sticky="w")
+        self.lead_message = ttk.Entry(form, width=58)
+        self.lead_message.grid(row=1, column=1, columnspan=3, padx=6, pady=6, sticky="ew")
+        ttk.Button(form, text="Qualificar selecionado", command=self.qualify_selected).grid(row=1, column=4, padx=8, pady=6)
         self.leads_tree = ttk.Treeview(crm_frame, columns=("id", "name", "contact", "stage", "notes"), show="headings")
         for column, label, width in (("id", "ID", 50), ("name", "Nome", 220), ("contact", "Contato", 170), ("stage", "Etapa", 120), ("notes", "Notas", 260)):
             self.leads_tree.heading(column, text=label)
             self.leads_tree.column(column, width=width)
         self.leads_tree.pack(fill="both", expand=True, padx=8, pady=8)
-        ttk.Button(crm_frame, text="Atualizar lista", command=self.refresh_leads).pack(anchor="e", padx=8, pady=(0, 8))
+        actions = ttk.Frame(crm_frame)
+        actions.pack(fill="x", padx=8, pady=(0, 8))
+        ttk.Button(actions, text="Gerar follow-up", command=self.generate_followup).pack(side="left")
+        ttk.Button(actions, text="Atualizar lista", command=self.refresh_leads).pack(side="right")
         self.refresh_leads()
         self._write("Sistema", "Aplicação pronta. O modelo e o navegador são locais.")
 
@@ -198,6 +212,37 @@ class App(tk.Tk):
             self.leads_tree.delete(item)
         for lead in self.memory.list_leads():
             self.leads_tree.insert("", "end", values=lead)
+
+    def _selected_lead(self) -> tuple | None:
+        selected = self.leads_tree.selection()
+        if not selected:
+            return None
+        values = self.leads_tree.item(selected[0], "values")
+        return self.memory.get_lead(int(values[0]))
+
+    def qualify_selected(self) -> None:
+        lead = self._selected_lead()
+        message = self.lead_message.get().strip()
+        if not lead:
+            self._write("CRM", "Selecione um lead antes de qualificar.")
+            return
+        if not message:
+            self._write("CRM", "Informe a mensagem recebida do lead.")
+            return
+        result = qualify_lead(message)
+        notes = f"score={result.score}; " + (", ".join(result.reasons) or "sem sinais detectados")
+        self.memory.update_lead_stage(int(lead[0]), result.stage, notes)
+        self.refresh_leads()
+        self._write("CRM", f"{lead[1]} classificado como {result.stage} ({result.score}/100). {notes}")
+
+    def generate_followup(self) -> None:
+        lead = self._selected_lead()
+        if not lead:
+            self._write("CRM", "Selecione um lead para gerar o follow-up.")
+            return
+        product = "seu produto"
+        draft = draft_followup(str(lead[1]), product, str(lead[3]))
+        self._write("CRM", f"Rascunho (não enviado): {draft}")
 
     def _write(self, role: str, text: str) -> None:
         self.chat.configure(state="normal")
