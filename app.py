@@ -142,15 +142,59 @@ class App(tk.Tk):
     def _build(self) -> None:
         ttk.Label(self, text="Agente de Vendas Local", font=("Segoe UI", 18, "bold")).pack(anchor="w", padx=18, pady=(16, 4))
         ttk.Label(self, text=f"Ollama: {OLLAMA_MODEL} | BrowserOS MCP: {BROWSEROS_MCP_URL}").pack(anchor="w", padx=18, pady=(0, 10))
-        self.chat = tk.Text(self, wrap="word", state="disabled", font=("Segoe UI", 11))
-        self.chat.pack(fill="both", expand=True, padx=18, pady=8)
-        bottom = ttk.Frame(self)
-        bottom.pack(fill="x", padx=18, pady=16)
+        notebook = ttk.Notebook(self)
+        notebook.pack(fill="both", expand=True, padx=18, pady=8)
+        chat_frame = ttk.Frame(notebook)
+        crm_frame = ttk.Frame(notebook)
+        notebook.add(chat_frame, text="Conversa")
+        notebook.add(crm_frame, text="CRM")
+
+        self.chat = tk.Text(chat_frame, wrap="word", state="disabled", font=("Segoe UI", 11))
+        self.chat.pack(fill="both", expand=True, pady=8)
+        bottom = ttk.Frame(chat_frame)
+        bottom.pack(fill="x", pady=8)
         self.input = ttk.Entry(bottom)
         self.input.pack(side="left", fill="x", expand=True)
         self.input.bind("<Return>", lambda _: self.send())
         ttk.Button(bottom, text="Enviar", command=self.send).pack(side="left", padx=(8, 0))
+
+        form = ttk.LabelFrame(crm_frame, text="Novo lead")
+        form.pack(fill="x", padx=8, pady=8)
+        ttk.Label(form, text="Nome").grid(row=0, column=0, padx=6, pady=6, sticky="w")
+        ttk.Label(form, text="Contato").grid(row=0, column=2, padx=6, pady=6, sticky="w")
+        self.lead_name = ttk.Entry(form, width=30)
+        self.lead_contact = ttk.Entry(form, width=24)
+        self.lead_name.grid(row=0, column=1, padx=6, pady=6)
+        self.lead_contact.grid(row=0, column=3, padx=6, pady=6)
+        ttk.Button(form, text="Salvar lead", command=self.save_lead).grid(row=0, column=4, padx=8, pady=6)
+        self.leads_tree = ttk.Treeview(crm_frame, columns=("id", "name", "contact", "stage", "notes"), show="headings")
+        for column, label, width in (("id", "ID", 50), ("name", "Nome", 220), ("contact", "Contato", 170), ("stage", "Etapa", 120), ("notes", "Notas", 260)):
+            self.leads_tree.heading(column, text=label)
+            self.leads_tree.column(column, width=width)
+        self.leads_tree.pack(fill="both", expand=True, padx=8, pady=8)
+        ttk.Button(crm_frame, text="Atualizar lista", command=self.refresh_leads).pack(anchor="e", padx=8, pady=(0, 8))
+        self.refresh_leads()
         self._write("Sistema", "Aplicação pronta. O modelo e o navegador são locais.")
+
+    def save_lead(self) -> None:
+        name = self.lead_name.get().strip()
+        contact = self.lead_contact.get().strip()
+        if not name:
+            self._write("CRM", "Informe o nome do lead antes de salvar.")
+            return
+        self.memory.add_lead(name, contact)
+        self.lead_name.delete(0, "end")
+        self.lead_contact.delete(0, "end")
+        self.refresh_leads()
+        self._write("CRM", f"Lead salvo: {name}")
+
+    def refresh_leads(self) -> None:
+        if not hasattr(self, "leads_tree"):
+            return
+        for item in self.leads_tree.get_children():
+            self.leads_tree.delete(item)
+        for lead in self.memory.list_leads():
+            self.leads_tree.insert("", "end", values=lead)
 
     def _write(self, role: str, text: str) -> None:
         self.chat.configure(state="normal")
