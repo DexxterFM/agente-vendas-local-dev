@@ -9,6 +9,8 @@ com MCP em `http://127.0.0.1:9210/mcp`.
 
 Executável compilado: `dist\\SalesAgentLocal.exe`.
 
+Para iniciar a aplicação e tentar ativar os serviços locais automaticamente: `powershell -ExecutionPolicy Bypass -File .\\run_local.ps1`.
+
 Para compilar novamente: `powershell -ExecutionPolicy Bypass -File .\\build.ps1`.
 
 Verificar serviços: `python .\\sales_agent_unified\\health_check.py`.
