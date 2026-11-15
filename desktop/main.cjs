@@ -566,6 +566,14 @@ async function scanInstagramHome(view){
   }
   return {openedInbox:false,hasNotification};
 }
+function isInstagramAuthenticationPage(url){
+  try{
+    const parsed=new URL(url);
+    if(!/(^|\.)instagram\.com$/i.test(parsed.hostname)) return false;
+    const path=parsed.pathname.toLowerCase();
+    return path.startsWith('/accounts/login')||path.startsWith('/accounts/signup')||path.startsWith('/accounts/password')||path.startsWith('/challenge')||path.startsWith('/checkpoint')||path.startsWith('/two_factor_authentication');
+  }catch{return false;}
+}
 const browserTimer=setInterval(async()=>{
   if(browserProcessing||!window||window.isDestroyed())return;
   browserProcessing=true;
@@ -576,6 +584,10 @@ const browserTimer=setInterval(async()=>{
     let url=activeView.webContents.getURL()||'';
     if(state.active&&!url){await activeView.webContents.loadURL('https://www.instagram.com/');url=activeView.webContents.getURL()||'';}
     if(!state.active)return;
+    // Nunca interrompa a autenticação manual. Enquanto a página de login,
+    // desafio ou checkpoint estiver aberta, o operador controla a tela e o
+    // ciclo aguarda o Instagram concluir a sessão por conta própria.
+    if(isInstagramAuthenticationPage(url))return;
     if(url.includes('instagram.com/')&&!url.includes('instagram.com/direct')){
       const home=await scanInstagramHome(activeView);
       if(home.hasNotification)followerScanRequested=true;
