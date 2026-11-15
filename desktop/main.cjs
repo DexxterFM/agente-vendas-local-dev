@@ -165,7 +165,12 @@ ipcMain.handle('sales:openExternal', async (event, url) => {
 });
 function browserBounds(){
   const bounds=window.getContentBounds();
-  return {x:250,y:48,width:Math.max(500,bounds.width-250),height:Math.max(300,bounds.height-48)};
+  // O BrowserView é uma camada nativa acima do HTML. Ele não pode começar no
+  // topo, pois esconderia o cabeçalho do painel (inclusive os controles de
+  // ativação e pausa). A faixa deixa espaço para título, busca e botões,
+  // mesmo quando a janela estiver menor e o cabeçalho ocupar duas linhas.
+  const headerHeight=126;
+  return {x:250,y:headerHeight,width:Math.max(500,bounds.width-250),height:Math.max(300,bounds.height-headerHeight)};
 }
 function ensureBrowserView(){
   if(browserView&&!browserView.webContents.isDestroyed()) return browserView;
