@@ -1,0 +1,25 @@
+[Unit]
+Description=Agente de Vendas Local - Worker Meta
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=agentevendas
+WorkingDirectory=/opt/agente-vendas-local
+EnvironmentFile=/etc/agente-vendas-local/agent.env
+# Reaproveita apenas no processo do agente as credenciais Meta já usadas pelo
+# conector Instagram do PostFlow. O arquivo é lido pelo systemd e não entra no
+# repositório nem é copiado para a pasta da aplicação.
+EnvironmentFile=/etc/postflow-test/legacy-agent.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /opt/agente-vendas-local/scripts/vps/sales_agent_worker.py
+Restart=always
+RestartSec=8
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/agente-vendas-local
+
+[Install]
+WantedBy=multi-user.target
