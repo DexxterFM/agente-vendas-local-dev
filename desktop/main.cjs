@@ -526,6 +526,52 @@ ipcMain.handle('sales:browserObserve', async (event) => {
   if(event.sender!==window.webContents) throw new Error('Origem inválida');
   return observeBrowser();
 });
+async function collectInboxThreadTargets(view){
+  /*
+   * O Instagram alterna entre duas estruturas para a lista de DMs. Em uma
+   * delas cada conversa tem um link /direct/t/, na outra (inclusive na tela
+   * atual da conta) a conversa é somente um botão acessível. Guardamos uma
+   * assinatura de texto e não um índice DOM: ao voltar da conversa o React
+   * recria a lista e os índices deixam de ser confiáveis.
+   */
+  return view.webContents.executeJavaScript(`(()=>{
+    const visible=e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0};
+    const normalize=value=>String(value||'').replace(/\\s+/g,' ').trim();
+    const time=/(?:agora|now|ontem|yesterday|há\\s+(?:\\d+|um|uma)\\s+(?:minuto|minutos|hora|horas|dia|dias)|\\b\\d+\\s*(?:s|min|m|h|d|w))\\s*$/i;
+    const ignored=/^(?:avançar|voltar|nova mensagem|more options|pesquisar|primary|general|pedidos)$/i;
+    const result=[];
+    for(const node of [...document.querySelectorAll('a[href*="/direct/t/"],button,[role="button"]')]){
+      if(!visible(node))continue;
+      const label=normalize([node.getAttribute('aria-label'),node.innerText].filter(Boolean).join(' '));
+      const href=node.matches('a[href]')?node.href:(node.querySelector('a[href*="/direct/t/"]')?.href||'');
+      const looksLikeThread=Boolean(href)||(!ignored.test(label)&&label.length>8&&time.test(label));
+      if(!looksLikeThread)continue;
+      const key=href||label;
+      if(!result.some(item=>item.key===key))result.push({key,label:label.slice(0,360),href});
+    }
+    return result.slice(0,80);
+  })()`,true);
+}
+async function openInboxThreadTarget(view,target){
+  if(target.href){
+    await view.webContents.loadURL(target.href);
+  }else{
+    const clicked=await view.webContents.executeJavaScript(`(()=>{
+      const expected=${JSON.stringify(String(target.label||''))};
+      const normalize=value=>String(value||'').replace(/\\s+/g,' ').trim();
+      const candidates=[...document.querySelectorAll('button,[role="button"]')];
+      const node=candidates.find(item=>normalize([item.getAttribute('aria-label'),item.innerText].filter(Boolean).join(' '))===expected);
+      if(!node)return false;node.click();return true;
+    })()`,true);
+    if(!clicked)return false;
+  }
+  for(let attempt=0;attempt<14;attempt++){
+    await wait(450);
+    const path=new URL(view.webContents.getURL()||'https://www.instagram.com/').pathname.split('/').filter(Boolean);
+    if(path.length===3&&path[0]==='direct'&&path[1]==='t')return true;
+  }
+  return false;
+}
 ipcMain.handle('sales:importBrowserInbox', async (event) => {
   if(event.sender!==window.webContents) throw new Error('Origem inválida');
   const view=ensureBrowserView();
@@ -535,18 +581,26 @@ ipcMain.handle('sales:importBrowserInbox', async (event) => {
     await view.webContents.loadURL('https://www.instagram.com/direct/inbox/');
     await wait(1200);
   }
-  const links=await view.webContents.executeJavaScript(`(()=>[...new Set([...document.querySelectorAll('a[href*="/direct/t/"]')].map(a=>a.href).filter(href=>/^https:\/\/(?:www\.)?instagram\.com\/direct\/t\/[^/?#]+\/?/i.test(href)))].slice(0,80))()`,true);
-  if(!links.length) throw new Error('Não encontrei conversas acessíveis na caixa de entrada. Abra a caixa de entrada do Instagram e aguarde a lista carregar.');
+  await wait(900);
+  const targets=await collectInboxThreadTargets(view);
+  if(!targets.length) throw new Error('Não encontrei conversas acessíveis na caixa de entrada. Abra a caixa de entrada do Instagram e aguarde a lista carregar.');
   let imported=0, messages=0, skipped=0;
-  for(const href of links){
+  for(const target of targets){
     try{
-      await view.webContents.loadURL(href);
-      await wait(650);
+      const opened=await openInboxThreadTarget(view,target);
+      if(!opened){skipped++;continue;}
+      await wait(700);
       const snapshot=await observeBrowser();
       if(!snapshot.threadId||!snapshot.username||!snapshot.messages.length){skipped++;continue;}
       const result=await backend('browserImportThread',{thread_id:snapshot.threadId,username:snapshot.username,messages:snapshot.messages});
       imported++;messages+=Number(result.stored||0);
     }catch{skipped++;}
+    finally{
+      if((view.webContents.getURL()||'').includes('instagram.com/direct')){
+        await view.webContents.loadURL('https://www.instagram.com/direct/inbox/').catch(()=>null);
+        await wait(650);
+      }
+    }
   }
   await view.webContents.loadURL('https://www.instagram.com/direct/inbox/');
   return {threads:imported,messages,skipped};
