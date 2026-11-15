@@ -535,8 +535,18 @@ let processing=false;
 const replyTimer=setInterval(async()=>{},5000);
 replyTimer.unref();
 let browserProcessing=false;
+let browserAutomationArmed=false;
 let followerScanRequested=false;
 let lastFollowerScanAt=0;
+function isSalesProfilePage(url){
+  try{
+    const parsed=new URL(url);
+    if(!/(^|\.)instagram\.com$/i.test(parsed.hostname))return false;
+    const profile=parsed.pathname.split('/').filter(Boolean)[0]?.toLowerCase()||'';
+    const target=String(process.env.INSTAGRAM_TARGET_USERNAME||'erpclinicatea').replace(/^@/,'').toLowerCase();
+    return Boolean(profile)&&profile===target;
+  }catch{return false;}
+}
 async function scanInstagramHome(view){
   /* A página inicial mantém os contadores como texto acessível; não depende
      de pixels, nem de a caixa de entrada já estar visível. */
@@ -594,8 +604,14 @@ const browserTimer=setInterval(async()=>{
     const activeView=ensureBrowserView();
     const state=await backend('agentStatus');
     let url=activeView.webContents.getURL()||'';
-    if(state.active&&!url){await activeView.webContents.loadURL('https://www.instagram.com/');url=activeView.webContents.getURL()||'';}
-    if(!state.active)return;
+    if(!state.active||!url)return;
+    // A sessão é sempre concluída manualmente. O perfil oficial aberto é o
+    // único gatilho que libera as rotinas; até então nenhum ciclo muda a tela.
+    if(!browserAutomationArmed){
+      if(!isSalesProfilePage(url))return;
+      browserAutomationArmed=true;
+      fs.appendFileSync(path.join(app.getPath('userData'),'browser-send.log'),`${new Date().toISOString()} automation armed profile ${url}\n`);
+    }
     // Nunca interrompa a autenticação manual. Enquanto a página de login,
     // desafio ou checkpoint estiver aberta, o operador controla a tela e o
     // ciclo aguarda o Instagram concluir a sessão por conta própria.
@@ -772,7 +788,7 @@ async function followAndOpenMessage(contents,username,openMessage=true){
 }
 let followerProcessing=false;
 const followerTimer=setInterval(async()=>{
-  if(followerProcessing||!app.isReady()||!window||window.isDestroyed())return;
+  if(followerProcessing||!browserAutomationArmed||!app.isReady()||!window||window.isDestroyed())return;
   const now=Date.now();
   // O timer normal evita custo desnecessário. Uma bolinha detectada na página
   // inicial concede prioridade à próxima execução em vez de esperar o ciclo
