@@ -719,24 +719,43 @@ function isSalesProfilePage(url){
   }catch{return false;}
 }
 async function scanInstagramHome(view,{openInbox=true}={}){
-  /* A página inicial mantém os contadores como texto acessível; não depende
-     de pixels, nem de a caixa de entrada já estar visível. */
+  /* A página inicial mantém contadores no DOM/árvore de acessibilidade. O
+     Instagram alterna entre rótulos, ícones SVG e rotas sem texto; por isso a
+     leitura usa os três sinais, sem depender de posição ou de imagem. */
   const indicators=await view.webContents.executeJavaScript(`(()=>{
     const nodes=[...document.querySelectorAll('a,button,[role="link"],[role="button"]')];
-    const match=(pattern)=>nodes.filter(node=>pattern.test(((node.innerText||'')+' '+(node.getAttribute('aria-label')||'')+' '+(node.getAttribute('title')||'')+' '+(node.getAttribute('href')||'')).replace(/\\s+/g,' ').trim())).map(node=>({text:(node.innerText||node.getAttribute('aria-label')||node.getAttribute('href')||'').trim().slice(0,140),href:node.href||'',badge:(node.innerText||'').match(/\\b\\d+\\b/)?.[0]||''}));
-    const notifications=match(/notifica(?:ç|c)(?:ões|oes)|notifications|activity/i);
-    // O contador novo do Instagram pode ser apenas uma bolinha vermelha, sem
-    // texto nem aria-label. Detecte-a dentro do botão/link de notificações.
-    const redBadge=notifications.some(item=>{
-      const host=nodes.find(node=>(node.href||'')===item.href||((node.innerText||node.getAttribute('aria-label')||node.getAttribute('href')||'')+' '+(node.getAttribute('title')||'')).replace(/\s+/g,' ').trim()===item.text);
-      if(!host)return false;
-      return [...host.querySelectorAll('*')].some(child=>{
-        const style=getComputedStyle(child),rect=child.getBoundingClientRect();
-        const color=String(style.backgroundColor||'');
-        return rect.width>3&&rect.width<28&&rect.height>3&&rect.height<28&&/rgb\(2(?:[0-5][0-9]|[0-4][0-9]),\s*(?:[0-9]{1,2}|1[0-3][0-9]),\s*(?:[0-9]{1,2}|1[0-3][0-9])\)/.test(color);
+    const description=node=>((node.innerText||'')+' '+(node.getAttribute('aria-label')||'')+' '+(node.getAttribute('title')||'')+' '+(node.getAttribute('href')||'')).replace(/\\s+/g,' ').trim();
+    const route=(node,kind)=>{
+      const href=node.getAttribute('href')||'';
+      return kind==='notification'
+        ? /\\/(?:notifications|accounts\\/activity)\\/?(?:[?#]|$)/i.test(href)
+        : /\\/direct(?:\\/inbox)?\\/?(?:[?#]|$)/i.test(href);
+    };
+    const isRed=color=>{
+      const match=String(color||'').match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)/i);
+      return !!match&&Number(match[1])>=180&&Number(match[2])<=165&&Number(match[3])<=165;
+    };
+    const badgeFor=node=>{
+      const text=description(node);
+      if(/(?:nova|new|unread|não lida|\\b\\d+\\s*(?:notifica|message|mensage))/i.test(text))return true;
+      // Em algumas versões o ponto fica em um irmão do SVG. Considerar o
+      // controle, seu conteúdo e um único nível acima torna a leitura estável
+      // sem varrer a página inteira e sem reconhecimento visual por pixel.
+      const scope=[node,...node.querySelectorAll('*'),...(node.parentElement?[node.parentElement]:[])];
+      return scope.some(child=>{
+        const rect=child.getBoundingClientRect();
+        const style=getComputedStyle(child);
+        const label=[child.getAttribute('aria-label'),child.getAttribute('title'),child.textContent].filter(Boolean).join(' ');
+        return (/^(?:\\d+|nova|new)$/i.test(label.trim())||isRed(style.backgroundColor)||isRed(style.color))
+          &&rect.width>=3&&rect.width<=34&&rect.height>=3&&rect.height<=34;
       });
-    });
-    return {messages:match(/mensagens|messages|direct/i),notifications,redBadge};
+    };
+    const collect=(kind,pattern)=>nodes.filter(node=>route(node,kind)||pattern.test(description(node))).map(node=>({
+      text:description(node).slice(0,140),href:node.href||'',badge:badgeFor(node)
+    }));
+    const notifications=collect('notification',/notifica(?:ç|c)(?:ões|oes)|notifications|activity/i);
+    const messages=collect('message',/mensagens|messages|direct/i);
+    return {messages,notifications,redBadge:notifications.some(item=>item.badge)};
   })()`,true);
   const hasMessage=indicators.messages.some(item=>item.badge||/nova|new|unread|não lida/i.test(item.text));
   const hasNotification=Boolean(indicators.redBadge)||indicators.notifications.some(item=>item.badge||/nova|new/i.test(item.text));
@@ -766,13 +785,16 @@ async function isInstagramAuthenticatedArea(view,url){
       const links=[...document.querySelectorAll('a[href]')];
       const ownProfile=links.some(link=>new URL(link.href,location.href).pathname.replace(/^\\/+|\\/+$/g,'').toLowerCase()===target);
       const controls=[...document.querySelectorAll('a,button,[role="link"],[role="button"]')];
-      const labels=controls.map(item=>[item.innerText,item.getAttribute('aria-label'),item.getAttribute('title')].filter(Boolean).join(' ')).join(' ').toLowerCase();
+      const labels=controls.map(item=>[item.innerText,item.getAttribute('aria-label'),item.getAttribute('title'),item.getAttribute('href')].filter(Boolean).join(' ')).join(' ').toLowerCase();
       const navigation=/perfil|profile|página inicial|home|mensagens|messages|notificações|notifications/.test(labels);
-      const loginPrompt=/\\b(?:entrar|login|log in|sign up|cadastre-se|criar conta)\\b/.test(labels);
+      const loginPrompt=/\\b(?:entrar|login|log in|sign up|cadastre-se|criar conta)\\b/.test(labels)||links.some(link=>/\\/accounts\\/(?:login|signup)|\\/accounts\\/password/i.test(link.getAttribute('href')||''));
+      const hasSessionRoute=links.some(link=>/\\/(?:direct(?:\\/inbox)?|notifications|accounts\\/activity)\\/?(?:[?#]|$)/i.test(link.getAttribute('href')||''));
+      const hasCredentialField=[...document.querySelectorAll('input,textarea,[contenteditable="true"]')].some(field=>/username|senha|password|one-time-code|verification|security code|c[oó]digo/i.test([field.name,field.type,field.autocomplete,field.placeholder,field.getAttribute('aria-label')].filter(Boolean).join(' ').toLowerCase()));
       // A navegação autenticada muda frequentemente de estrutura e pode não
-      // expor o link do próprio perfil. Os controles de Inbox/Notificações,
-      // sem campos ou ações de login, são a fonte estável de autenticação.
-      return navigation&&!loginPrompt&&(ownProfile||navigation);
+      // expor o texto do próprio perfil. As rotas internas (direct/activity),
+      // sem campos ou links de login, continuam disponíveis e são a fonte
+      // estável para armar a observação logo após a página inicial carregar.
+      return !loginPrompt&&!hasCredentialField&&(ownProfile||navigation||hasSessionRoute);
     })()`,true);
   }catch{return false;}
 }
