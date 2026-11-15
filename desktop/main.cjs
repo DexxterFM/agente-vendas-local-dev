@@ -483,6 +483,7 @@ let processing=false;
 const replyTimer=setInterval(async()=>{},5000);
 replyTimer.unref();
 let browserProcessing=false;
+let followerScanRequested=false;
 async function scanInstagramHome(view){
   /* A página inicial mantém os contadores como texto acessível; não depende
      de pixels, nem de a caixa de entrada já estar visível. */
@@ -512,7 +513,14 @@ const browserTimer=setInterval(async()=>{
     if(!state.active)return;
     if(url.includes('instagram.com/')&&!url.includes('instagram.com/direct')){
       const home=await scanInstagramHome(activeView);
-      if(!home.openedInbox)return;
+      if(home.hasNotification)followerScanRequested=true;
+      // O contador do Instagram nem sempre fica exposto na árvore de
+      // acessibilidade. Depois da leitura da página inicial, entre no inbox
+      // também quando não houver contador legível: assim a lista de DMs é a
+      // fonte de confirmação e nenhuma conversa pendente fica invisível.
+      if(!home.openedInbox){
+        await activeView.webContents.loadURL('https://www.instagram.com/direct/inbox/');
+      }
       url=activeView.webContents.getURL()||'';
     }
     if(!url.includes('instagram.com/direct'))return;
@@ -703,7 +711,7 @@ const followerTimer=setInterval(async()=>{
       followerLog(`pending-confirmation @${claimedUsername}; envio bloqueado para evitar duplicação`);
     }else if(claimedUsername)await backend('followerReset',{username:claimedUsername}).catch(()=>null);
   }finally{followerProcessing=false;}
-},45000);
+},8000);
 followerTimer.unref();
 // Supervisor autônomo: inicia as IAs e serviços locais ao abrir e recupera-os
 // se algum processo parar. O produto não depende do Codex em runtime.
