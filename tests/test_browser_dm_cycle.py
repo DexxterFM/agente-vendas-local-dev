@@ -65,7 +65,6 @@ class BrowserDmCycleTests(unittest.TestCase):
             )
             repeated = execute("browserScreenCycle", self._payload(messages))
             self.assertFalse(repeated["new_message"])
-
             with Memory(Path(folder) / "agent.sqlite3") as memory:
                 history = list(reversed(memory.list_conversations(cycle["lead_id"], 20)))
                 self.assertEqual([row[0] for row in history], ["assistant", "user", "assistant"])
@@ -75,6 +74,25 @@ class BrowserDmCycleTests(unittest.TestCase):
                 ).fetchall()
                 self.assertEqual(len(contexts), 1)
                 self.assertIn('"text": "Sim"', contexts[0][0])
+
+    def test_sweep_memory_keeps_each_browser_message_idempotent(self):
+        """A varredura pode reencontrar uma DM; o histórico não pode gerar
+        uma segunda resposta para a mesma última mensagem."""
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}
+        ):
+            execute("setAgentActive", {"active": True})
+            thread = "weekly-sweep-thread"
+            messages = [
+                {"id": "c" * 64, "text": "Vocês já usam algum app para a gestão?", "direction": "outgoing"},
+                {"id": "d" * 64, "text": "Ainda não uso nenhum sistema", "direction": "incoming"},
+            ]
+            payload = {"url": "https://www.instagram.com/direct/t/weekly-sweep-thread/", "thread_id": thread, "username": "clinica_semanal", "message_id": messages[-1]["id"], "message": messages[-1]["text"], "direction": "incoming", "messages": messages}
+            first = execute("browserScreenCycle", payload)
+            self.assertTrue(first["new_message"])
+            execute("browserScreenConfirm", {"message_key": first["message_key"], "lead_id": first["lead_id"], "text": first["text"], "thread_id": thread})
+            second = execute("browserScreenCycle", payload)
+            self.assertFalse(second["new_message"])
 
     def test_repeated_literal_message_is_stored_when_its_stable_id_is_new(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(

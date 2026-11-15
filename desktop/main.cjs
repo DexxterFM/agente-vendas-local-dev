@@ -580,39 +580,70 @@ async function openInboxThreadTarget(view,target){
   }
   return false;
 }
-ipcMain.handle('sales:importBrowserInbox', async (event) => {
-  if(event.sender!==window.webContents) throw new Error('Origem inválida');
-  const view=ensureBrowserView();
-  const current=view.webContents.getURL()||'';
-  if(!current.includes('instagram.com')) throw new Error('Entre no Instagram pelo navegador interno antes de importar as DMs.');
-  if(!current.includes('/direct/inbox')){
-    await view.webContents.loadURL('https://www.instagram.com/direct/inbox/');
-    await wait(1200);
+async function processCurrentBrowserThread(view,{source='sweep'}={}){
+  const snap=await observeBrowser();
+  if(!snap.threadId||!snap.username||!snap.messages.length)return {processed:false,reason:'thread-metadata-unavailable'};
+  // A cópia da conversa vem antes da decisão do agente. Assim, mesmo que uma
+  // página mude durante o ciclo, o histórico e o estado de atendimento ficam
+  // preservados na memória local do lead.
+  try{await backend('browserImportThread',{thread_id:snap.threadId,username:snap.username,messages:snap.messages});}catch(error){
+    fs.appendFileSync(path.join(app.getPath('userData'),'browser-send.log'),`${new Date().toISOString()} ${source} import-error ${error.message}\n`);
   }
-  await wait(900);
+  const last=snap.messages.at(-1);
+  if(!last?.id||!last.text||last.direction!=='incoming')return {processed:true,replied:false,reason:'no-pending-incoming',threadId:snap.threadId};
+  const cycle=await backend('browserScreenCycle',{url:snap.url,thread_id:snap.threadId,username:snap.username,message_id:last.id,message:last.text,direction:'incoming',messages:snap.messages});
+  if(!cycle?.new_message||!cycle.text)return {processed:true,replied:false,reason:'already-handled-or-no-draft',threadId:snap.threadId};
+  await naturalInteractionPause('dm-reply',2400,11000);
+  const state=await backend('agentStatus');
+  if(!state.active||view.webContents.getURL()!==snap.url)return {processed:true,replied:false,reason:'conversation-changed',threadId:snap.threadId};
+  if(cycle.competitor?.asset_ready){
+    try{await sendImageInBrowserView(cycle.competitor.asset_path);}catch(error){
+      fs.appendFileSync(path.join(app.getPath('userData'),'browser-send.log'),`${new Date().toISOString()} ${source} poster-error ${cycle.competitor.slug} ${error.message}\n`);
+    }
+  }
+  const delivery=await sendInBrowserView(cycle.text);
+  // Só registramos a conclusão depois que o navegador confirmou a bolha na
+  // conversa. Essa chave torna uma nova varredura idempotente.
+  await backend('browserScreenConfirm',{message_key:cycle.message_key,lead_id:cycle.lead_id,text:cycle.text,thread_id:snap.threadId});
+  fs.appendFileSync(path.join(app.getPath('userData'),'browser-send.log'),`${new Date().toISOString()} ${source} confirmed ${JSON.stringify({threadId:snap.threadId,username:snap.username,messageKey:cycle.message_key,delivery:delivery.method||'confirmed'})}\n`);
+  return {processed:true,replied:true,threadId:snap.threadId,username:snap.username};
+}
+async function runInboxSweep(view,{source='scheduled'}={}){
+  const current=view.webContents.getURL()||'';
+  if(!current.includes('instagram.com'))throw new Error('Abra o Instagram no navegador interno antes da varredura.');
+  await view.webContents.loadURL('https://www.instagram.com/direct/inbox/');
+  await wait(1200);
   const targets=await collectInboxThreadTargets(view);
-  if(!targets.length) throw new Error('Não encontrei conversas acessíveis na caixa de entrada. Abra a caixa de entrada do Instagram e aguarde a lista carregar.');
-  let imported=0, messages=0, skipped=0;
+  let opened=0, imported=0, replied=0, skipped=0;
   for(const target of targets){
     try{
-      const opened=await openInboxThreadTarget(view,target);
-      if(!opened){skipped++;continue;}
-      await wait(700);
-      const snapshot=await observeBrowser();
-      if(!snapshot.threadId||!snapshot.username||!snapshot.messages.length){skipped++;continue;}
-      const result=await backend('browserImportThread',{thread_id:snapshot.threadId,username:snapshot.username,messages:snapshot.messages});
-      imported++;messages+=Number(result.stored||0);
-    }catch{skipped++;}
-    finally{
+      if(!(await openInboxThreadTarget(view,target))){skipped++;continue;}
+      opened++;await wait(700);
+      const result=await processCurrentBrowserThread(view,{source});
+      if(result.processed)imported++;
+      if(result.replied)replied++;
+    }catch(error){
+      skipped++;
+      fs.appendFileSync(path.join(app.getPath('userData'),'browser-send.log'),`${new Date().toISOString()} ${source} thread-error ${error.message}\n`);
+    }finally{
       if((view.webContents.getURL()||'').includes('instagram.com/direct')){
         await view.webContents.loadURL('https://www.instagram.com/direct/inbox/').catch(()=>null);
         await wait(650);
       }
     }
   }
-  await view.webContents.loadURL('https://www.instagram.com/direct/inbox/');
-  const classification=await backend('classifyImportedHistory',{});
-  return {threads:imported,messages,skipped,classified:Number(classification.count||0)};
+  const classification=await backend('classifyImportedHistory',{}).catch(()=>({count:0}));
+  saveInboxSweepState();
+  await view.webContents.loadURL('https://www.instagram.com/');
+  return {source,threads:targets.length,opened,imported,replied,skipped,classified:Number(classification.count||0),nextDueAt:lastInboxSweepAt+INBOX_SWEEP_INTERVAL_MS};
+}
+ipcMain.handle('sales:importBrowserInbox', async (event) => {
+  if(event.sender!==window.webContents) throw new Error('Origem inválida');
+  const view=ensureBrowserView();
+  const current=view.webContents.getURL()||'';
+  if(!current.includes('instagram.com')) throw new Error('Entre no Instagram pelo navegador interno antes de importar as DMs.');
+  const result=await runInboxSweep(view,{source:'manual'});
+  return {...result,messages:result.imported};
 });
 ipcMain.handle('sales:scanFeedProfiles', async (event) => {
   if(event.sender!==window.webContents) throw new Error('Origem inválida');
@@ -649,6 +680,27 @@ let browserAutomationArmed=false;
 let followerScanRequested=false;
 let lastFollowerScanAt=0;
 let nextFollowerScanAt=0;
+// A caixa de entrada inteira é uma operação deliberadamente espaçada. Além
+// de preservar a sessão do operador na tela de perfil, isto impede que o
+// navegador fique entrando e saindo das DMs a cada ciclo do agente.
+const INBOX_SWEEP_INTERVAL_MS=7*24*60*60*1000;
+const inboxSweepStatePath=()=>path.join(app.getPath('userData'),'instagram-inbox-sweep.json');
+let lastInboxSweepAt=0;
+function loadInboxSweepState(){
+  try{
+    const parsed=JSON.parse(fs.readFileSync(inboxSweepStatePath(),'utf8'));
+    const value=Number(parsed?.lastCompletedAt||0);
+    lastInboxSweepAt=Number.isFinite(value)&&value>0?value:0;
+  }catch{lastInboxSweepAt=0;}
+}
+function saveInboxSweepState(completedAt=Date.now()){
+  lastInboxSweepAt=completedAt;
+  try{fs.mkdirSync(app.getPath('userData'),{recursive:true});fs.writeFileSync(inboxSweepStatePath(),JSON.stringify({lastCompletedAt:completedAt,nextDueAt:completedAt+INBOX_SWEEP_INTERVAL_MS},null,2));}catch{}
+}
+loadInboxSweepState();
+function inboxSweepDue(now=Date.now()){
+  return !lastInboxSweepAt||now-lastInboxSweepAt>=INBOX_SWEEP_INTERVAL_MS;
+}
 function isSalesProfilePage(url){
   try{
     const parsed=new URL(url);
@@ -727,45 +779,19 @@ const browserTimer=setInterval(async()=>{
     // desafio ou checkpoint estiver aberta, o operador controla a tela e o
     // ciclo aguarda o Instagram concluir a sessão por conta própria.
     if(await isInstagramAuthenticationScreen(activeView,url))return;
-    if(url.includes('instagram.com/')&&!url.includes('instagram.com/direct')){
-      const home=await scanInstagramHome(activeView);
-      if(home.hasNotification)followerScanRequested=true;
-      // O contador do Instagram nem sempre fica exposto na árvore de
-      // acessibilidade. Depois da leitura da página inicial, entre no inbox
-      // também quando não houver contador legível: assim a lista de DMs é a
-      // fonte de confirmação e nenhuma conversa pendente fica invisível.
-      if(!home.openedInbox){
-        await activeView.webContents.loadURL('https://www.instagram.com/direct/inbox/');
-      }
-      url=activeView.webContents.getURL()||'';
+    // A lista inteira de DMs é aberta uma vez na primeira ativação e depois
+    // semanalmente. Fora disso o agente não tira o operador da tela atual.
+    if(isSalesProfilePage(url)&&inboxSweepDue()){
+      const result=await runInboxSweep(activeView,{source:'scheduled'});
+      fs.appendFileSync(path.join(app.getPath('userData'),'browser-send.log'),`${new Date().toISOString()} scheduled sweep ${JSON.stringify(result)}\n`);
+      return;
     }
     if(!url.includes('instagram.com/direct'))return;
     if(new URL(url).pathname.startsWith('/direct/inbox')){await openUnreadConversation(activeView);return;}
-    const snap=await observeBrowser();
-    const last=snap.messages.at(-1);
-    fs.appendFileSync(path.join(app.getPath('userData'),'browser-send.log'),`${new Date().toISOString()} message metadata ${JSON.stringify({thread:!!snap.threadId,username:!!snap.username,count:snap.messages.length,hasId:!!last?.id,direction:last?.direction||'none'})}\n`);
-    if(!snap.threadId||!snap.username||!last?.id||!last.text||last.direction!=='incoming'){
-      await activeView.webContents.loadURL('https://www.instagram.com/direct/inbox/');
-      return;
-    }
-    const cycle=await backend('browserScreenCycle',{url:snap.url,thread_id:snap.threadId,username:snap.username,message_id:last.id,message:last.text,direction:'incoming',messages:snap.messages});
-    if(cycle?.new_message&&cycle.text){
-      await naturalInteractionPause('dm-reply',2400,11000);
-      if(!(await backend('agentStatus')).active||activeView.webContents.getURL()!==snap.url)return;
-      if(cycle.competitor?.asset_ready){
-        try{
-          const imageResult=await sendImageInBrowserView(cycle.competitor.asset_path);
-          fs.appendFileSync(path.join(app.getPath('userData'),'browser-send.log'),`${new Date().toISOString()} poster ${JSON.stringify({competitor:cycle.competitor.slug,...imageResult})}\n`);
-        }catch(error){
-          fs.appendFileSync(path.join(app.getPath('userData'),'browser-send.log'),`${new Date().toISOString()} poster-error ${cycle.competitor.slug} ${error.message}\n`);
-        }
-      }
-      await sendInBrowserView(cycle.text);
-      await backend('browserScreenConfirm',{message_key:cycle.message_key,lead_id:cycle.lead_id,text:cycle.text,thread_id:snap.threadId});
-    }
-    await activeView.webContents.loadURL('https://www.instagram.com/direct/inbox/');
+    const result=await processCurrentBrowserThread(activeView,{source:'open-thread'});
+    fs.appendFileSync(path.join(app.getPath('userData'),'browser-send.log'),`${new Date().toISOString()} open-thread ${JSON.stringify(result)}\n`);
   }catch(error){try{fs.mkdirSync(app.getPath('userData'),{recursive:true});fs.appendFileSync(path.join(app.getPath('userData'),'browser-send.log'),`${new Date().toISOString()} error ${error.message}\n`);}catch{}} finally{browserProcessing=false;}
-},8000);
+},60000);
 browserTimer.unref();
 function followerLog(message){
   try{
