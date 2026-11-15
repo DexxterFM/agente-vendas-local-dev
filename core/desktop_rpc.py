@@ -4,7 +4,7 @@ import os
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from core.config import load_config
 from core.memory import Memory
 from adapters.ollama import OllamaClient
@@ -103,9 +103,16 @@ def execute(command, args):
         return Supervisor(config).start_services()
     with Memory(config.db_path) as memory:
         if command == 'agentStatus':
+            heartbeat=memory.get_setting('sales.agent.worker.heartbeat_at','')
+            try:
+                worker_cycle=json.loads(memory.get_setting('sales.agent.worker.cycle','{}') or '{}')
+            except (TypeError, ValueError):
+                worker_cycle={}
             return {
                 'active': memory.get_setting('sales.agent.active','false') == 'true',
                 'prospecting_active': memory.get_setting('sales.agent.prospecting_active','false') == 'true',
+                'worker_heartbeat_at': heartbeat,
+                'worker_cycle': worker_cycle,
             }
         if command == 'setAgentActive':
             active=bool(args.get('active'))
@@ -115,6 +122,21 @@ def execute(command, args):
             active=bool(args.get('active'))
             memory.set_setting('sales.agent.prospecting_active','true' if active else 'false')
             return {'active':active}
+        if command == 'workerHeartbeat':
+            # Telemetria agregada do worker da VPS. Não inclui usuário,
+            # conversa ou texto de DM; serve apenas para o painel comprovar
+            # que a automação continua viva entre aberturas do aplicativo.
+            cycle={
+                'active': bool(args.get('active')),
+                'queued': max(0, int(args.get('queued',0) or 0)),
+                'synced': max(0, int(args.get('synced',0) or 0)),
+                'meta_sync_enabled': bool(args.get('meta_sync_enabled')),
+                'postflow_sync_enabled': bool(args.get('postflow_sync_enabled')),
+            }
+            heartbeat=datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+            memory.set_setting('sales.agent.worker.heartbeat_at',heartbeat)
+            memory.set_setting('sales.agent.worker.cycle',json.dumps(cycle,separators=(',',':')))
+            return {'heartbeat_at':heartbeat,'cycle':cycle}
         if command == 'prospectingPacing':
             from core.prospecting_pacing import ProspectingPacing
             pacing = ProspectingPacing(memory)

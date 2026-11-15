@@ -23,6 +23,25 @@ class CoreTests(unittest.TestCase):
             self.assertTrue(result["active"])
             self.assertFalse(result["meta_sync_enabled"])
             self.assertEqual(result["last_sync_error"], "")
+
+    def test_worker_heartbeat_exposes_only_aggregate_runtime_state(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}
+        ):
+            result = execute("workerHeartbeat", {
+                "active": True,
+                "queued": 2,
+                "synced": 3,
+                "meta_sync_enabled": False,
+                "postflow_sync_enabled": True,
+                "message": "não pode persistir conteúdo de conversa",
+            })
+            status = execute("agentStatus", {})
+            self.assertEqual(status["worker_heartbeat_at"], result["heartbeat_at"])
+            self.assertEqual(status["worker_cycle"], {
+                "active": True, "queued": 2, "synced": 3,
+                "meta_sync_enabled": False, "postflow_sync_enabled": True,
+            })
     def test_plain_text_is_answer(self):
         self.assertEqual(parse_decision("Olá cliente"), {"action": "answer", "text": "Olá cliente"})
 

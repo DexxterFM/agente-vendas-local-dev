@@ -47,6 +47,16 @@ def main() -> None:
         {"interval": interval, "auto_dispatch": auto_dispatch, "postflow_sync": postflow_sync},
         flush=True,
     )
+    # O painel remoto precisa conseguir comprovar que o worker está vivo sem
+    # ler o journal (que pode conter referências a conversas). Registra-se
+    # somente uma telemetria agregada na memória comercial.
+    execute("workerHeartbeat", {
+        "active": False,
+        "queued": 0,
+        "synced": 0,
+        "meta_sync_enabled": os.getenv("SALES_AGENT_META_SYNC_ENABLED", "false").strip().lower() in ("1", "true", "yes"),
+        "postflow_sync_enabled": postflow_sync,
+    })
     while RUNNING:
         try:
             if postflow_sync and time.monotonic() >= next_postflow_sync:
@@ -56,6 +66,13 @@ def main() -> None:
             result = execute("agentCycle", {})
             if auto_dispatch and result.get("active"):
                 execute("dispatchDue", {})
+            execute("workerHeartbeat", {
+                "active": result.get("active", False),
+                "queued": result.get("queued", 0),
+                "synced": result.get("synced", 0),
+                "meta_sync_enabled": result.get("meta_sync_enabled", False),
+                "postflow_sync_enabled": postflow_sync,
+            })
             print(datetime.now(timezone.utc).isoformat(), result, flush=True)
         except Exception as exc:  # systemd reinicia somente se o processo cair
             print(datetime.now(timezone.utc).isoformat(), "cycle_error", str(exc), flush=True)
