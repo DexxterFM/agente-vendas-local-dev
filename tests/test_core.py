@@ -2,13 +2,27 @@ import os
 import sys
 import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from app import Memory, explicit_navigation, parse_decision
+from core.desktop_rpc import execute
 from sales_logic import draft_followup, qualify_lead
 
 
 class CoreTests(unittest.TestCase):
+
+    def test_agent_cycle_skips_meta_sync_when_browser_postflow_mode_is_active(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ,
+            {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3"), "SALES_AGENT_META_SYNC_ENABLED": "false"},
+        ):
+            execute("setAgentActive", {"active": True})
+            result = execute("agentCycle", {})
+            self.assertTrue(result["active"])
+            self.assertFalse(result["meta_sync_enabled"])
+            self.assertEqual(result["last_sync_error"], "")
     def test_plain_text_is_answer(self):
         self.assertEqual(parse_decision("Olá cliente"), {"action": "answer", "text": "Olá cliente"})
 

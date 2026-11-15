@@ -417,8 +417,13 @@ def execute(command, args):
             if memory.get_setting('sales.agent.active','false') != 'true': return {'active':False,'queued':0,'synced':0}
             synced=0
             now=datetime.now().timestamp()
+            # A conta Meta é uma integração opcional. Quando o fluxo está
+            # operando pelo navegador interno/PostFlow, não tente consultar
+            # uma credencial ausente a cada ciclo nem mantenha um erro velho
+            # como se fosse uma falha de atendimento.
+            meta_sync_enabled=os.getenv('SALES_AGENT_META_SYNC_ENABLED','false').strip().lower() in ('1','true','yes')
             retry_at=float(memory.get_setting('sales.agent.sync_retry_at','0') or 0)
-            if now >= retry_at:
+            if meta_sync_enabled and now >= retry_at:
                 try:
                     from adapters.instagram_history import sync_history
                     result=sync_history(memory); synced=int(result.get('messages',0)) if isinstance(result,dict) else 0
@@ -432,6 +437,10 @@ def execute(command, args):
                         delay=min(max(previous,300)*2,21600)
                         memory.set_setting('sales.agent.sync_backoff_seconds',str(delay))
                         memory.set_setting('sales.agent.sync_retry_at',str(now+delay))
+            elif not meta_sync_enabled:
+                memory.set_setting('sales.agent.last_sync_error','')
+                memory.set_setting('sales.agent.sync_retry_at','0')
+                memory.set_setting('sales.agent.sync_backoff_seconds','0')
             import hashlib
             queued=0
             for row in memory.list_leads():
@@ -445,7 +454,7 @@ def execute(command, args):
                 draft=execute('draft',{'id':lead_id})
                 execute('queue',{'id':lead_id,'text':draft})
                 memory.set_setting(key,digest); queued+=1
-            return {'active':True,'queued':queued,'synced':synced,'last_sync_error':memory.get_setting('sales.agent.last_sync_error',''),'sync_retry_at':memory.get_setting('sales.agent.sync_retry_at','0'),'sync_backoff_seconds':memory.get_setting('sales.agent.sync_backoff_seconds','0')}
+            return {'active':True,'queued':queued,'synced':synced,'meta_sync_enabled':meta_sync_enabled,'last_sync_error':memory.get_setting('sales.agent.last_sync_error',''),'sync_retry_at':memory.get_setting('sales.agent.sync_retry_at','0'),'sync_backoff_seconds':memory.get_setting('sales.agent.sync_backoff_seconds','0')}
         if command=='replyDelay':
             if 'seconds' in args:memory.set_setting('reply.minimum_seconds',str(max(3,min(30,int(args['seconds'])))))
             return {'seconds':int(memory.get_setting('reply.minimum_seconds','7'))}
@@ -484,7 +493,6 @@ def execute(command, args):
             from adapters.browseros import BrowserOSClient
             return BrowserOSClient(config.browseros_mcp_url,timeout=config.http_timeout,max_chars=config.max_page_chars).open_and_read(str(args.get('url',''))).text
         if command == 'importMetaEnvironment':
-            import os
             account=(os.getenv('IG_BUSINESS_ACCOUNT_ID','') or os.getenv('INSTAGRAM_BUSINESS_ACCOUNT_ID','')).strip()
             token=(os.getenv('INSTAGRAM_ACCESS_TOKEN','') or os.getenv('PAGE_ACCESS_TOKEN','')).strip()
             if not account or not token: raise ValueError('A credencial Meta não contém conta e token utilizáveis')

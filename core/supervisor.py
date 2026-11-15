@@ -178,7 +178,7 @@ class Supervisor:
             "rea": {**rea, "label": "REA"},
             "privacy": _status(
                 "connected",
-                "Dados processados localmente; nenhum envio automático.",
+                "Dados comerciais processados localmente; operação segue os controles ativos do agente.",
             ),
             "instagram": {**instagram, "label": "Instagram/Meta"},
             "postflow": {**postflow, "label": "PostFlow"},
