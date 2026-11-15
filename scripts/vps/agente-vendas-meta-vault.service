@@ -9,7 +9,10 @@ Type=oneshot
 User=avanthcode
 Environment=AVANTHCODE_AGENT_STATE_DIR=/var/lib/avanthcode-agent
 Environment=SALES_AGENT_META_ENV=/var/lib/avanthcode-agent/config/sales-agent-meta.env
-ExecStart=/opt/node-v22.23.4-linux-x64/bin/node /opt/agente-vendas-local/app/scripts/vps/export_meta_vault.mjs
+# O usuário do cofre não atravessa a árvore protegida de /opt/agente-vendas-local.
+# Durante a instalação o script é copiado para este caminho, com propriedade
+# exclusiva de avanthcode, sem duplicar dados do cofre no repositório.
+ExecStart=/opt/node-v22.23.4-linux-x64/bin/node /var/lib/avanthcode-agent/bin/export_meta_vault.mjs
 RemainAfterExit=yes
 
 [Install]
