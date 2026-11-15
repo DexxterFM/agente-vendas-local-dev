@@ -4,6 +4,9 @@ const {spawn} = require('node:child_process');
 const path = require('node:path');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
+// A edição remota pode coexistir com a edição local sem disputar o lock do
+// Electron nem a pasta de dados do usuário.
+if(path.basename(process.execPath).toLowerCase().includes('controle')) app.setName('AgenteVendasControleVPS');
 let window;
 let browserView;
 let followerWindow;
