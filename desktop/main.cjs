@@ -13,6 +13,7 @@ let followerWindow;
 let browserPaneUrl='https://www.instagram.com/';
 let browserAttached=false;
 let browserUserVisible=false;
+let browserLoadError='';
 let metaCallbackServer;
 let backendChild=null;
 let backendBuffer='';
@@ -178,6 +179,13 @@ function ensureBrowserView(){
   browserView=new BrowserView({webPreferences:{contextIsolation:true,sandbox:true,partition:'persist:sales-agent-browser'}});
   browserView.webContents.setWindowOpenHandler(({url})=>({action:'allow',overrideBrowserWindowOptions:{webPreferences:{contextIsolation:true,sandbox:true,partition:'persist:sales-agent-browser'}}}));
   browserView.webContents.on('will-navigate',(event,url)=>{try{if(new URL(url).protocol!=='https:')event.preventDefault();}catch{event.preventDefault();}});
+  // A indisponibilidade transitória do Instagram não pode derrubar o painel
+  // nem abrir uma caixa de erro fatal no controlador remoto.
+  browserView.webContents.on('did-fail-load',(_event,errorCode,errorDescription,validatedURL,isMainFrame)=>{
+    if(!isMainFrame)return;
+    browserLoadError=`${errorCode}: ${String(errorDescription||'falha ao carregar').slice(0,120)}`;
+    try{fs.mkdirSync(app.getPath('userData'),{recursive:true});fs.appendFileSync(path.join(app.getPath('userData'),'desktop.log'),`${new Date().toISOString()} browser-load ${browserLoadError} ${validatedURL}\n`);}catch{}
+  });
   browserView.webContents.on('destroyed',()=>{browserView=null;browserAttached=false;});
   return browserView;
 }
@@ -388,7 +396,7 @@ ipcMain.handle('sales:browserPane', async (event, action='open', value='') => {
   } else if(action==='back'&&view.webContents.canGoBack()) view.webContents.goBack();
   else if(action==='forward'&&view.webContents.canGoForward()) view.webContents.goForward();
   else if(action==='reload') view.webContents.reload();
-  return {open:true,url:view.webContents.getURL()||browserPaneUrl};
+  return {open:true,url:view.webContents.getURL()||browserPaneUrl,browser_error:browserLoadError||undefined};
 });
 // Leitura e interação do navegador interno. Tudo acontece no BrowserView
 // persistente do próprio aplicativo; não depende de uma sessão do Chrome.
@@ -1043,7 +1051,10 @@ else {
     browserAttached=true;
     initialBrowser.setBounds(browserBounds());
     initialBrowser.setAutoResize({width:true,height:true});
-    if(!initialBrowser.webContents.getURL()) await initialBrowser.webContents.loadURL(browserPaneUrl);
+    if(!initialBrowser.webContents.getURL()) await initialBrowser.webContents.loadURL(browserPaneUrl).catch(error=>{
+      browserLoadError=String(error?.message||error).slice(0,180);
+      try{fs.appendFileSync(path.join(app.getPath('userData'),'desktop.log'),`${new Date().toISOString()} browser-start ${browserLoadError}\n`);}catch{}
+    });
     if(process.argv.includes('--smoke-test')) {
       const result = await window.webContents.executeJavaScript(`(async()=>{const leads=await window.sales.call('leads');const templates=await window.sales.call('responseLibrary');const libraryButton=document.querySelector('[data-view="library"]');libraryButton.click();await new Promise(resolve=>setTimeout(resolve,300));const operatorButton=document.querySelector('[data-view="operator"]');return {title:document.title,backend:true,leads:leads.length,templates:templates.length,libraryForm:!!document.querySelector('#template-form'),operatorAvailable:!!operatorButton};})()`);
       fs.writeFileSync(path.join(app.getPath('userData'),'smoke-test.json'),JSON.stringify(result));
