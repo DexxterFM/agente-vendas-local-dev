@@ -13,6 +13,7 @@ const stateRoot = process.env.AVANTHCODE_AGENT_STATE_DIR || "/var/lib/avanthcode
 const configDir = join(stateRoot, "config");
 const vaultPath = join(configDir, "secure-config.enc.json");
 const outputPath = process.env.SALES_AGENT_META_ENV || join(configDir, "sales-agent-meta.env");
+const statusPath = `${outputPath}.status`;
 const keyPath = join(configDir, ".master-key");
 const allowed = [
   "PAGE_ACCESS_TOKEN",
@@ -63,7 +64,30 @@ async function main() {
   console.log(`Meta vault exported (${rows.length} settings)`);
 }
 
-main().catch((error) => {
-  console.error(`Meta vault export failed: ${String(error?.message || error).slice(0, 180)}`);
-  process.exitCode = 1;
-});
+function failureCategory(error) {
+  const message = String(error?.message || error || "");
+  if (message.includes("Cofre Meta indisponível")) return "vault_envelope_missing";
+  if (message.includes("Chave do cofre indisponível")) return "vault_key_missing";
+  if (message.includes("conexão Instagram completa")) return "vault_values_incomplete";
+  if (error?.code === "EACCES") return "permission_denied";
+  if (error?.code === "ENOENT") return "path_missing";
+  if (/authenticate|decrypt|unsupported state/i.test(message)) return "vault_decrypt_failed";
+  return "export_failed";
+}
+
+async function writeStatus(value) {
+  await writeFile(statusPath, `${value}\n`, { encoding: "utf8", mode: 0o644, flag: "w" });
+  await chmod(statusPath, 0o644);
+}
+
+main().then(
+  async () => { await writeStatus("ready"); },
+  async (error) => {
+    const category = failureCategory(error);
+    try { await writeStatus(`failed:${category}`); } catch {}
+    // O journal recebe apenas uma categoria fixa, sem mensagem da biblioteca
+    // criptográfica nem valores carregados do cofre.
+    console.error(`Meta vault export failed: ${category}`);
+    process.exitCode = 1;
+  },
+);
