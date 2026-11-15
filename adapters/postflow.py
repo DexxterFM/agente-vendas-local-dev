@@ -58,7 +58,18 @@ def status() -> dict[str, Any]:
     if not configured():
         return {"status": "not_configured", "detail": "Configure credencial PostFlow ou POSTFLOW_TRUSTED_LOCAL para um endpoint loopback."}
     result = _request("GET", "health")
-    return {"status": "connected" if result.get("connected", result.get("ok", False)) else "unavailable", "postflow": result}
+    connected = result.get("connected", result.get("ok", False))
+    if not connected:
+        return {"status": "unavailable", "postflow": result}
+    rows = _request("GET", "engagement/threads")
+    thread_list = rows.get("threads", rows.get("data", []))
+    thread_count = len(thread_list) if isinstance(thread_list, list) else 0
+    return {
+        "status": "connected",
+        "postflow": result,
+        "threads": thread_count,
+        "detail": f"PostFlow conectado • {thread_count} conversa(s) disponíveis.",
+    }
 
 
 def threads() -> list[dict[str, Any]]:

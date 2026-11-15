@@ -17,3 +17,15 @@ class PostflowConfigurationTests(unittest.TestCase):
     def test_token_configures_any_authorized_base(self):
         with patch.dict(os.environ, {"POSTFLOW_BASE_URL": "https://postflow.example.com", "POSTFLOW_API_TOKEN": "test"}, clear=True):
             self.assertTrue(postflow.configured())
+
+    @patch("adapters.postflow._request")
+    def test_status_reports_available_thread_count(self, request):
+        request.side_effect = [
+            {"ok": True, "service": "instagram-agent"},
+            {"threads": [{"id": "a"}, {"id": "b"}]},
+        ]
+        with patch.dict(os.environ, {"POSTFLOW_BASE_URL": "https://postflow.example.com", "POSTFLOW_API_TOKEN": "test"}, clear=True):
+            result = postflow.status()
+        self.assertEqual(result["status"], "connected")
+        self.assertEqual(result["threads"], 2)
+        self.assertIn("2 conversa", result["detail"])
