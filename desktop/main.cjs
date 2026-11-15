@@ -16,7 +16,29 @@ let backendBuffer='';
 let backendSequence=0;
 const backendPending=new Map();
 let localLlmChild=null;
+let remoteTunnelChild=null;
 const localLlmPort=11535;
+function remoteControlConfig(){
+  const candidates=[path.join(process.resourcesPath,'remote-control.json'),path.join(app.getPath('userData'),'remote-control.json')];
+  for(const file of candidates){try{const config=JSON.parse(fs.readFileSync(file,'utf8'));if(config?.enabled&&config?.sshHost)return config;}catch{}}
+  return null;
+}
+const remoteControl=remoteControlConfig();
+function startRemoteTunnel(){
+  if(!remoteControl||(remoteTunnelChild&&!remoteTunnelChild.killed))return;
+  const executable=process.env.WINDIR?path.join(process.env.WINDIR,'System32','OpenSSH','ssh.exe'):'ssh';
+  const port=String(remoteControl.localPort||8787);
+  remoteTunnelChild=spawn(executable,['-N','-o','BatchMode=yes','-o','ExitOnForwardFailure=yes','-L',`${port}:127.0.0.1:${remoteControl.remotePort||8787}`,remoteControl.sshHost],{windowsHide:true,stdio:'ignore'});
+  remoteTunnelChild.on('close',()=>{remoteTunnelChild=null;});
+}
+function remoteBackend(command,args={}){return new Promise((resolve,reject)=>{
+  startRemoteTunnel();
+  const body=Buffer.from(JSON.stringify({id:++backendSequence,command,args}));
+  const request=http.request({hostname:'127.0.0.1',port:remoteControl.localPort||8787,path:'/api/rpc',method:'POST',headers:{'Content-Type':'application/json','Content-Length':body.length},timeout:120000},response=>{let raw='';response.on('data',part=>raw+=part);response.on('end',()=>{try{const payload=JSON.parse(raw);payload.ok?resolve(payload.result):reject(new Error(payload.error||'Falha do agente na VPS.'));}catch{reject(new Error('Resposta inválida do agente na VPS.'));}});});
+  request.on('timeout',()=>request.destroy(new Error('A VPS demorou para responder.')));
+  request.on('error',error=>reject(new Error(`Controle remoto indisponível: ${error.message}`)));
+  request.write(body);request.end();
+});}
 function localLlmPaths(){
   const root=app.isPackaged?path.join(process.resourcesPath,'native'):path.join(__dirname,'..','native');
   return {server:path.join(root,'runtime','llama-server.exe'),model:path.join(root,'models','qwen3-sales.gguf')};
@@ -76,7 +98,12 @@ function ensureBackend(){
   backendChild.on('close',()=>fail(new Error('O serviço interno do agente foi reiniciado. Tente novamente.')));
   return backendChild;
 }
-function backend(command,args={}) { return new Promise((resolve,reject)=>{
+function backend(command,args={}) {
+  if(remoteControl){
+    if(!backendAllowed.includes(command))return Promise.reject(new Error('Comando inválido'));
+    return remoteBackend(command,args);
+  }
+  return new Promise((resolve,reject)=>{
   if(!backendAllowed.includes(command))return reject(new Error('Comando inválido'));
   const child=ensureBackend();const id=++backendSequence;
   const timer=setTimeout(()=>{backendPending.delete(id);reject(new Error('O serviço interno demorou para responder.'));},120000);
@@ -805,6 +832,6 @@ else {
     }
   }).catch(record);
   app.on('window-all-closed',()=>{window=null;app.quit();});
-  app.on('will-quit',()=>{if(metaCallbackServer)metaCallbackServer.close();if(followerWindow&&!followerWindow.isDestroyed())followerWindow.destroy();if(backendChild&&!backendChild.killed)backendChild.kill();if(localLlmChild&&!localLlmChild.killed)localLlmChild.kill();});
+  app.on('will-quit',()=>{if(metaCallbackServer)metaCallbackServer.close();if(followerWindow&&!followerWindow.isDestroyed())followerWindow.destroy();if(backendChild&&!backendChild.killed)backendChild.kill();if(remoteTunnelChild&&!remoteTunnelChild.killed)remoteTunnelChild.kill();if(localLlmChild&&!localLlmChild.killed)localLlmChild.kill();});
 }
 process.on('uncaughtException', record);

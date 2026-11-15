@@ -1,0 +1,21 @@
+[Unit]
+Description=Agente de Vendas Local - Painel de Controle por SSH
+After=network-online.target agente-vendas-worker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=agentevendas
+WorkingDirectory=/opt/agente-vendas-local/app
+EnvironmentFile=/etc/agente-vendas-local/agent.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /opt/agente-vendas-local/app/scripts/vps/control_server.py
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/agente-vendas-local
+
+[Install]
+WantedBy=multi-user.target

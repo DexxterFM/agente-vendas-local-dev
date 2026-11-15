@@ -3,6 +3,6 @@
   "version": "0.7.0",
   "private": true,
   "main": "desktop/main.cjs",
-  "scripts": {"start": "electron .", "desktop:build": "node desktop/build.cjs"},
+  "scripts": {"start": "electron .", "desktop:build": "node desktop/build.cjs", "desktop:build:remote": "node desktop/build-remote.cjs"},
   "devDependencies": {"electron": "^40.0.0", "@electron/packager": "^19.0.0"}
 }
