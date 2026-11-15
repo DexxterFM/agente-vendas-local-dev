@@ -710,7 +710,7 @@ function isSalesProfilePage(url){
     return Boolean(profile)&&profile===target;
   }catch{return false;}
 }
-async function scanInstagramHome(view){
+async function scanInstagramHome(view,{openInbox=true}={}){
   /* A página inicial mantém os contadores como texto acessível; não depende
      de pixels, nem de a caixa de entrada já estar visível. */
   const indicators=await view.webContents.executeJavaScript(`(()=>{
@@ -733,7 +733,7 @@ async function scanInstagramHome(view){
   const hasMessage=indicators.messages.some(item=>item.badge||/nova|new|unread|não lida/i.test(item.text));
   const hasNotification=Boolean(indicators.redBadge)||indicators.notifications.some(item=>item.badge||/nova|new/i.test(item.text));
   fs.appendFileSync(path.join(app.getPath('userData'),'browser-send.log'),`${new Date().toISOString()} home indicators ${JSON.stringify({hasMessage,hasNotification,indicators})}\n`);
-  if(hasMessage){
+  if(hasMessage&&openInbox){
     await view.webContents.loadURL('https://www.instagram.com/direct/inbox/');
     return {openedInbox:true,hasNotification};
   }
@@ -745,6 +745,18 @@ function isInstagramAuthenticationPage(url){
     if(!/(^|\.)instagram\.com$/i.test(parsed.hostname)) return false;
     const path=parsed.pathname.toLowerCase();
     return path.startsWith('/accounts/login')||path.startsWith('/accounts/signup')||path.startsWith('/accounts/password')||path.startsWith('/challenge')||path.startsWith('/checkpoint')||path.startsWith('/two_factor_authentication');
+  }catch{return false;}
+}
+async function isInstagramAuthenticatedArea(view,url){
+  if(isInstagramAuthenticationPage(url))return false;
+  try{
+    return await view.webContents.executeJavaScript(`(()=>{
+      const target=${JSON.stringify(String(process.env.INSTAGRAM_TARGET_USERNAME||'erpclinicatea').replace(/^@/,'').toLowerCase())};
+      const links=[...document.querySelectorAll('a[href]')];
+      const ownProfile=links.some(link=>new URL(link.href,location.href).pathname.replace(/^\\/+|\\/+$/g,'').toLowerCase()===target);
+      const navigation=links.some(link=>/perfil|profile|página inicial|home|mensagens|messages|notificações|notifications/i.test([link.innerText,link.getAttribute('aria-label'),link.getAttribute('title')].filter(Boolean).join(' ')));
+      return ownProfile&&navigation;
+    })()`,true);
   }catch{return false;}
 }
 async function isInstagramAuthenticationScreen(view,url){
@@ -771,7 +783,10 @@ const browserTimer=setInterval(async()=>{
     // A sessão é sempre concluída manualmente. O perfil oficial aberto é o
     // único gatilho que libera as rotinas; até então nenhum ciclo muda a tela.
     if(!browserAutomationArmed){
-      if(!isSalesProfilePage(url))return;
+      // Depois da autenticação, tanto o perfil oficial quanto a tela inicial
+      // autenticada oferecem metadados suficientes para iniciar a observação.
+      // A tela de login/desafio continua totalmente livre de automação.
+      if(!isSalesProfilePage(url)&&!(await isInstagramAuthenticatedArea(activeView,url)))return;
       browserAutomationArmed=true;
       fs.appendFileSync(path.join(app.getPath('userData'),'browser-send.log'),`${new Date().toISOString()} automation armed profile ${url}\n`);
     }
@@ -781,9 +796,16 @@ const browserTimer=setInterval(async()=>{
     if(await isInstagramAuthenticationScreen(activeView,url))return;
     // A lista inteira de DMs é aberta uma vez na primeira ativação e depois
     // semanalmente. Fora disso o agente não tira o operador da tela atual.
-    if(isSalesProfilePage(url)&&inboxSweepDue()){
-      const result=await runInboxSweep(activeView,{source:'scheduled'});
-      fs.appendFileSync(path.join(app.getPath('userData'),'browser-send.log'),`${new Date().toISOString()} scheduled sweep ${JSON.stringify(result)}\n`);
+    if(isSalesProfilePage(url)||await isInstagramAuthenticatedArea(activeView,url)){
+      // O indicador da área de notificações é lido sem navegar nem recarregar
+      // o perfil. Assim, um novo seguidor dispara a fila própria de
+      // seguidores e a tela do operador continua intacta.
+      const home=await scanInstagramHome(activeView,{openInbox:false});
+      if(home.hasNotification)followerScanRequested=true;
+      if(inboxSweepDue()){
+        const result=await runInboxSweep(activeView,{source:'scheduled'});
+        fs.appendFileSync(path.join(app.getPath('userData'),'browser-send.log'),`${new Date().toISOString()} scheduled sweep ${JSON.stringify(result)}\n`);
+      }
       return;
     }
     if(!url.includes('instagram.com/direct'))return;
@@ -791,7 +813,7 @@ const browserTimer=setInterval(async()=>{
     const result=await processCurrentBrowserThread(activeView,{source:'open-thread'});
     fs.appendFileSync(path.join(app.getPath('userData'),'browser-send.log'),`${new Date().toISOString()} open-thread ${JSON.stringify(result)}\n`);
   }catch(error){try{fs.mkdirSync(app.getPath('userData'),{recursive:true});fs.appendFileSync(path.join(app.getPath('userData'),'browser-send.log'),`${new Date().toISOString()} error ${error.message}\n`);}catch{}} finally{browserProcessing=false;}
-},60000);
+},15000);
 browserTimer.unref();
 function followerLog(message){
   try{
@@ -805,7 +827,7 @@ async function findFollowerNotification(contents){
     const visible=e=>!!e;
     const parts=[...document.querySelectorAll('span,div,p')].filter(e=>{
       const text=(e.innerText||'').replace(/\s+/g,' ').trim();
-      return text.length>0&&text.length<320&&/(começou a seguir você|started following you)/i.test(text);
+      return text.length>0&&text.length<320&&/(?:começou|passou|acabou) a seguir você|(?:segue|seguiu) você|started following you|follows you/i.test(text);
     }).sort((a,b)=>(a.innerText||'').length-(b.innerText||'').length);
     for(const part of parts){
       let row=part;
@@ -854,7 +876,7 @@ async function findFollowerFromAccessibility(contents){
       const matched=text.match(/(?:foto do perfil de |profile photo of )?([a-z0-9._]{1,30})$/i);
       return matched?matched[1].toLowerCase():'';
     };
-    for(const marker of nodes.filter(node=>/(começou a seguir você|started following you)/i.test(String(node.name?.value||'')))){
+    for(const marker of nodes.filter(node=>/(?:começou|passou|acabou) a seguir você|(?:segue|seguiu) você|started following you|follows you/i.test(String(node.name?.value||'')))){
       let parent=byId.get(marker.parentId);
       for(let depth=0;parent&&depth<10;depth++,parent=byId.get(parent.parentId)){
         const username=descendants(parent).filter(node=>node.role?.value==='link').map(node=>extractUsername(node.name?.value)).find(Boolean);
@@ -869,7 +891,7 @@ async function openFollowerNotifications(contents){
   // /notifications. Use a rota vigente para evitar uma navegação extra.
   await contents.loadURL('https://www.instagram.com/notifications/');
   await wait(2200);
-  let state=await contents.executeJavaScript(`(()=>({url:location.href,hasFollowerText:/(começou a seguir você|started following you)/i.test(document.body?.innerText||'')}))()`,true);
+  let state=await contents.executeJavaScript(`(()=>({url:location.href,hasFollowerText:/(?:começou|passou|acabou) a seguir você|(?:segue|seguiu) você|started following you|follows you/i.test(document.body?.innerText||'')}))()`,true);
   if(state.hasFollowerText)return {...state,opened:false};
   const opened=await contents.executeJavaScript(`(()=>{
     const elements=[...document.querySelectorAll('a,button,[role="link"],[role="button"],[aria-label]')];
@@ -879,7 +901,7 @@ async function openFollowerNotifications(contents){
     if(!target)return false;(target.closest('a,button,[role="link"],[role="button"]')||target).click();return true;
   })()`,true);
   if(opened)await wait(1800);
-  state=await contents.executeJavaScript(`(()=>({url:location.href,hasFollowerText:/(começou a seguir você|started following you)/i.test(document.body?.innerText||'')}))()`,true);
+  state=await contents.executeJavaScript(`(()=>({url:location.href,hasFollowerText:/(?:começou|passou|acabou) a seguir você|(?:segue|seguiu) você|started following you|follows you/i.test(document.body?.innerText||'')}))()`,true);
   return {...state,opened};
 }
 async function followAndOpenMessage(contents,username,openMessage=true,allowFollow=true){
@@ -929,7 +951,7 @@ const followerTimer=setInterval(async()=>{
   const now=Date.now();
   // Consulta de atualizações com ritmo humano: uma rodada inicial ao armar o
   // perfil e, depois, somente após cinco minutos ou mais.
-  if(now<nextFollowerScanAt)return;
+  if(now<nextFollowerScanAt&&!followerScanRequested)return;
   followerProcessing=true;
   followerScanRequested=false;
   lastFollowerScanAt=now;
