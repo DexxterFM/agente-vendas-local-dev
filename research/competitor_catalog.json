@@ -1,0 +1,207 @@
+{
+  "verified_at": "2026-11-14",
+  "scope": "Principais plataformas brasileiras encontradas com oferta pública relevante para consultórios, clínicas e redes. O mercado é aberto; a lista deve ser revisada trimestralmente.",
+  "erp": {
+    "name": "ERP Clínica TEA",
+    "pricing": "Starter R$ 197/mês; Professional R$ 397/mês; Enterprise R$ 797/mês. Valores do código comercial vigente em 2026-11-14.",
+    "features": [
+      "Núcleo integrado de agenda, paciente, profissional, filial, sala e atendimento, com validação de conflitos.",
+      "Prontuário multidisciplinar contínuo com avaliação, conduta, objetivos, evolução, evidências e relatórios vinculados ao atendimento.",
+      "Recursos especializados para TEA/ABA: registros por domínio, indicadores, objetivos e plano terapêutico, DTT, ABC e acompanhamento por supervisão.",
+      "Perfil sensorial, respostas sensoriais, linha do tempo e gráficos de evolução por especialidade.",
+      "Portais por perfil para administração, recepção, profissional, supervisão e família, com permissões e autoria preservadas.",
+      "Portal da família com agenda, avisos, orientações liberadas, evolução e relatórios dentro do escopo autorizado.",
+      "Gestão administrativa com financeiro, compras, estoque, centros de custo, documentos, auditoria, RH, ponto e folha conforme o plano.",
+      "Starter: até 5 usuários e 1 filial; Professional: até 20 usuários e 3 filiais; Enterprise: usuários e filiais ilimitados conforme contrato.",
+      "IA usada como apoio a rascunhos e coordenação, mantendo revisão e decisão com o profissional.",
+      "Oferta comercial configurada pelo projeto: teste de 3 meses; confirmar elegibilidade e link vigente antes do envio."
+    ],
+    "sources": [
+      "client/src/pages/Planos.tsx",
+      "client/src/content/siteContent.ts",
+      "client/src/content/resourceEditorial.ts"
+    ]
+  },
+  "competitors": [
+    {
+      "slug": "iclinic",
+      "name": "iClinic",
+      "aliases": ["i clinic", "afya iclinic", "iclinic assist"],
+      "positioning": "Software médico em nuvem para consultórios e clínicas, com agenda, prontuário, prescrição, teleconsulta e módulos crescentes de gestão.",
+      "pricing": {"summary": "Starter R$ 99, Plus R$ 129, Pro R$ 169 e Premium R$ 299 por profissional/mês; WhatsApp e assinatura podem ter cobrança adicional.", "public": true},
+      "features": ["Agenda e agendamento online", "Prontuário e prescrição digital", "Chat, assinatura e lembretes no Plus", "Financeiro, repasses e estoque no Pro", "Teleconsulta ilimitada e campanhas no Premium"],
+      "erp_advantages": ["Fluxos clínicos explicitamente voltados a TEA/ABA, com objetivos, indicadores e supervisão", "Perfil sensorial e evolução multidisciplinar no mesmo paciente", "Portais distintos para família, supervisão, recepção e administração", "Plano Starter do ERP inclui até 5 usuários, enquanto o iClinic publica preços por profissional"],
+      "dossier": "O iClinic é uma referência forte para o consultório médico individual e oferece uma escada clara de planos. A conversa não deve negar esses pontos. O diferencial do ERP Clínica TEA aparece quando a clínica precisa coordenar várias especialidades, supervisão terapêutica, família, recepção e administração ao redor do mesmo paciente. Em vez de discutir apenas agenda e prontuário genérico, Denis deve descobrir quantos profissionais acompanham cada criança, como metas são compartilhadas, como a família recebe orientações e quanto trabalho existe para consolidar relatórios. Se esses pontos pesarem, apresentar o ERP como núcleo operacional especializado. No preço, comparar o custo total para a equipe inteira, incluindo complementos necessários, sem afirmar economia antes de conhecer número de profissionais, plano e adicionais do cliente.",
+      "discovery_questions": ["Quantos profissionais diferentes acompanham o mesmo paciente?", "Hoje as metas e evoluções de cada especialidade ficam conectadas?", "A família recebe agenda, orientações e relatórios por um portal controlado?"],
+      "objection_answers": ["Se a pessoa elogiar a facilidade do iClinic: reconhecer e perguntar onde a coordenação multidisciplinar ainda exige planilha ou mensagem.", "Se disser que o preço é menor: calcular pelo número real de profissionais e pelos módulos utilizados; não comparar só o plano de entrada.", "Se não quiser migrar: oferecer um teste de 3 meses focado em um fluxo ou equipe, preservando a decisão após a experiência."],
+      "sources": [{"title": "Planos e preços iClinic", "url": "https://www.iclinic.com.br/precos/", "checked_at": "2026-11-14"}, {"title": "iClinic para clínicas e profissionais", "url": "https://www.iclinic.com.br/para-quem/", "checked_at": "2026-11-14"}],
+      "poster_prompt": "Crie um pôster vertical 1080x1350, premium e legível no Instagram, em português do Brasil. Título: 'iClinic ou ERP Clínica TEA?'. Subtítulo: 'Compare pelo fluxo real da sua equipe'. Duas colunas equilibradas, sem depreciar marcas. iClinic: planos publicados de R$99 a R$299 por profissional/mês; agenda; prontuário; prescrição; módulos de financeiro, estoque e teleconsulta conforme plano. ERP Clínica TEA: Starter R$197/mês para até 5 usuários; prontuário multidisciplinar; metas e evolução por especialidade; perfil sensorial; supervisão; portal da família; gestão integrada. Rodapé pequeno: 'Fontes oficiais consultadas em 14/11/2026. Valores e condições podem mudar.' CTA: 'Teste 3 meses e compare na rotina'. Estética azul-marinho e turquesa, cards claros, ícones clínicos discretos, sem logos copiados, sem inventar selos ou percentuais."
+      ,"asset": {"path": "assets/comparativos/iclinic.png", "status": "pending_generation"}
+    },
+    {
+      "slug": "clinica-agil",
+      "name": "Clínica Ágil",
+      "aliases": ["clinica agil", "clínica ágil"],
+      "positioning": "Gestão de clínicas com agenda, prontuário, financeiro, TISS, relatórios, comunicação e recursos de IA.",
+      "pricing": {"summary": "Planos publicados a partir de R$ 249/mês para 3 profissionais.", "public": true},
+      "features": ["Agenda e prontuário", "Transcrição por IA", "Equipe, financeiro e relatórios", "Faturamento TISS e convênios", "Secretária inteligente e lembretes multicanal"],
+      "erp_advantages": ["Especialização explícita em TEA/ABA, não apenas gestão clínica geral", "Metas terapêuticas, indicadores, DTT/ABC, supervisão e perfil sensorial", "Portal familiar com compartilhamento autorizado", "RH, ponto, folha, compras, estoque e documentoteca conectados à operação"],
+      "dossier": "Clínica Ágil comunica amplitude administrativa e automação. O melhor argumento não é dizer que ela é incompleta, mas mostrar que uma clínica TEA precisa de profundidade terapêutica além da gestão genérica. Denis deve perguntar como a equipe registra metas ABA, como supervisores revisam atendimentos, como o perfil sensorial é acompanhado e como a família recebe apenas o que foi liberado. O ERP Clínica TEA foi estruturado para ligar esses processos à agenda e ao prontuário do mesmo paciente. Para preço, o concorrente publica valor inicial para três profissionais; a comparação depende do tamanho da equipe e dos módulos. O pôster deve destacar foco e fluxo, não declarar uma vitória universal.",
+      "discovery_questions": ["Como vocês acompanham objetivos terapêuticos entre ABA, fono, TO e psicologia?", "O supervisor consegue revisar pendências e evolução por profissional?", "Vocês usam uma área segura para orientar as famílias?"],
+      "objection_answers": ["Se a IA for o principal atrativo: explicar que o ERP também usa IA como apoio, com revisão profissional e contexto TEA.", "Se disser que já centralizou a administração: investigar se a parte clínica especializada ainda está espalhada.", "Se a migração parecer trabalhosa: propor teste controlado de uma equipe e importar apenas os dados necessários."],
+      "sources": [{"title": "Clínica Ágil", "url": "https://www.clinicaagil.com.br/site/", "checked_at": "2026-11-14"}, {"title": "Sistema para clínicas", "url": "https://www.clinicaagil.com.br/site/especialidades/sistema-para-clinicas/", "checked_at": "2026-11-14"}],
+      "poster_prompt": "Pôster vertical 1080x1350 em português: 'Clínica Ágil x ERP Clínica TEA'. Comparação respeitosa em duas colunas. Clínica Ágil: a partir de R$249/mês para 3 profissionais; agenda; prontuário; IA; financeiro; TISS; lembretes. ERP Clínica TEA: a partir de R$197/mês para até 5 usuários; foco TEA/ABA; metas e indicadores terapêuticos; DTT/ABC; perfil sensorial; supervisão; portal da família; RH e gestão integrada. Use a frase central 'Gestão geral ou operação especializada em TEA?'. Rodapé com fontes oficiais e data 14/11/2026, aviso de condições variáveis. Visual SaaS premium azul-marinho/turquesa, tipografia grande, sem logos, sem ataques e sem dados não listados."
+      ,"asset": {"path": "assets/comparativos/clinica-agil.png", "status": "pending_generation"}
+    },
+    {
+      "slug": "feegow",
+      "name": "Feegow Clinic",
+      "aliases": ["feegow", "feegow clinic"],
+      "positioning": "Plataforma de gestão clínica com forte cobertura operacional, financeira, TISS, glosas e recursos de IA nos planos superiores.",
+      "pricing": {"summary": "Starter R$ 129, Plus R$ 199 e VIP R$ 249 por profissional/mês; proposta personalizada para 10 ou mais profissionais.", "public": true},
+      "features": ["Agenda, prontuário e linha do tempo", "Financeiro, estoque, repasses e TISS", "Glosas e relatórios personalizados no Plus", "Noa Notes, NFS-e e modelos no VIP", "Multiclínica e formulários"],
+      "erp_advantages": ["Foco clínico nativo em TEA/ABA e terapias multidisciplinares", "Perfil sensorial e objetivos compartilháveis sem misturar autoria", "Portal familiar e supervisão clínica integrados", "Preço do ERP organizado por limites de usuários e filiais, não publicado por profissional"],
+      "dossier": "Feegow é um concorrente amplo e especialmente forte em faturamento e operação médica. Não prometer superioridade geral. Para clínicas TEA, a oportunidade é demonstrar que o ERP organiza a jornada terapêutica: avaliação, agenda, sessão, objetivos, evolução, supervisão, relatório e família. Denis deve descobrir se a clínica usa Feegow como sistema principal e ainda mantém planilhas, documentos ou grupos para PEI, metas ABA, perfil sensorial e coordenação. Se sim, argumentar que reduzir sistemas paralelos pode economizar tempo e preservar contexto. Quando a prioridade for TISS ou glosas, reconhecer a força do concorrente e confirmar quais capacidades do ERP estão no plano contratado antes de comparar.",
+      "discovery_questions": ["O Feegow cobre também o plano terapêutico e as metas por especialidade?", "O que hoje ainda fica em planilhas, documentos ou WhatsApp?", "Como supervisores e famílias acompanham a evolução autorizada?"],
+      "objection_answers": ["Se TISS for decisivo: não desviar; mapear o fluxo e mostrar somente recursos equivalentes documentados.", "Se a equipe já domina o Feegow: propor teste paralelo em uma jornada TEA específica.", "Se pedir preço: comparar o custo total pelo número de profissionais e pelo plano Feegow usado."],
+      "sources": [{"title": "Preços e planos Feegow", "url": "https://feegowclinic.com.br/precos-e-planos", "checked_at": "2026-11-14"}, {"title": "Feegow Clinic", "url": "https://feegowclinic.com.br/", "checked_at": "2026-11-14"}],
+      "poster_prompt": "Crie pôster Instagram 1080x1350: 'Feegow Clinic ou ERP Clínica TEA?'. Feegow: R$129/R$199/R$249 por profissional/mês; agenda; prontuário; financeiro; TISS; glosas; estoque; IA no VIP. ERP Clínica TEA: R$197/R$397/R$797 por mês conforme plano e limites; foco TEA/ABA; prontuário multidisciplinar; perfil sensorial; metas; supervisão; família; RH e operação. Destaque 'Compare o custo da equipe e o fluxo terapêutico completo'. Rodapé: fontes oficiais, 14/11/2026, preços sujeitos a mudança. Visual premium escuro e turquesa, tabela curta, sem logos e sem alegações de ausência."
+      ,"asset": {"path": "assets/comparativos/feegow.png", "status": "pending_generation"}
+    },
+    {
+      "slug": "amplimed",
+      "name": "Amplimed",
+      "aliases": ["amplimed", "ampli med"],
+      "positioning": "Sistema médico em nuvem com agenda, prontuário, gestão e módulos progressivos; publica recursos voltados a acompanhamento terapêutico e PEI.",
+      "pricing": {"summary": "Lite R$ 89, Pro R$ 139, Plus R$ 249 e plano completo R$ 349 por profissional/mês.", "public": true},
+      "features": ["Agenda, prontuário, financeiro e relatórios", "Agendamento online e Copilot no Pro", "NFS-e, teleatendimento, estoque e repasse no Plus", "TISS, autoatendimento e vacinas no plano completo", "Acompanhamento terapêutico, histórico de intervenção e PEI publicados"],
+      "erp_advantages": ["Ecossistema completo desenhado em torno da clínica TEA, incluindo supervisão, perfil sensorial e portais por papel", "Integração de RH, ponto, folha, compras, estoque, documentos e auditoria", "Metas e evolução multidisciplinar ligadas ao paciente e à autoria profissional", "Portal familiar como parte da jornada"],
+      "dossier": "Amplimed exige uma comparação cuidadosa porque sua oferta oficial inclui acompanhamento terapêutico e PEI. Não afirmar que ela não atende terapias. O debate deve ir para profundidade e encaixe operacional: quais registros TEA/ABA são usados, como funciona a supervisão, se há perfil sensorial, como a família participa, quais áreas administrativas precisam estar no mesmo ambiente e qual plano contém cada recurso. Denis deve reconhecer o mérito do sistema atual e convidar a clínica a testar uma jornada real no ERP. A vantagem possível é a arquitetura especializada e integrada, não uma alegação genérica de exclusividade.",
+      "discovery_questions": ["Quais partes do PEI e da evolução vocês já registram no Amplimed?", "Como acontece a revisão do supervisor e o compartilhamento com a família?", "RH, folha, compras e documentos ficam no mesmo fluxo ou em ferramentas separadas?"],
+      "objection_answers": ["Se disser que o Amplimed já tem PEI: reconhecer e comparar o fluxo concreto, não o nome do recurso.", "Se o plano de R$89 parecer suficiente: verificar quais recursos efetivamente estão incluídos naquele plano.", "Se não quiser trocar: oferecer teste de 3 meses com um paciente fictício ou equipe piloto."],
+      "sources": [{"title": "Valor e planos Amplimed", "url": "https://www.amplimed.com.br/blog/valor-da-amplimed/", "checked_at": "2026-11-14"}, {"title": "Gestão de clínica Amplimed", "url": "https://www.amplimed.com.br/sistema-gestao-de-clinica-b/", "checked_at": "2026-11-14"}],
+      "poster_prompt": "Pôster 1080x1350: 'Amplimed x ERP Clínica TEA — compare o fluxo, não só a lista'. Amplimed: planos públicos R$89, R$139, R$249 e R$349 por profissional/mês; agenda; prontuário; gestão; teleatendimento; estoque; TISS conforme plano; acompanhamento terapêutico e PEI publicados. ERP Clínica TEA: planos R$197, R$397 e R$797/mês; especialização TEA/ABA; DTT/ABC; perfil sensorial; supervisão; portais de família e equipe; RH e operação. CTA 'Teste em uma jornada real por 3 meses'. Fontes oficiais consultadas em 14/11/2026. Sem declarar recursos ausentes, sem logos, design SaaS clínico premium."
+      ,"asset": {"path": "assets/comparativos/amplimed.png", "status": "pending_generation"}
+    },
+    {
+      "slug": "ninsaude",
+      "name": "Ninsaúde Clinic",
+      "aliases": ["ninsaude", "ninsaúde", "nin saude", "ninsaúde clinic"],
+      "positioning": "Plataforma para clínicas maiores e redes, com foco em escalabilidade, integrações, segurança e operação multilíngue.",
+      "pricing": {"summary": "Termos oficiais informam R$ 199/mês por profissional de saúde; administradores e secretárias não pagam licença; serviços adicionais podem ser cobrados.", "public": true},
+      "features": ["Agenda, prontuário e operação clínica", "Assinatura eletrônica e interoperabilidade", "Escalabilidade e suporte a clínicas maiores", "Pagamentos e migração", "Administradores e secretárias sem cobrança por licença segundo os termos"],
+      "erp_advantages": ["Especialização profunda para TEA/ABA, metas, DTT/ABC, perfil sensorial e supervisão", "Portal da família e orientação liberada por permissão", "RH, ponto, folha e gestão de compras/documentos integrados", "Plano por faixa de usuários/filiais com contexto comercial próprio"],
+      "dossier": "Ninsaúde se posiciona bem para organizações maiores e a própria página mira clínicas com 20 ou mais profissionais. Denis deve descobrir porte, número de unidades, integrações e necessidades clínicas. Para uma rede TEA, o ERP pode ser apresentado como alternativa especializada que liga operação e cuidado; para uma operação generalista de grande escala, não presumir superioridade. O preço público por profissional deve ser multiplicado apenas depois de confirmar quantos usuários são profissionais cobrados e quais adicionais entram no contrato. A conversa deve explorar o custo dos processos paralelos e a necessidade de recursos clínicos específicos.",
+      "discovery_questions": ["Quantos profissionais e unidades existem hoje?", "Quais integrações são essenciais?", "Como vocês registram metas ABA, perfil sensorial e supervisão multidisciplinar?"],
+      "objection_answers": ["Se valorizarem escala: mostrar limites dos planos Professional/Enterprise e confirmar API/contrato.", "Se secretárias gratuitas forem vantagem: reconhecer e comparar custo total com o limite de usuários do ERP.", "Se migração for crítica: tratar como projeto de implantação, nunca prometer importação automática sem análise."],
+      "sources": [{"title": "Termos de uso Ninsaúde", "url": "https://www.ninsaude.com/pt-br/termos-de-uso/", "checked_at": "2026-11-14"}, {"title": "Ninsaúde para clínicas", "url": "https://www.ninsaude.com/pt-br/software-medico-para-clinicas/", "checked_at": "2026-11-14"}],
+      "poster_prompt": "Pôster Instagram 1080x1350: 'Ninsaúde Clinic x ERP Clínica TEA'. Ninsaúde: R$199/mês por profissional conforme termos; administradores e secretárias sem licença; foco em clínicas maiores, interoperabilidade e escalabilidade. ERP Clínica TEA: R$197 Starter até 5 usuários, R$397 Professional até 20 e 3 filiais, R$797 Enterprise com usuários/filiais ilimitados conforme contrato; foco TEA/ABA; supervisão; perfil sensorial; família; RH. Destaque 'Compare porte, especialização e custo total'. Fontes oficiais, 14/11/2026. Design premium, sem logos e sem alegações absolutas."
+      ,"asset": {"path": "assets/comparativos/ninsaude.png", "status": "pending_generation"}
+    },
+    {
+      "slug": "clinica-nas-nuvens",
+      "name": "Clínica nas Nuvens",
+      "aliases": ["clinica nas nuvens", "clínica nas nuvens", "cnn saude"],
+      "positioning": "Sistema geral de gestão clínica com prontuário, operação, TISS, financeiro, estoque e opções enterprise.",
+      "pricing": {"summary": "Oferta oficial consultada: R$ 49,50 por profissional/mês nas 6 primeiras mensalidades, mínimo de 3 profissionais; página informa planos a partir de R$ 149,50/mês. Enterprise sob medida.", "public": true},
+      "features": ["Secretárias e administradores ilimitados", "Confirmações semiautomáticas", "NFe ilimitada e prontuário personalizado", "Implantação online e suporte", "Enterprise com estoque, API, painel de chamadas e atendimento dedicado"],
+      "erp_advantages": ["Jornada clínica especializada em TEA/ABA e terapias", "Metas, indicadores, perfil sensorial, supervisão e linha do tempo", "Portal familiar integrado", "RH, ponto, folha e documentoteca no mesmo núcleo conforme plano"],
+      "dossier": "A página do Clínica nas Nuvens estava com condição promocional na data da pesquisa; nunca perpetuar esse preço sem a data. O sistema publica uma oferta administrativa ampla e enterprise. A oportunidade do ERP é o encaixe especializado. Denis deve perguntar se o prontuário personalizado virou um fluxo realmente consistente para ABA, fono, TO e psicologia ou se cada equipe montou seus próprios modelos. Também deve explorar supervisão, família e indicadores. No preço, separar promoção inicial, mínimo de profissionais e custo posterior; fazer o mesmo com o ERP e confirmar a elegibilidade do teste.",
+      "discovery_questions": ["Os modelos do prontuário são compartilhados entre especialidades sem perder autoria?", "Como supervisor e família acompanham evolução?", "Qual é o custo depois da condição promocional e quais extras vocês usam?"],
+      "objection_answers": ["Se citarem o preço promocional: reconhecer, registrar a condição e comparar após o período promocional.", "Se valorizarem NFe/TISS: mapear a prioridade e não deslocar a conversa para TEA sem ouvir.", "Se a personalização resolver tudo: pedir um exemplo de fluxo que ainda leva tempo."],
+      "sources": [{"title": "Planos Clínica nas Nuvens", "url": "https://clinicanasnuvens.com.br/planos-e-precos/", "checked_at": "2026-11-14"}, {"title": "Clínica nas Nuvens", "url": "https://clinicanasnuvens.com.br/", "checked_at": "2026-11-14"}],
+      "poster_prompt": "Crie pôster 1080x1350: 'Clínica nas Nuvens x ERP Clínica TEA'. Informe com clareza: condição consultada de R$49,50 por profissional/mês nas 6 primeiras mensalidades, mínimo 3; planos a partir de R$149,50/mês; Enterprise sob medida. Recursos: prontuário, NFe, mensagens, suporte; estoque/API no Enterprise. ERP: R$197/R$397/R$797 ao mês; especialização TEA/ABA; metas; perfil sensorial; supervisão; família; RH. Título secundário 'Preço inicial, custo total e profundidade clínica'. Rodapé com data e fontes oficiais, sem esconder condição promocional. Visual premium azul/turquesa, sem logos."
+      ,"asset": {"path": "assets/comparativos/clinica-nas-nuvens.png", "status": "pending_generation"}
+    },
+    {
+      "slug": "gestaods",
+      "name": "GestãoDS",
+      "aliases": ["gestao ds", "gestão ds", "gestaods", "gds"],
+      "positioning": "Plataforma médica em nuvem com agenda, prontuário, telemedicina, financeiro, marketing, CRM, WhatsApp e IA por planos e módulos.",
+      "pricing": {"summary": "Valores dependem da quantidade de usuários e proposta; a página oficial não exibe uma tabela numérica pública estável para os quatro planos.", "public": false},
+      "features": ["Essencial: agenda, paciente, prontuário, prescrições e telemedicina", "Controle: financeiro, conciliação, relatórios e estoque", "Crescimento: fluxos, campanhas, negócios e satisfação", "Performance: CRM, IA e automação", "Aplicativos e implementação/migração divulgados"],
+      "erp_advantages": ["Foco especializado em clínicas TEA e jornada terapêutica multidisciplinar", "Perfil sensorial, DTT/ABC, metas por domínio e supervisão", "Portais de família, profissional, recepção e administração", "Preços-base do ERP publicados no próprio produto"],
+      "dossier": "GestãoDS oferece uma narrativa madura de gestão, marketing e crescimento. O ERP não deve competir apenas por automação comercial; sua força é conectar a operação de uma clínica TEA aos registros terapêuticos. Denis deve descobrir se a clínica usa CRM e marketing, mas ainda perde tempo consolidando prontuários, metas, relatórios e orientações familiares. Como o valor da GestãoDS é personalizado, não criar comparação numérica. Solicitar o plano e módulos utilizados ou trabalhar apenas com funcionalidades. Se a necessidade principal for captação, reconhecer a proposta da GestãoDS e demonstrar como o ERP cobre a jornada após a entrada do paciente.",
+      "discovery_questions": ["Qual plano e quais módulos da GestãoDS vocês usam?", "Depois que o paciente entra, como metas e evolução multidisciplinar são coordenadas?", "O que a equipe ainda consolida manualmente?"],
+      "objection_answers": ["Se CRM for essencial: reconhecer e comparar o ciclo completo do lead ao cuidado.", "Se perguntarem preço: dizer que a GestãoDS trabalha com proposta e pedir o valor/plano real do cliente.", "Se a automação for boa: focar na profundidade clínica e integração com família/supervisão."],
+      "sources": [{"title": "Planos GestãoDS", "url": "https://www.gestaods.com.br/planos-e-precos/", "checked_at": "2026-11-14"}, {"title": "GestãoDS", "url": "https://www.gestaods.com.br/", "checked_at": "2026-11-14"}],
+      "poster_prompt": "Pôster vertical 1080x1350: 'GestãoDS x ERP Clínica TEA'. GestãoDS: preço sob proposta por quantidade de usuários; planos Essencial, Controle, Crescimento e Performance; agenda, prontuário, telemedicina, financeiro, marketing, CRM e IA conforme plano/módulo. ERP Clínica TEA: preços públicos R$197/R$397/R$797 ao mês; foco TEA/ABA; prontuário multidisciplinar; perfil sensorial; supervisão; família; gestão e RH. Mensagem: 'Da captação à evolução terapêutica'. Não inventar preço da GestãoDS. Fontes oficiais consultadas em 14/11/2026. Design clínico premium, sem logos."
+      ,"asset": {"path": "assets/comparativos/gestaods.png", "status": "pending_generation"}
+    },
+    {
+      "slug": "shosp",
+      "name": "Shosp",
+      "aliases": ["shosp", "s hosp"],
+      "positioning": "Sistema de gestão clínica com plano gratuito e planos por prestador, cobrindo agenda, faturamento, estoque e relacionamento.",
+      "pricing": {"summary": "Free R$ 0; Fellowship R$ 149 por prestador/mês; Excellence R$ 229 por prestador/mês. A página também publica taxas de ativação e adicional de WhatsApp no plano aplicável.", "public": true},
+      "features": ["Usuários ilimitados e até 5 prestadores no Free", "Agenda, filas, salas e agendamento online conforme plano", "TISS, glosas, estoque e centro de custos", "App no Excellence", "WhatsApp inteligente com valor adicional publicado"],
+      "erp_advantages": ["Recursos clínicos TEA/ABA, perfil sensorial e metas terapêuticas", "Supervisão e portal familiar no mesmo núcleo", "RH/ponto/folha e documentos integrados", "Estrutura de usuários por plano que pode favorecer equipes multidisciplinares dependendo da composição"],
+      "dossier": "Shosp publica um comparativo funcional muito detalhado e possui plano gratuito; não minimizar esse valor. A comparação precisa usar a composição real: prestadores, usuários, TISS, WhatsApp e plano. Para clínicas TEA, Denis deve deslocar a conversa para o que acontece durante e depois da sessão: metas, perfil sensorial, supervisão, evolução e família. Se o Shosp cobre bem agenda e faturamento, o ERP pode ser testado como forma de eliminar ferramentas clínicas paralelas. Não afirmar que o Shosp não possui recurso que não foi analisado; usar somente o que a tabela oficial publica.",
+      "discovery_questions": ["Qual plano Shosp e quantos prestadores vocês têm?", "Quais recursos adicionais entram na mensalidade total?", "Onde ficam metas, supervisão e comunicação estruturada com a família?"],
+      "objection_answers": ["Se o plano grátis resolver: perguntar qual processo ainda é manual, sem pressionar.", "Se TISS for prioridade: reconhecer e comparar o fluxo real.", "Se custo por prestador for aceitável: comparar benefícios clínicos, não apenas mensalidade."],
+      "sources": [{"title": "Comparativo Shosp", "url": "https://www.shosp.com.br/comparativo", "checked_at": "2026-11-14"}],
+      "poster_prompt": "Pôster 1080x1350: 'Shosp x ERP Clínica TEA'. Shosp: Free R$0; Fellowship R$149/prestador; Excellence R$229/prestador; agenda, TISS, estoque e relacionamento conforme plano; adicionais publicados para WhatsApp. ERP: Starter R$197/mês até 5 usuários; Professional R$397 até 20; Enterprise R$797; foco TEA/ABA; metas; perfil sensorial; supervisão; família; RH. Destaque 'Conte prestadores, adicionais e processos paralelos'. Fontes oficiais 14/11/2026. Design premium, sem logos e sem esconder taxas."
+      ,"asset": {"path": "assets/comparativos/shosp.png", "status": "pending_generation"}
+    },
+    {
+      "slug": "prodoctor",
+      "name": "ProDoctor",
+      "aliases": ["prodoctor", "pro doctor", "prodoctor cloud"],
+      "positioning": "Ecossistema médico com agenda, prontuário, faturamento complexo, estoque, integrações e serviços de IA.",
+      "pricing": {"summary": "Página oficial publica opções a partir de R$ 135 e R$ 215; solução corporativa sob consulta. Serviços marcados podem ser opcionais.", "public": true},
+      "features": ["Agenda, fila, salas, lista de espera e painel", "PEP, IA, imagens, laudos e prescrição", "TISS, particular, OPME, repasse e glosas", "Financeiro, estoque e dashboards", "API, telemedicina e ecossistema de IA/marketing conforme disponibilidade"],
+      "erp_advantages": ["Especialização em TEA/ABA e rotina de terapias, não faturamento médico genérico", "Perfil sensorial, DTT/ABC, objetivos e evolução multidisciplinar", "Portal da família e supervisão", "Experiência por papel para recepção, profissional e administração"],
+      "dossier": "ProDoctor tem profundidade em faturamento médico e recursos corporativos. Se a clínica depende de OPME, glosas e fluxos médicos complexos, Denis deve ouvir antes de argumentar. Para uma clínica TEA, perguntar quanto da plataforma é realmente usado e quais processos terapêuticos vivem fora dela. O ERP pode ganhar por adequação ao trabalho de ABA e equipes multidisciplinares, não por prometer mais recursos em todas as áreas. Os preços são 'a partir de' e itens opcionais devem ser tratados como tal.",
+      "discovery_questions": ["Quais módulos ProDoctor são usados hoje?", "A operação depende de TISS/glosas complexas?", "Onde a equipe registra perfil sensorial, metas e supervisão?"],
+      "objection_answers": ["Se faturamento complexo for central: reconhecer e não inventar equivalência.", "Se o ecossistema de IA for atrativo: comparar governança e revisão profissional.", "Se o cliente usa poucos módulos: calcular custo e esforço dos processos paralelos."],
+      "sources": [{"title": "Planos e preços ProDoctor", "url": "https://prodoctor.net/precos/", "checked_at": "2026-11-14"}],
+      "poster_prompt": "Pôster 1080x1350: 'ProDoctor x ERP Clínica TEA'. ProDoctor: opções a partir de R$135 e R$215, corporativo sob consulta; agenda, PEP, TISS, glosas, financeiro, estoque e IA/integrações conforme plano e opcionais. ERP Clínica TEA: R$197/R$397/R$797 por mês; foco TEA/ABA; perfil sensorial; metas; supervisão; família; RH. Frase: 'Faturamento médico amplo x jornada terapêutica especializada — escolha pelo seu fluxo'. Fontes oficiais 14/11/2026. Sem logos, sem alegações absolutas, estilo premium."
+      ,"asset": {"path": "assets/comparativos/prodoctor.png", "status": "pending_generation"}
+    },
+    {
+      "slug": "hidoctor",
+      "name": "HiDoctor",
+      "aliases": ["hidoctor", "hi doctor"],
+      "positioning": "Plataforma médica multiplataforma que destaca posse dos dados e possibilidade de trabalhar sem depender continuamente da internet.",
+      "pricing": {"summary": "HiDoctor Multiplataforma em promoção por R$ 85/mês e HiDoctor Online por R$ 98/mês na consulta; multimédicos e IA têm valores a consultar.", "public": true},
+      "features": ["Prontuário, agenda e financeiro", "Uso multiplataforma e opção offline", "Prescrição, telemedicina e agendamento online", "WhatsApp, assinatura e backup", "Usuários de recepção ilimitados; multimédicos sob consulta"],
+      "erp_advantages": ["Operação clínica TEA/ABA multidisciplinar como foco principal", "Supervisão, família, perfil sensorial e metas integradas", "Gestão de filiais, RH e operação além do consultório individual", "Fluxos conectados entre agenda, sessão, evolução e relatório"],
+      "dossier": "HiDoctor é atraente para profissional individual e para quem valoriza operação offline e posse local dos dados. Não atacar essa escolha. Denis deve confirmar se a clínica usa o plano multimédico e qual é o custo total, pois o valor de entrada não representa necessariamente uma equipe. A conversa pode mostrar que o ERP foi pensado para coordenação de clínica TEA com vários papéis e especialidades. Se internet instável for uma condição decisiva, reconhecer que a proposta offline do HiDoctor pode ser relevante e não prometer funcionamento equivalente sem evidência.",
+      "discovery_questions": ["Vocês usam a versão individual ou multimédicos?", "Trabalhar offline é um requisito frequente?", "Como coordenam objetivos e relatórios entre profissionais e família?"],
+      "objection_answers": ["Se offline for indispensável: reconhecer a vantagem do HiDoctor e investigar frequência/impacto.", "Se o preço for argumento: incluir multimédicos e adicionais na comparação.", "Se o prontuário individual funciona bem: mostrar a diferença entre prontuário individual e jornada multidisciplinar."],
+      "sources": [{"title": "Comprar HiDoctor", "url": "https://hidoctor.com.br/p/comprar", "checked_at": "2026-11-14"}],
+      "poster_prompt": "Pôster vertical 1080x1350: 'HiDoctor x ERP Clínica TEA'. HiDoctor: promoção R$85/mês multiplataforma; R$98/mês online; multimédicos e IA sob consulta; prontuário, agenda, financeiro, telemedicina, WhatsApp e opção offline. ERP: R$197/R$397/R$797/mês; foco em clínica TEA multidisciplinar; supervisão; perfil sensorial; família; RH e filiais. Destaque 'Consultório individual ou operação multidisciplinar?'. Data/fontes 14/11/2026, preços sujeitos a mudança. Sem logos, estilo premium."
+      ,"asset": {"path": "assets/comparativos/hidoctor.png", "status": "pending_generation"}
+    },
+    {
+      "slug": "doctoralia",
+      "name": "Doctoralia Pro",
+      "aliases": ["doctoralia", "doctoralia pro", "noa notes"],
+      "positioning": "Marketplace e plataforma para presença digital, captação, agenda, comunicação e gestão clínica; integra oferta Feegow e Noa Notes.",
+      "pricing": {"summary": "Plano Pro para clínicas sob proposta personalizada; Noa Notes publicado como adicional de R$ 199/mês.", "public": false},
+      "features": ["Perfil premium, descoberta e avaliações", "Agendamento online, lista de espera e lembretes", "Campanhas e indicadores de aquisição", "Gestão de agenda, faturamento, estoque e prontuário", "Noa Notes e recursos adicionais"],
+      "erp_advantages": ["Profundidade operacional e terapêutica TEA/ABA depois da captação", "Metas, supervisão, perfil sensorial e família", "RH, compras, documentos e auditoria integrados", "Preço-base do ERP publicado e planos por capacidade"],
+      "dossier": "Doctoralia é especialmente forte em presença digital e captação de pacientes. Isso pode ser complementar, não necessariamente substituto. Denis deve descobrir se o cliente cita Doctoralia como agenda/marketing ou como sistema de gestão completo. O ERP Clínica TEA pode ser apresentado como o núcleo que recebe o paciente e conduz sua jornada terapêutica, enquanto a Doctoralia pode continuar como canal de aquisição. Não forçar uma migração quando integração ou coexistência for mais racional. Como o preço Pro é personalizado, usar apenas o orçamento real do cliente; Noa Notes tem adicional público.",
+      "discovery_questions": ["Vocês usam Doctoralia mais para captação, agenda ou gestão completa?", "Depois do agendamento, onde ficam metas, evolução e relatórios?", "A equipe pretende manter o perfil e as avaliações mesmo trocando o núcleo de gestão?"],
+      "objection_answers": ["Se a captação for a maior vantagem: propor coexistência em vez de substituição total.", "Se avaliações forem essenciais: explicar que não precisam ser abandonadas para testar o ERP.", "Se preço não estiver público: pedir o valor da proposta vigente."],
+      "sources": [{"title": "Preços Doctoralia para clínicas", "url": "https://pro.doctoralia.com.br/preco/clinicas", "checked_at": "2026-11-14"}, {"title": "Plano Doctoralia para clínicas", "url": "https://pro.doctoralia.com.br/pt-br/pricing-landing?redirect_origin=pro.doctoralia.com.br%2Fpricing-landing", "checked_at": "2026-11-14"}],
+      "poster_prompt": "Pôster Instagram 1080x1350: 'Doctoralia Pro + ERP Clínica TEA: substituir ou complementar?'. Doctoralia: proposta personalizada; perfil e avaliações; captação; agendamento 24h; lembretes; campanhas; gestão; Noa Notes +R$199/mês. ERP: R$197/R$397/R$797/mês; jornada TEA/ABA; metas; supervisão; perfil sensorial; família; RH. Mensagem principal: 'Captação e reputação podem coexistir com uma operação terapêutica especializada'. Fontes oficiais consultadas em 14/11/2026. Sem logos, sem confronto enganoso, visual premium."
+      ,"asset": {"path": "assets/comparativos/doctoralia.png", "status": "pending_generation"}
+    },
+    {
+      "slug": "conclinica",
+      "name": "Conclínica",
+      "aliases": ["conclinica", "con clínica", "conclinica sistema"],
+      "positioning": "Sistema para clínicas com planos progressivos de prontuário e telemedicina até financeiro, estoque, marketing, API e multiunidades.",
+      "pricing": {"summary": "Essencial R$ 89, Gestão R$ 119, Performance R$ 169 e Enterprise R$ 299 por profissional/mês; anual à vista oferece 12 meses pelo preço de 10.", "public": true},
+      "features": ["Prontuário, prescrição, telemedicina e caixa no Essencial", "Agendamento, assinatura, TISS, NFS-e e WhatsApp no Gestão", "Financeiro, cobrança, repasse, estoque e campanhas no Performance", "API, conta dedicada e multiunidades no Enterprise"],
+      "erp_advantages": ["Especialização clínica em TEA/ABA e terapias multidisciplinares", "Perfil sensorial, objetivos e supervisão", "Portal da família e fluxos por papel", "RH, ponto, folha, documentos e compras no mesmo ambiente"],
+      "dossier": "Conclínica publica preços competitivos por profissional e uma progressão funcional clara. Denis deve comparar o custo pela quantidade de profissionais e pelo plano necessário, não pelo Essencial se o cliente usa financeiro, estoque ou API. O diferencial do ERP é profundidade TEA e integração da equipe. Perguntar quais registros e relatórios ainda exigem adaptação, como supervisores revisam e como famílias recebem orientações. Se a clínica usa convênios e TISS intensamente, reconhecer a necessidade e verificar o escopo do ERP antes de prometer substituição.",
+      "discovery_questions": ["Qual plano Conclínica e quantos profissionais estão licenciados?", "Vocês usam TISS, estoque, repasse ou API?", "Como metas TEA, perfil sensorial e supervisão são organizados?"],
+      "objection_answers": ["Se o Essencial parecer mais barato: comparar com o plano que contém os recursos usados.", "Se o anual for vantagem: comparar período equivalente e compromisso contratual.", "Se a clínica estiver satisfeita: convidar a testar apenas a jornada especializada."],
+      "sources": [{"title": "Planos Conclínica", "url": "https://conclinica.com.br/planos/", "checked_at": "2026-11-14"}],
+      "poster_prompt": "Pôster 1080x1350: 'Conclínica x ERP Clínica TEA'. Conclínica: R$89/R$119/R$169/R$299 por profissional/mês; prontuário, telemedicina, TISS, financeiro, estoque e API conforme plano. ERP: R$197 Starter até 5 usuários; R$397 Professional até 20; R$797 Enterprise; foco TEA/ABA; perfil sensorial; metas; supervisão; família; RH. Destaque 'Compare o plano necessário e o número de profissionais'. Fontes oficiais 14/11/2026, condições podem mudar. Visual premium, sem logos, sem ataques."
+      ,"asset": {"path": "assets/comparativos/conclinica.png", "status": "pending_generation"}
+    }
+  ]
+}

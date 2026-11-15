@@ -1,0 +1,44 @@
+[
+  {
+    "title": "SPIN Selling — descoberta consultiva",
+    "author": "Neil Rackham / Huthwaite International",
+    "source": "https://www.huthwaiteinternational.com/spin-methodology",
+    "method": "SPIN: situação, problema, implicação e benefício",
+    "summary": "Referência de método comercial, não resultado medido neste ERP. As quatro classes de perguntas organizam a investigação da necessidade e o próximo compromisso. Adaptação proposta para DMs: aproveitar o que o contato já contou; perguntar qual tarefa gera trabalho; explorar o efeito real e só então relacionar a solução documentada. Não transformar a sequência em interrogatório nem criar problemas inexistentes. Exemplo original: quando o cliente diz que usa outro app, perguntar o que funciona bem e o que gostaria de simplificar. Medir retorno por contexto, sem atribuir causalidade ao método. Verificado em 2026-11-13."
+  },
+  {
+    "title": "Entrevista motivacional — ambivalência sobre migração",
+    "author": "William R. Miller e Stephen Rollnick; Guilford Press, 4ª edição, 2023",
+    "source": "https://www.guilford.com/books/Motivational-Interviewing/Miller-Rollnick/9781462552795",
+    "method": "Engajar, focar, evocar e planejar",
+    "summary": "A obra aborda conversas sobre mudança, com quatro tarefas: engajamento, foco, evocação e planejamento. Não é evidência específica de conversão em vendas. Aplicação comercial proposta: reconhecer o motivo de manter o sistema atual; ouvir o objetivo e o custo percebido da mudança; ajudar o contato a definir um teste que faça sentido. Não diagnosticar ou tratar o cliente. Exemplo original: 'Entendi, sua equipe já está acostumada. O que precisaria melhorar para valer a pena avaliar outra opção?' Verificado em 2026-11-13."
+  },
+  {
+    "title": "Influence — credibilidade e compromissos pequenos",
+    "author": "Robert B. Cialdini; edição ampliada, 2021",
+    "source": "https://cialdini.com/books/influence",
+    "method": "Reciprocidade, autoridade verificável e compromisso",
+    "summary": "A referência apresenta princípios de influência, incluindo reciprocidade, autoridade, compromisso, afinidade, prova social, escassez e unidade. Aplicação proposta ao ERP: oferecer uma comparação útil, apresentar evidências verificáveis e combinar um próximo passo pequeno escolhido pelo contato. Depoimentos e condições precisam ser reais. Não inventar vagas limitadas, clientes, urgência ou ganhos. O livro não fornece uma probabilidade pronta de êxito para nossas mensagens; essa estimativa depende dos resultados registrados. Verificado em 2026-11-13."
+  },
+  {
+    "title": "Perguntas de continuidade e percepção de escuta",
+    "author": "Huang, Yeomans, Brooks, Minson e Gino, 2017",
+    "source": "https://www.hbs.edu/ris/Publication%20Files/Huang%20et%20al%202017_6945bc5e-3b3e-4c0a-addd-254c9e603c60.pdf",
+    "method": "Follow-up relacionado à mensagem anterior",
+    "summary": "Os estudos examinaram perguntas e afinidade em conversas, com destaque para perguntas que retomam o que a outra pessoa disse. Não mediram vendas de ERP por Instagram. Aplicação a testar: responder primeiro à dúvida explícita e fazer no máximo uma pergunta curta conectada ao relato, em vez de mudar de assunto. Exemplo original: 'Você comentou que a agenda é o mais trabalhoso. Em qual etapa aparecem mais retrabalhos?' Não concluir que fazer mais perguntas sempre aumenta conversão. Verificado em 2026-11-13."
+  },
+  {
+    "title": "Limites da evidência sobre perguntar mais",
+    "author": "Avraham N. Kluger e Thomas E. Malloy, 2019",
+    "source": "https://pmc.ncbi.nlm.nih.gov/articles/PMC6857721/",
+    "method": "Análise crítica e validação local",
+    "summary": "A reanálise discute a interpretação dos efeitos de perguntas em interações entre duas pessoas, incluindo limitações das inferências sobre características individuais e medidas. Implicação para o agente: não converter resultados de afinidade em promessa de venda; observar contexto, qualidade da escuta e amostra. Registrar abordagens e resultados confirmados. Comparar taxas dentro da mesma etapa e não atribuir automaticamente o retorno à última frase. Verificado em 2026-11-13."
+  },
+  {
+    "title": "Roteiro adaptativo original — migração e instalação do ERP",
+    "author": "Síntese de implementação do projeto",
+    "source": "project://sales-flow-v1",
+    "method": "acolher → descobrir → comparar → validar → instalar → acompanhar",
+    "summary": "Material original, hipótese de atendimento a validar. Se vier apenas cumprimento, acolher e perguntar como pode ajudar. Se houver dúvida, respondê-la antes de fazer uma pergunta. Se já usa app X, reconhecer o uso, descobrir uma necessidade e consultar comparação com fonte e data; se não houver, não inventar. Se perguntar preço, consultar o plano vigente. Se demonstrar interesse em testar, confirmar dispositivo e enviar o link oficial cadastrado. Orientar um passo por vez e aguardar confirmação. Se não quiser continuar, encerrar. Usar mensagens curtas com linguagem coerente com a pessoa, sem repetir saudação ou copiar exemplos literalmente. A pausa de envio é controle operacional, não evidência de identidade humana."
+  }
+]

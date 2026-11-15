@@ -1,33 +1,32 @@
 from __future__ import annotations
 
+import argparse
 import json
-import os
-import socket
-import urllib.request
 
-
-def port_open(port: int) -> bool:
-    with socket.socket() as sock:
-        sock.settimeout(0.8)
-        return sock.connect_ex(("127.0.0.1", port)) == 0
+from core.config import load_config
+from core.supervisor import Supervisor, port_open
 
 
 def ollama_ready() -> bool:
-    try:
-        with urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=2) as response:
-            return response.status == 200
-    except OSError:
-        return False
+    config = load_config()
+    return port_open(config.ollama_port)
 
 
-def collect() -> dict[str, bool | str]:
-    return {
-        "ollama_port": port_open(11434),
-        "ollama_api": ollama_ready(),
-        "browseros_mcp_port": port_open(9210),
-        "model": os.getenv("OLLAMA_MODEL", "qwen3:0.6b"),
-    }
+def collect(deep: bool = False) -> dict:
+    supervisor = Supervisor()
+    return supervisor.health(deep=True) if deep else supervisor.quick_status()
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Diagnóstico local do Agente de Vendas Local")
+    parser.add_argument(
+        "--deep",
+        action="store_true",
+        help="Testa também o handshake MCP do BrowserOS e os detalhes de cada serviço.",
+    )
+    args = parser.parse_args()
+    print(json.dumps(collect(deep=args.deep), ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":
-    print(json.dumps(collect(), ensure_ascii=False, indent=2))
+    main()

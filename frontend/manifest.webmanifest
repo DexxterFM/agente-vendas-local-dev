@@ -1,0 +1,13 @@
+{
+  "name": "Agente de Vendas Local",
+  "short_name": "Agente Local",
+  "description": "CRM local para conversas, leads e follow-ups comerciais",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#07111f",
+  "theme_color": "#07111f",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

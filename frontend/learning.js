@@ -1,0 +1,2 @@
+/* O módulo é renderizado por runtime.js; este arquivo apenas registra o item de navegação. */
+(()=>{const nav=document.querySelector('.nav-list');if(!nav||nav.querySelector('[data-view="research"]'))return;const button=document.createElement('button');button.className='nav-item';button.dataset.view='research';button.innerHTML='<span>◈</span> Pesquisa e aprendizado';button.addEventListener('click',()=>window.moduleView?.('research').catch(window.report));nav.appendChild(button);})();
