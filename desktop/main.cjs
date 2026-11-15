@@ -175,6 +175,7 @@ function ensureFollowerWindow(){
   return followerWindow;
 }
 const wait=milliseconds=>new Promise(resolve=>setTimeout(resolve,milliseconds));
+const AGENT_BUBBLE_SEPARATOR='\n[[AGENT_BUBBLE]]\n';
 function interactionDie(){return crypto.randomInt(1,7);}
 async function typeWithVirtualKeyboard(contents,value,label='message'){
   // Eventos `char` são o teclado virtual do BrowserView. Não usamos área de
@@ -253,7 +254,7 @@ async function sendTextInFollowerWindow(text){
   error.deliveryAttempted=true;
   throw error;
 }
-async function sendInBrowserView(text){
+async function sendSingleInBrowserView(text){
   const value=String(text||'').trim();
   if(!value) throw new Error('Mensagem vazia.');
   const view=ensureBrowserView();
@@ -292,6 +293,16 @@ async function sendInBrowserView(text){
     return {sent:true,method:'mouse-virtual-keyboard-enter-accessibility',typing};
   }
   throw new Error('Não foi possível confirmar a mensagem na conversa.');
+}
+async function sendInBrowserView(text){
+  const bubbles=String(text||'').split(AGENT_BUBBLE_SEPARATOR).map(item=>item.trim()).filter(Boolean);
+  if(!bubbles.length)throw new Error('Mensagem vazia.');
+  const sent=[];
+  for(let index=0;index<bubbles.length;index++){
+    sent.push(await sendSingleInBrowserView(bubbles[index]));
+    if(index<bubbles.length-1)await naturalInteractionPause('message-bubble',700,2600);
+  }
+  return bubbles.length===1?sent[0]:{sent:true,method:'virtual-keyboard-bubble-sequence',messages:sent.length,details:sent};
 }
 async function sendImageInBrowserView(filePath){
   const target=path.resolve(String(filePath||''));

@@ -10,7 +10,8 @@ from core.memory import Memory
 from adapters.ollama import OllamaClient
 from adapters.local_llama import LocalLlamaClient
 
-BROWSER_DRAFT_VERSION = 'context-v5-trial-routing'
+BROWSER_DRAFT_VERSION = 'context-v6-pacing-and-partnerships'
+BROWSER_BUBBLE_SEPARATOR = '\n[[AGENT_BUBBLE]]\n'
 
 def _follower_segment(profile):
     """Classifica somente sinais públicos do perfil antes da primeira DM."""
@@ -263,7 +264,12 @@ def execute(command, args):
             existing_pairs={(str(role), ' '.join(str(content).split()))
                             for role,content,_ in memory.list_conversations(lead_id,200)}
             last_sent_key='sales.agent.browser_last_sent:'+thread_digest
-            last_sent=memory.get_setting(last_sent_key,'')
+            last_sent_raw=memory.get_setting(last_sent_key,'')
+            try:
+                last_sent=json.loads(last_sent_raw) if last_sent_raw.startswith('[') else [last_sent_raw]
+            except Exception:
+                last_sent=[last_sent_raw]
+            last_sent={str(item) for item in last_sent if str(item).strip()}
             for item in screen_history:
                 history_digest=hashlib.sha256((thread+'\0'+item['id']).encode('utf-8')).hexdigest()
                 history_key='sales.agent.browser_history:'+history_digest
@@ -274,14 +280,14 @@ def execute(command, args):
                 # trouxe. Depois disso, cada ID novo é uma fala nova, mesmo que
                 # o cliente repita literalmente "sim" ou "olá".
                 already_imported=(not bootstrapped and pair in existing_pairs)
-                sent_by_this_agent=(item['role']=='assistant' and last_sent and item['text']==last_sent)
+                sent_by_this_agent=(item['role']=='assistant' and item['text'] in last_sent)
                 if not already_imported and not sent_by_this_agent:
                     memory.add_conversation(lead_id,item['role'],item['text'])
                     existing_pairs.add(pair)
                 if sent_by_this_agent:
-                    memory.set_setting(last_sent_key,'')
-                    last_sent=''
+                    last_sent.discard(item['text'])
                 memory.set_setting(history_key,'stored')
+            memory.set_setting(last_sent_key,json.dumps(sorted(last_sent),ensure_ascii=False) if last_sent else '')
             memory.set_setting(bootstrap_key,'true')
             # O rascunho usa a sequência completa que está na tela, não apenas
             # a última frase. O mesmo histórico fica persistido no SQLite.
@@ -303,12 +309,14 @@ def execute(command, args):
             prepared=json.loads(stored)
             if not text or prepared.get('text') != text or prepared.get('lead_id') != lead_id:
                 raise ValueError('Resposta não corresponde à mensagem preparada')
-            memory.add_conversation(lead_id,'assistant',text)
+            bubbles=[item.strip() for item in text.split(BROWSER_BUBBLE_SEPARATOR) if item.strip()]
+            for bubble in bubbles:
+                memory.add_conversation(lead_id,'assistant',bubble)
             thread=str(args.get('thread_id','')).strip()
             if thread:
                 import hashlib
                 thread_digest=hashlib.sha256(thread.encode('utf-8')).hexdigest()
-                memory.set_setting('sales.agent.browser_last_sent:'+thread_digest,text)
+                memory.set_setting('sales.agent.browser_last_sent:'+thread_digest,json.dumps(bubbles,ensure_ascii=False))
             memory.set_setting(key,'sent')
             return {'confirmed':True}
         if command == 'browserScreenReset':
@@ -479,11 +487,25 @@ def execute(command, args):
             catalog=CompetitorCatalog(memory)
             matched=catalog.match(latest_user)
             if latest_user and re.search(r'\b(n[aã]o quero|sem interesse|pare de|n[aã]o me (?:mande|envie))\b', latest_user, re.I):
-                return 'Entendido, agradeço pela resposta. Não vou insistir.'
+                return 'Entendido, agradeço pela resposta. Muito obrigado pela oportunidade! Um grande abraço e fica com Deus!'
             if latest_user and re.search(r'\b(?:atendente|humano|gerente|pessoa(?:\s+real)?)\b', latest_user, re.I):
                 return 'Claro! Vou direcionar você para um especialista da nossa equipe continuar por aqui. 😊'
             if latest_user and re.search(r'\b(?:reclama[cç][aã]o|insatisfeit|p[oó]s[ -]?venda)\b', latest_user, re.I):
                 return 'Obrigado por me contar. Vou direcionar você para um especialista da nossa equipe acompanhar isso com atenção. 😊'
+            # Contatos que não são leads clínicos podem propor produtos ou
+            # parcerias. Eles recebem um acolhimento próprio, sem entrar no
+            # roteiro comercial do ERP, e a solicitação de material fica em um
+            # segundo balão para manter a conversa natural.
+            if latest_user and re.search(r'\b(?:parceria|parceir[oa]s|colabora[cç][aã]o|co[- ]?marketing)\b', latest_user, re.I):
+                return ('Sempre estamos abertos a parcerias e ficamos muito felizes que se interessem pelo nosso trabalho. 😊'
+                        + BROWSER_BUBBLE_SEPARATOR
+                        + 'Pode me enviar uma apresentação ou um documento para que possamos avaliar com mais calma?')
+            if latest_user and re.search(r'\b(?:ofere[cç]o|oferecemos|oferta|proposta comercial|apresentar (?:um|o) produto|vendo|vendemos|represento|forne[cç]o|fornecemos)\b', latest_user, re.I):
+                return ('Obrigado pelo contato! Ficamos muito felizes com seu interesse. Pode me explicar do que se trata, por favor?'
+                        + BROWSER_BUBBLE_SEPARATOR
+                        + 'Depois, me envie uma apresentação ou material para que possamos avaliar com mais calma. 😊')
+            if latest_user and re.search(r'\b(?:tchau|at[eé] (?:mais|logo)|nos falamos|obrigad[oa].*(?:aten[cç][aã]o|tempo)|encerr(?:ar|amos|ando))\b', latest_user, re.I):
+                return 'Muito obrigado pela oportunidade! Um grande abraço e fica com Deus!'
             if latest_user and re.search(r'\b(?:qual (?:e|é) (?:o )?seu nome|como (?:voce|você) se chama|quem (?:e|é) (?:voce|você))\b',latest_user,re.I):
                 return 'Meu nome é Denis 😊 E você, como prefere que eu te chame?'
             if latest_user and re.search(r'\b(?:de onde (?:voce|você) (?:e|é)|onde (?:voce|você) mora|qual sua cidade)\b',latest_user,re.I):

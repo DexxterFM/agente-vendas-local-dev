@@ -184,6 +184,27 @@ class BrowserDmCycleTests(unittest.TestCase):
             self.assertIn("AvanthCode", company)
             self.assertIn("https://avanthcode.com", company)
 
+    def test_partnership_and_supplier_use_two_natural_bubbles(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}
+        ):
+            from core.desktop_rpc import BROWSER_BUBBLE_SEPARATOR
+            lead_id = execute("create", {"name": "Contato", "contact": "contato"})
+            supplier = execute("draft", {"id": lead_id, "browser_history": [
+                {"role": "user", "text": "Olá, oferecemos um produto que pode interessar vocês."},
+            ]})
+            partnership = execute("draft", {"id": lead_id, "browser_history": [
+                {"role": "user", "text": "Gostaríamos de propor uma parceria."},
+            ]})
+            closing = execute("draft", {"id": lead_id, "browser_history": [
+                {"role": "user", "text": "Obrigado pela atenção, até mais."},
+            ]})
+            self.assertIn(BROWSER_BUBBLE_SEPARATOR, supplier)
+            self.assertIn("me explicar do que se trata", supplier)
+            self.assertIn(BROWSER_BUBBLE_SEPARATOR, partnership)
+            self.assertIn("abertos a parcerias", partnership)
+            self.assertEqual(closing, "Muito obrigado pela oportunidade! Um grande abraço e fica com Deus!")
+
     def test_positive_reaction_keeps_the_sales_flow_open(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(
             os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}
