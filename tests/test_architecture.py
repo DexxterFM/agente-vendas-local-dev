@@ -182,6 +182,13 @@ class MemoryTests(unittest.TestCase):
 
 
 class SupervisorTests(unittest.TestCase):
+    def test_browseros_is_optional_when_not_explicitly_configured(self):
+        supervisor = Supervisor(load_config(), port_checker=lambda _port: False)
+        with patch.dict(os.environ, {"BROWSEROS_MCP_URL": ""}, clear=False):
+            health = supervisor._browser_health(deep=True)
+        self.assertEqual(health["status"], "not_configured")
+        self.assertIn("Navegador interno", health["detail"])
+
     def test_start_services_does_not_duplicate_running_processes(self):
         calls = []
         supervisor = Supervisor(

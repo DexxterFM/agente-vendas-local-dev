@@ -71,6 +71,14 @@ class Supervisor:
         )
 
     def _browser_health(self, deep: bool) -> dict:
+        # O aplicativo Electron já fornece o navegador que opera o Instagram.
+        # BrowserOS só é uma integração complementar e, na VPS, não deve
+        # aparecer como falha quando não foi explicitamente configurado.
+        if not os.getenv("BROWSEROS_MCP_URL", "").strip():
+            return _status(
+                "not_configured",
+                "Navegador interno do aplicativo é o canal ativo; BrowserOS MCP é opcional na VPS.",
+            )
         if not self._port_open(self.config.browseros_port):
             return _status("unavailable", "BrowserOS MCP não está escutando na porta local.")
         if not deep:
@@ -176,7 +184,7 @@ class Supervisor:
                 "connected" if model_status == "connected" else model_status,
                 model_detail,
             ),
-            "browseros": {**browser, "label": "BrowserOS MCP"},
+            "browseros": {**browser, "label": "BrowserOS MCP (opcional)"},
             "memory": {**memory, "label": "Memória SQLite"},
             "rea": {**rea, "label": "REA"},
             "privacy": _status(
