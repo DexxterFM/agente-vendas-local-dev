@@ -84,6 +84,46 @@ def messages(thread_id: str) -> list[dict[str, Any]]:
     return value if isinstance(value, list) else []
 
 
+def sync_ingestion() -> dict[str, Any]:
+    """Solicita a importação inicial do PostFlow sem expor o retorno bruto.
+
+    A rota pode consultar a API Meta. Por isso o chamador recebe somente
+    contagens e uma categoria operacional, nunca a mensagem de erro, token,
+    identificador de conta ou conteúdo de conversa.
+    """
+    try:
+        result = _request("POST", "engagement/sync", {})
+    except RuntimeError as exc:
+        detail = str(exc).lower()
+        if "401" in detail or "403" in detail:
+            category = "authorization_rejected"
+        elif "timeout" in detail or "indisponível" in detail:
+            category = "service_unavailable"
+        else:
+            category = "request_failed"
+        return {"status": "attention", "category": category, "synced": False}
+    if result.get("error"):
+        return {"status": "attention", "category": "source_rejected", "synced": False}
+    stats = result.get("stats") if isinstance(result.get("stats"), dict) else {}
+    reason = str(result.get("reason") or "")
+    if result.get("synced") is True:
+        category = "imported"
+    elif "desabilitado" in reason.lower():
+        category = "disabled"
+    elif "realizado" in reason.lower():
+        category = "already_current"
+    else:
+        category = "no_change"
+    return {
+        "status": "connected",
+        "category": category,
+        "synced": result.get("synced") is True,
+        "threads": max(0, int(stats.get("threads", 0) or 0)),
+        "messages": max(0, int(stats.get("messages", 0) or 0)),
+        "comments": max(0, int(stats.get("comments", 0) or 0)),
+    }
+
+
 def create_reply(thread_id: str, text: str, original_text: str = "") -> dict[str, Any]:
     return _request("POST", "engagement/create", {"kind": "dm_reply", "threadId": thread_id, "finalText": text, "originalText": original_text})
 

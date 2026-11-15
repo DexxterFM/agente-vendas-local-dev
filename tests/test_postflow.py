@@ -29,3 +29,14 @@ class PostflowConfigurationTests(unittest.TestCase):
         self.assertEqual(result["status"], "connected")
         self.assertEqual(result["threads"], 2)
         self.assertIn("2 conversa", result["detail"])
+
+    @patch("adapters.postflow._request")
+    def test_sync_ingestion_returns_only_sanitized_counts(self, request):
+        request.return_value = {"synced": True, "stats": {"threads": 2, "messages": 4, "comments": 1}, "token": "must-not-return"}
+        result = postflow.sync_ingestion()
+        self.assertEqual(result, {"status": "connected", "category": "imported", "synced": True, "threads": 2, "messages": 4, "comments": 1})
+
+    @patch("adapters.postflow._request", side_effect=RuntimeError("PostFlow HTTP 401: token invalid"))
+    def test_sync_ingestion_hides_authorization_detail(self, _request):
+        result = postflow.sync_ingestion()
+        self.assertEqual(result, {"status": "attention", "category": "authorization_rejected", "synced": False})

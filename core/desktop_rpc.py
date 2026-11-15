@@ -486,6 +486,9 @@ def execute(command, args):
         if command == 'postflowStatus':
             from adapters.postflow import status
             return status()
+        if command == 'postflowIngestionStatus':
+            from adapters.postflow import sync_ingestion
+            return sync_ingestion()
         if command == 'metaStatus':
             from adapters.instagram_meta import check_connection
             return check_connection(memory=memory)
