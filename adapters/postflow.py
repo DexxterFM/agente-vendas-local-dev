@@ -12,6 +12,7 @@ import os
 import urllib.error
 import urllib.request
 from typing import Any
+from urllib.parse import urlparse
 
 
 def _base() -> str:
@@ -19,7 +20,14 @@ def _base() -> str:
 
 
 def configured() -> bool:
-    return bool(os.getenv("POSTFLOW_API_TOKEN", "").strip() or os.getenv("POSTFLOW_SESSION_COOKIE", "").strip())
+    if os.getenv("POSTFLOW_API_TOKEN", "").strip() or os.getenv("POSTFLOW_SESSION_COOKIE", "").strip():
+        return True
+    # O PostFlow pode ser consumido pelo agente como serviço local da mesma
+    # VPS. Isso é opt-in e só aceita loopback; não abre um bypass para hosts
+    # públicos e não copia credenciais entre projetos.
+    if os.getenv("POSTFLOW_TRUSTED_LOCAL", "").strip().lower() not in {"1", "true", "yes"}:
+        return False
+    return urlparse(_base()).hostname in {"127.0.0.1", "localhost", "::1"}
 
 
 def _request(method: str, path: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -48,8 +56,8 @@ def _request(method: str, path: str, body: dict[str, Any] | None = None) -> dict
 
 def status() -> dict[str, Any]:
     if not configured():
-        return {"status": "not_configured", "detail": "Configure POSTFLOW_API_TOKEN ou POSTFLOW_SESSION_COOKIE no .env do agente."}
-    result = _request("GET", "integrations/meta/status")
+        return {"status": "not_configured", "detail": "Configure credencial PostFlow ou POSTFLOW_TRUSTED_LOCAL para um endpoint loopback."}
+    result = _request("GET", "health")
     return {"status": "connected" if result.get("connected", result.get("ok", False)) else "unavailable", "postflow": result}
 
 

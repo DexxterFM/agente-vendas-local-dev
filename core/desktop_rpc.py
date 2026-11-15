@@ -388,10 +388,10 @@ def execute(command, args):
             memory.set_setting('meta.login_mode',os.getenv('META_LOGIN_MODE','instagram').strip().lower())
             return {'connected':True,'account_suffix':account[-4:]}
         if command == 'syncPostflow':
-            from adapters.postflow import threads, messages
+            from adapters.postflow import configured, threads, messages
             from core.sales_intelligence import SalesIntelligence
-            if not ( __import__('os').getenv('POSTFLOW_API_TOKEN','').strip() or __import__('os').getenv('POSTFLOW_SESSION_COOKIE','').strip() ):
-                raise ValueError('PostFlow não está configurado no .env do agente')
+            if not configured():
+                raise ValueError('PostFlow não está configurado para o agente')
             intelligence=SalesIntelligence(memory); imported=0; thread_count=0
             for thread in threads():
                 thread_id=str(thread.get('id') or thread.get('thread_id') or '')
