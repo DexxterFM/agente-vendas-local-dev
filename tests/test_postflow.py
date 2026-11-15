@@ -46,6 +46,11 @@ class PostflowConfigurationTests(unittest.TestCase):
         result = postflow.sync_ingestion()
         self.assertEqual(result, {"status": "connected", "category": "imported", "synced": True, "threads": 2, "messages": 4, "comments": 1})
 
+    @patch("adapters.postflow._request")
+    def test_sync_marks_browser_dm_fallback_without_exposing_source_details(self, request):
+        request.return_value = {"synced": True, "dm_history_source": "browser", "stats": {"threads": 0, "messages": 0, "comments": 2}}
+        self.assertEqual(postflow.sync_ingestion(), {"status": "connected", "category": "browser_dm_fallback", "synced": True, "threads": 0, "messages": 0, "comments": 2})
+
     @patch("adapters.postflow._request", side_effect=RuntimeError("PostFlow HTTP 401: token invalid"))
     def test_sync_ingestion_hides_authorization_detail(self, _request):
         result = postflow.sync_ingestion()

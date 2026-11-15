@@ -115,7 +115,7 @@ def sync_ingestion() -> dict[str, Any]:
     stats = result.get("stats") if isinstance(result.get("stats"), dict) else {}
     reason = str(result.get("reason") or "")
     if result.get("synced") is True:
-        category = "imported"
+        category = "browser_dm_fallback" if result.get("dm_history_source") == "browser" else "imported"
     elif "desabilitado" in reason.lower():
         category = "disabled"
     elif "realizado" in reason.lower():
