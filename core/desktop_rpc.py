@@ -188,7 +188,7 @@ def execute(command, args):
                 memory.set_setting(key,str(action_id));created.append({'id':action_id,**payload})
             return {'created':created,'reviewed':len(profiles)}
         if command == 'followupRecords':
-            cursor=memory.db.execute("select f.id,f.lead_id,f.due_at,f.task,f.done,coalesce(f.draft,''),coalesce(f.status,'draft'),coalesce(f.channel,'manual'),l.name,l.contact from followups f join leads l on l.id=f.lead_id order by f.due_at asc limit 100")
+            cursor=memory.db.execute("select f.id,f.lead_id,f.due_at,f.task,f.done,coalesce(f.draft,'') as draft,coalesce(f.status,'draft') as status,coalesce(f.channel,'manual') as channel,l.name,l.contact from followups f join leads l on l.id=f.lead_id order by f.due_at asc limit 100")
             return [dict(zip([col[0] for col in cursor.description],row)) for row in cursor.fetchall()]
         if command == 'completeFollowup':
             followup_id=int(args.get('id',0))
@@ -492,6 +492,27 @@ def execute(command, args):
                 return 'Claro! Vou direcionar você para um especialista da nossa equipe continuar por aqui. 😊'
             if latest_user and re.search(r'\b(?:reclama[cç][aã]o|insatisfeit|p[oó]s[ -]?venda)\b', latest_user, re.I):
                 return 'Obrigado por me contar. Vou direcionar você para um especialista da nossa equipe acompanhar isso com atenção. 😊'
+            proposal_analysis = bool(latest_user and re.search(
+                r'\b(?:vou|vamos|iremos|preciso|precisamos).{0,45}\b(?:analis|avali|pensar|ver com (?:a |o )?(?:equipe|s[oó]ci[oa]|respons[aá]vel))',
+                latest_user,
+                re.I,
+            ))
+            if proposal_analysis:
+                import hashlib
+                digest=hashlib.sha256(' '.join(latest_user.casefold().split()).encode('utf-8')).hexdigest()[:20]
+                followup_key='sales.proposal_analysis_followup:'+str(int(args['id']))+':'+digest
+                if not memory.get_setting(followup_key,''):
+                    followup_text=('Olá! Estou passando para revisarmos como ficou em relação ao que havíamos conversado. '
+                                   'Já tem um retorno ou precisa de mais informações para tomar sua decisão?')
+                    followup_id=memory.add_followup(
+                        int(args['id']),
+                        (datetime.now()+timedelta(days=3)).isoformat(),
+                        'Retomar proposta analisada em 3 dias',
+                        followup_text,
+                        'instagram',
+                    )
+                    memory.set_setting(followup_key,str(followup_id))
+                return 'Perfeito! Fico à disposição enquanto vocês analisam e volto a falar com vocês em alguns dias. 😊'
             # Contatos que não são leads clínicos podem propor produtos ou
             # parcerias. Eles recebem um acolhimento próprio, sem entrar no
             # roteiro comercial do ERP, e a solicitação de material fica em um

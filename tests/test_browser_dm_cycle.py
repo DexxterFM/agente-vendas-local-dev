@@ -205,6 +205,21 @@ class BrowserDmCycleTests(unittest.TestCase):
             self.assertIn("abertos a parcerias", partnership)
             self.assertEqual(closing, "Muito obrigado pela oportunidade! Um grande abraço e fica com Deus!")
 
+    def test_proposal_analysis_creates_one_three_day_followup(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}
+        ):
+            lead_id = execute("create", {"name": "Clínica", "contact": "clinica"})
+            history = [{"role": "user", "text": "Vamos analisar a proposta com a equipe."}]
+            answer = execute("draft", {"id": lead_id, "browser_history": history})
+            self.assertIn("Fico à disposição", answer)
+            self.assertEqual(len(execute("followupRecords", {})), 1)
+            item = execute("followupRecords", {})[0]
+            self.assertEqual(item["task"], "Retomar proposta analisada em 3 dias")
+            self.assertIn("Já tem um retorno", item["draft"])
+            execute("draft", {"id": lead_id, "browser_history": history})
+            self.assertEqual(len(execute("followupRecords", {})), 1)
+
     def test_positive_reaction_keeps_the_sales_flow_open(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(
             os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}
