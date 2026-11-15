@@ -27,17 +27,20 @@ def configured() -> bool:
     # públicos e não copia credenciais entre projetos.
     if os.getenv("POSTFLOW_TRUSTED_LOCAL", "").strip().lower() not in {"1", "true", "yes"}:
         return False
-    return urlparse(_base()).hostname in {"127.0.0.1", "localhost", "::1"}
+    return bool(os.getenv("SALES_AGENT_INTERNAL_TOKEN", "").strip()) and urlparse(_base()).hostname in {"127.0.0.1", "localhost", "::1"}
 
 
 def _request(method: str, path: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
     headers = {"Accept": "application/json"}
     token = os.getenv("POSTFLOW_API_TOKEN", "").strip()
     cookie = os.getenv("POSTFLOW_SESSION_COOKIE", "").strip()
+    internal_token = os.getenv("SALES_AGENT_INTERNAL_TOKEN", "").strip()
     if token:
         headers["Authorization"] = f"Bearer {token}"
     if cookie:
         headers["Cookie"] = cookie
+    if internal_token and urlparse(_base()).hostname in {"127.0.0.1", "localhost", "::1"}:
+        headers["X-Sales-Agent-Token"] = internal_token
     data = None
     if body is not None:
         headers["Content-Type"] = "application/json"
