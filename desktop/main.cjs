@@ -686,6 +686,9 @@ replyTimer.unref();
 let browserProcessing=false;
 let browserAutomationArmed=false;
 let followerScanRequested=false;
+let messageScanRequested=false;
+let messageProcessing=false;
+let nextMessageScanAt=0;
 let lastFollowerScanAt=0;
 let nextFollowerScanAt=0;
 // A caixa de entrada inteira é uma operação deliberadamente espaçada. Além
@@ -842,6 +845,10 @@ const browserTimer=setInterval(async()=>{
       // seguidores e a tela do operador continua intacta.
       const home=await scanInstagramHome(activeView,{openInbox:false});
       if(home.hasNotification)followerScanRequested=true;
+      // Um indicador de DM não lida tem prioridade: abre somente uma
+      // conversa por rodada, preserva o contexto e deixa a decisão/deduplicação
+      // no ciclo de atendimento. Curtidas nunca entram nesta fila.
+      if(home.hasMessage&&Date.now()>=nextMessageScanAt)messageScanRequested=true;
       if(inboxSweepDue()){
         const result=await runInboxSweep(activeView,{source:'scheduled'});
         fs.appendFileSync(path.join(app.getPath('userData'),'browser-send.log'),`${new Date().toISOString()} scheduled sweep ${JSON.stringify(result)}\n`);
@@ -855,6 +862,43 @@ const browserTimer=setInterval(async()=>{
   }catch(error){try{fs.mkdirSync(app.getPath('userData'),{recursive:true});fs.appendFileSync(path.join(app.getPath('userData'),'browser-send.log'),`${new Date().toISOString()} error ${error.message}\n`);}catch{}} finally{browserProcessing=false;}
 },15000);
 browserTimer.unref();
+async function processMessageNotification(view){
+  await view.webContents.loadURL('https://www.instagram.com/direct/inbox/');
+  await wait(1200);
+  const opened=await openUnreadConversation(view);
+  if(!opened)return {processed:false,reason:'no-pending-thread'};
+  await wait(650);
+  return processCurrentBrowserThread(view,{source:'message-notification'});
+}
+const messageTimer=setInterval(async()=>{
+  if(messageProcessing||browserProcessing||!messageScanRequested||!browserAutomationArmed||!app.isReady()||!window||window.isDestroyed())return;
+  messageProcessing=true;
+  browserProcessing=true;
+  messageScanRequested=false;
+  try{
+    const state=await backend('agentStatus');
+    if(!state.active)return;
+    const view=ensureBrowserView();
+    const url=view.webContents.getURL()||'';
+    if(!url.includes('instagram.com')||await isInstagramAuthenticationScreen(view,url))return;
+    const result=await processMessageNotification(view);
+    fs.appendFileSync(path.join(app.getPath('userData'),'browser-send.log'),`${new Date().toISOString()} message-notification ${JSON.stringify(result)}\n`);
+  }catch(error){
+    try{fs.appendFileSync(path.join(app.getPath('userData'),'browser-send.log'),`${new Date().toISOString()} message-notification-error ${error.message}\n`);}catch{}
+  }finally{
+    // Se o ponto de DM continuar visível, a próxima verificação terá uma
+    // pequena pausa. Assim várias mensagens são atendidas em sequência sem
+    // prender o navegador em um loop agressivo.
+    nextMessageScanAt=Date.now()+30000+crypto.randomInt(0,30001);
+    const view=browserView;
+    if(view&&!view.webContents.isDestroyed()&&(view.webContents.getURL()||'').includes('instagram.com/direct')){
+      await view.webContents.loadURL('https://www.instagram.com/').catch(()=>null);
+    }
+    browserProcessing=false;
+    messageProcessing=false;
+  }
+},5000);
+messageTimer.unref();
 function followerLog(message){
   try{
     fs.mkdirSync(app.getPath('userData'),{recursive:true});
@@ -865,9 +909,13 @@ async function findFollowerNotification(contents){
   return contents.executeJavaScript(`(()=>{
     const reserved=new Set(['accounts','direct','explore','reels','stories','about','developer','legal','privacy','web']);
     const visible=e=>!!e;
+    // Curtidas, menções e comentários ficam fora deste filtro. Uma atividade
+    // só pode gerar uma ação comercial quando descreve explicitamente que a
+    // pessoa passou a seguir a conta.
+    const isFollowerText=text=>/(?:começou|passou|acabou)(?:\\s+de)? a seguir(?: você)?|(?:segue|seguiu|está seguindo)(?: você)?|started following you|follows you/i.test(text);
     const parts=[...document.querySelectorAll('span,div,p')].filter(e=>{
       const text=(e.innerText||'').replace(/\s+/g,' ').trim();
-      return text.length>0&&text.length<320&&/(?:começou|passou|acabou) a seguir você|(?:segue|seguiu) você|started following you|follows you/i.test(text);
+      return text.length>0&&text.length<320&&isFollowerText(text);
     }).sort((a,b)=>(a.innerText||'').length-(b.innerText||'').length);
     for(const part of parts){
       let row=part;
@@ -916,7 +964,7 @@ async function findFollowerFromAccessibility(contents){
       const matched=text.match(/(?:foto do perfil de |profile photo of )?([a-z0-9._]{1,30})$/i);
       return matched?matched[1].toLowerCase():'';
     };
-    for(const marker of nodes.filter(node=>/(?:começou|passou|acabou) a seguir você|(?:segue|seguiu) você|started following you|follows you/i.test(String(node.name?.value||'')))){
+    for(const marker of nodes.filter(node=>/(?:começou|passou|acabou)(?:\s+de)? a seguir(?: você)?|(?:segue|seguiu|está seguindo)(?: você)?|started following you|follows you/i.test(String(node.name?.value||'')))){
       let parent=byId.get(marker.parentId);
       for(let depth=0;parent&&depth<10;depth++,parent=byId.get(parent.parentId)){
         const username=descendants(parent).filter(node=>node.role?.value==='link').map(node=>extractUsername(node.name?.value)).find(Boolean);
@@ -931,7 +979,7 @@ async function openFollowerNotifications(contents){
   // /notifications. Use a rota vigente para evitar uma navegação extra.
   await contents.loadURL('https://www.instagram.com/notifications/');
   await wait(2200);
-  let state=await contents.executeJavaScript(`(()=>({url:location.href,hasFollowerText:/(?:começou|passou|acabou) a seguir você|(?:segue|seguiu) você|started following you|follows you/i.test(document.body?.innerText||'')}))()`,true);
+  let state=await contents.executeJavaScript(`(()=>({url:location.href,hasFollowerText:/(?:começou|passou|acabou)(?:\\s+de)? a seguir(?: você)?|(?:segue|seguiu|está seguindo)(?: você)?|started following you|follows you/i.test(document.body?.innerText||'')}))()`,true);
   if(state.hasFollowerText)return {...state,opened:false};
   const opened=await contents.executeJavaScript(`(()=>{
     const elements=[...document.querySelectorAll('a,button,[role="link"],[role="button"],[aria-label]')];
@@ -941,7 +989,7 @@ async function openFollowerNotifications(contents){
     if(!target)return false;(target.closest('a,button,[role="link"],[role="button"]')||target).click();return true;
   })()`,true);
   if(opened)await wait(1800);
-  state=await contents.executeJavaScript(`(()=>({url:location.href,hasFollowerText:/(?:começou|passou|acabou) a seguir você|(?:segue|seguiu) você|started following you|follows you/i.test(document.body?.innerText||'')}))()`,true);
+  state=await contents.executeJavaScript(`(()=>({url:location.href,hasFollowerText:/(?:começou|passou|acabou)(?:\\s+de)? a seguir(?: você)?|(?:segue|seguiu|está seguindo)(?: você)?|started following you|follows you/i.test(document.body?.innerText||'')}))()`,true);
   return {...state,opened};
 }
 async function followAndOpenMessage(contents,username,openMessage=true,allowFollow=true){
