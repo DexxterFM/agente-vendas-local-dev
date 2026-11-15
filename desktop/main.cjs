@@ -15,6 +15,20 @@ let backendChild=null;
 let backendBuffer='';
 let backendSequence=0;
 const backendPending=new Map();
+let localLlmChild=null;
+const localLlmPort=11535;
+function localLlmPaths(){
+  const root=app.isPackaged?path.join(process.resourcesPath,'native'):path.join(__dirname,'..','native');
+  return {server:path.join(root,'runtime','llama-server.exe'),model:path.join(root,'models','qwen3-sales.gguf')};
+}
+function startEmbeddedLlm(){
+  if(localLlmChild&&!localLlmChild.killed)return true;
+  const {server,model}=localLlmPaths();
+  if(!fs.existsSync(server)||!fs.existsSync(model))return false;
+  localLlmChild=spawn(server,['-m',model,'--host','127.0.0.1','--port',String(localLlmPort),'-c','2048','-ngl','0'],{windowsHide:true,stdio:'ignore'});
+  localLlmChild.on('close',()=>{localLlmChild=null;});
+  return true;
+}
 function chromeExecutable(){
   const candidates=[
     path.join(process.env.PROGRAMFILES||'','Google','Chrome','Application','chrome.exe'),
@@ -45,7 +59,8 @@ function ensureBackend(){
   if(backendChild&&!backendChild.killed)return backendChild;
   const root=path.join(__dirname,'..');
   const packaged=path.join(process.resourcesPath,'SalesAgentBackend.exe');
-  const env={...metaVaultEnv(),SALES_AGENT_RPC_STREAM:'1'};
+  const embedded=startEmbeddedLlm();
+  const env={...metaVaultEnv(),SALES_AGENT_RPC_STREAM:'1',...(embedded?{LOCAL_LLM_URL:`http://127.0.0.1:${localLlmPort}`,LOCAL_LLM_MODEL:'qwen3-sales'}:{})};
   backendChild=app.isPackaged?spawn(packaged,[],{windowsHide:true,env}):spawn('python',['-m','core.desktop_rpc'],{cwd:root,windowsHide:true,env});
   backendBuffer='';
   backendChild.stdout.on('data',data=>{
@@ -463,10 +478,17 @@ ipcMain.handle('sales:scanFeedProfiles', async (event) => {
   if(event.sender!==window.webContents) throw new Error('Origem inválida');
   const view=ensureBrowserView();const url=view.webContents.getURL()||'';
   if(!url.includes('instagram.com')) throw new Error('Abra o feed do Instagram no navegador interno antes de procurar perfis.');
-  const candidates=await view.webContents.executeJavaScript(`(()=>{
-    const reserved=new Set(['accounts','direct','explore','reels','stories','about','developer','legal','privacy','web','p']);
-    return [...new Set([...document.querySelectorAll('a[href]')].map(a=>{const parts=new URL(a.href,location.href).pathname.split('/').filter(Boolean);return parts.length===1&&!reserved.has(parts[0])?parts[0].toLowerCase():''}).filter(Boolean))].slice(0,30).map(username=>({username,text:document.body?.innerText?.slice(0,3000)||'',following:false}));
-  })()`,true);
+  const usernames=new Set();
+  for(let pass=0;pass<3;pass++){
+    const visible=await view.webContents.executeJavaScript(`(()=>{
+      const reserved=new Set(['accounts','direct','explore','reels','stories','about','developer','legal','privacy','web','p']);
+      return [...new Set([...document.querySelectorAll('a[href]')].map(a=>{const parts=new URL(a.href,location.href).pathname.split('/').filter(Boolean);return parts.length===1&&!reserved.has(parts[0])?parts[0].toLowerCase():''}).filter(Boolean))].slice(0,30);
+    })()`,true);
+    visible.forEach(username=>usernames.add(username));
+    if(pass<2){await view.webContents.executeJavaScript('window.scrollBy({top:Math.max(560,innerHeight*.82),behavior:"smooth"});true',true);await wait(900);}
+  }
+  const pageText=await view.webContents.executeJavaScript('document.body?.innerText?.slice(0,5000)||""',true);
+  const candidates=[...usernames].slice(0,45).map(username=>({username,text:pageText,following:false}));
   const result=await backend('campaignDiscover',{profiles:candidates});
   return {...result,scanned:candidates.length};
 });
@@ -767,6 +789,15 @@ else {
     window.once('ready-to-show', () => window.show());
     window.on('resize',()=>{if(browserAttached&&browserView&&!browserView.webContents.isDestroyed())browserView.setBounds(browserBounds());});
     await window.loadFile(path.join(__dirname,'..','frontend','index.html'));
+    // O navegador interno é a ferramenta principal do agente: já abre
+    // exposto no Instagram para o operador iniciar ou acompanhar interações.
+    const initialBrowser=ensureBrowserView();
+    browserUserVisible=true;
+    window.setBrowserView(initialBrowser);
+    browserAttached=true;
+    initialBrowser.setBounds(browserBounds());
+    initialBrowser.setAutoResize({width:true,height:true});
+    if(!initialBrowser.webContents.getURL()) await initialBrowser.webContents.loadURL(browserPaneUrl);
     if(process.argv.includes('--smoke-test')) {
       const result = await window.webContents.executeJavaScript(`(async()=>{const leads=await window.sales.call('leads');const templates=await window.sales.call('responseLibrary');const libraryButton=document.querySelector('[data-view="library"]');libraryButton.click();await new Promise(resolve=>setTimeout(resolve,300));const operatorButton=document.querySelector('[data-view="operator"]');return {title:document.title,backend:true,leads:leads.length,templates:templates.length,libraryForm:!!document.querySelector('#template-form'),operatorAvailable:!!operatorButton};})()`);
       fs.writeFileSync(path.join(app.getPath('userData'),'smoke-test.json'),JSON.stringify(result));
@@ -774,6 +805,6 @@ else {
     }
   }).catch(record);
   app.on('window-all-closed',()=>{window=null;app.quit();});
-  app.on('will-quit',()=>{if(metaCallbackServer)metaCallbackServer.close();if(followerWindow&&!followerWindow.isDestroyed())followerWindow.destroy();if(backendChild&&!backendChild.killed)backendChild.kill();});
+  app.on('will-quit',()=>{if(metaCallbackServer)metaCallbackServer.close();if(followerWindow&&!followerWindow.isDestroyed())followerWindow.destroy();if(backendChild&&!backendChild.killed)backendChild.kill();if(localLlmChild&&!localLlmChild.killed)localLlmChild.kill();});
 }
 process.on('uncaughtException', record);

@@ -107,6 +107,8 @@ def _default_browser_config() -> str:
 class AppConfig:
     ollama_url: str
     ollama_model: str
+    local_llm_url: str
+    local_llm_model: str
     browseros_mcp_url: str
     rea_mcp_url: str
     db_path: Path
@@ -158,6 +160,8 @@ def load_config() -> AppConfig:
     return AppConfig(
         ollama_url=os.getenv("OLLAMA_URL", "http://127.0.0.1:11434").strip(),
         ollama_model=os.getenv("OLLAMA_MODEL", "qwen3:0.6b").strip(),
+        local_llm_url=os.getenv("LOCAL_LLM_URL", "").strip(),
+        local_llm_model=os.getenv("LOCAL_LLM_MODEL", "qwen3-sales").strip(),
         browseros_mcp_url=os.getenv("BROWSEROS_MCP_URL", "http://127.0.0.1:9200/mcp").strip(),
         rea_mcp_url=os.getenv("REA_MCP_URL", "").strip(),
         db_path=db_path,

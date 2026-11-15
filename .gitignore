@@ -17,6 +17,8 @@ ui_ok.txt
 ui_stacks*.txt
 ui_threads.txt
 node_modules/
+native/runtime/
+native/models/
 .opencode/
 opencode.json
 opencode.json.bak-*
