@@ -20,6 +20,7 @@ let backendSequence=0;
 const backendPending=new Map();
 let localLlmChild=null;
 let remoteTunnelChild=null;
+let remoteTunnelStartedAt=0;
 const localLlmPort=11535;
 function remoteControlConfig(){
   const candidates=[path.join(process.resourcesPath,'remote-control.json'),path.join(app.getPath('userData'),'remote-control.json')];
@@ -31,16 +32,31 @@ function startRemoteTunnel(){
   if(!remoteControl||(remoteTunnelChild&&!remoteTunnelChild.killed))return;
   const executable=process.env.WINDIR?path.join(process.env.WINDIR,'System32','OpenSSH','ssh.exe'):'ssh';
   const port=String(remoteControl.localPort||8787);
-  remoteTunnelChild=spawn(executable,['-N','-o','BatchMode=yes','-o','ExitOnForwardFailure=yes','-L',`${port}:127.0.0.1:${remoteControl.remotePort||8787}`,remoteControl.sshHost],{windowsHide:true,stdio:'ignore'});
-  remoteTunnelChild.on('close',()=>{remoteTunnelChild=null;});
+  remoteTunnelStartedAt=Date.now();
+  remoteTunnelChild=spawn(executable,['-N','-o','BatchMode=yes','-o','ExitOnForwardFailure=yes','-L',`${port}:127.0.0.1:${remoteControl.remotePort||8787}`,remoteControl.sshHost],{windowsHide:true,stdio:['ignore','ignore','pipe']});
+  remoteTunnelChild.stderr?.on('data',data=>{
+    try{fs.appendFileSync(path.join(app.getPath('userData'),'desktop.log'),`${new Date().toISOString()} remote-tunnel ${String(data).slice(0,800)}\n`);}catch{}
+  });
+  remoteTunnelChild.on('error',error=>{try{fs.appendFileSync(path.join(app.getPath('userData'),'desktop.log'),`${new Date().toISOString()} remote-tunnel-error ${error.message}\n`);}catch{}});
+  remoteTunnelChild.on('close',(code)=>{
+    try{fs.appendFileSync(path.join(app.getPath('userData'),'desktop.log'),`${new Date().toISOString()} remote-tunnel-closed code=${code}\n`);}catch{}
+    remoteTunnelChild=null;
+  });
 }
 function remoteBackend(command,args={}){return new Promise((resolve,reject)=>{
   startRemoteTunnel();
   const body=Buffer.from(JSON.stringify({id:++backendSequence,command,args}));
-  const request=http.request({hostname:'127.0.0.1',port:remoteControl.localPort||8787,path:'/api/rpc',method:'POST',headers:{'Content-Type':'application/json','Content-Length':body.length},timeout:120000},response=>{let raw='';response.on('data',part=>raw+=part);response.on('end',()=>{try{const payload=JSON.parse(raw);payload.ok?resolve(payload.result):reject(new Error(payload.error||'Falha do agente na VPS.'));}catch{reject(new Error('Resposta inválida do agente na VPS.'));}});});
-  request.on('timeout',()=>request.destroy(new Error('A VPS demorou para responder.')));
-  request.on('error',error=>reject(new Error(`Controle remoto indisponível: ${error.message}`)));
-  request.write(body);request.end();
+  const deadline=Date.now()+9000;
+  const dispatch=()=>{
+    const request=http.request({hostname:'127.0.0.1',port:remoteControl.localPort||8787,path:'/api/rpc',method:'POST',headers:{'Content-Type':'application/json','Content-Length':body.length},timeout:120000},response=>{let raw='';response.on('data',part=>raw+=part);response.on('end',()=>{try{const payload=JSON.parse(raw);payload.ok?resolve(payload.result):reject(new Error(payload.error||'Falha do agente na VPS.'));}catch{reject(new Error('Resposta inválida do agente na VPS.'));}});});
+    request.on('timeout',()=>request.destroy(new Error('A VPS demorou para responder.')));
+    request.on('error',error=>{
+      if(error.code==='ECONNREFUSED'&&Date.now()<deadline){startRemoteTunnel();setTimeout(dispatch,350);return;}
+      reject(new Error(`Controle remoto indisponível: ${error.message}`));
+    });
+    request.write(body);request.end();
+  };
+  dispatch();
 });}
 function localLlmPaths(){
   const root=app.isPackaged?path.join(process.resourcesPath,'native'):path.join(__dirname,'..','native');
