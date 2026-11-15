@@ -484,16 +484,29 @@ const replyTimer=setInterval(async()=>{},5000);
 replyTimer.unref();
 let browserProcessing=false;
 let followerScanRequested=false;
+let lastFollowerScanAt=0;
 async function scanInstagramHome(view){
   /* A página inicial mantém os contadores como texto acessível; não depende
      de pixels, nem de a caixa de entrada já estar visível. */
   const indicators=await view.webContents.executeJavaScript(`(()=>{
     const nodes=[...document.querySelectorAll('a,button,[role="link"],[role="button"]')];
-    const match=(pattern)=>nodes.filter(node=>pattern.test(((node.innerText||'')+' '+(node.getAttribute('aria-label')||'')+' '+(node.getAttribute('title')||'')).replace(/\\s+/g,' ').trim())).map(node=>({text:(node.innerText||node.getAttribute('aria-label')||'').trim().slice(0,140),href:node.href||'',badge:(node.innerText||'').match(/\\b\\d+\\b/)?.[0]||''}));
-    return {messages:match(/mensagens|messages|direct/i),notifications:match(/notifica(?:ç|c)(?:ões|oes)|notifications|activity/i)};
+    const match=(pattern)=>nodes.filter(node=>pattern.test(((node.innerText||'')+' '+(node.getAttribute('aria-label')||'')+' '+(node.getAttribute('title')||'')+' '+(node.getAttribute('href')||'')).replace(/\\s+/g,' ').trim())).map(node=>({text:(node.innerText||node.getAttribute('aria-label')||node.getAttribute('href')||'').trim().slice(0,140),href:node.href||'',badge:(node.innerText||'').match(/\\b\\d+\\b/)?.[0]||''}));
+    const notifications=match(/notifica(?:ç|c)(?:ões|oes)|notifications|activity/i);
+    // O contador novo do Instagram pode ser apenas uma bolinha vermelha, sem
+    // texto nem aria-label. Detecte-a dentro do botão/link de notificações.
+    const redBadge=notifications.some(item=>{
+      const host=nodes.find(node=>(node.href||'')===item.href||((node.innerText||node.getAttribute('aria-label')||node.getAttribute('href')||'')+' '+(node.getAttribute('title')||'')).replace(/\s+/g,' ').trim()===item.text);
+      if(!host)return false;
+      return [...host.querySelectorAll('*')].some(child=>{
+        const style=getComputedStyle(child),rect=child.getBoundingClientRect();
+        const color=String(style.backgroundColor||'');
+        return rect.width>3&&rect.width<28&&rect.height>3&&rect.height<28&&/rgb\(2(?:[0-5][0-9]|[0-4][0-9]),\s*(?:[0-9]{1,2}|1[0-3][0-9]),\s*(?:[0-9]{1,2}|1[0-3][0-9])\)/.test(color);
+      });
+    });
+    return {messages:match(/mensagens|messages|direct/i),notifications,redBadge};
   })()`,true);
   const hasMessage=indicators.messages.some(item=>item.badge||/nova|new|unread|não lida/i.test(item.text));
-  const hasNotification=indicators.notifications.some(item=>item.badge||/nova|new/i.test(item.text));
+  const hasNotification=Boolean(indicators.redBadge)||indicators.notifications.some(item=>item.badge||/nova|new/i.test(item.text));
   fs.appendFileSync(path.join(app.getPath('userData'),'browser-send.log'),`${new Date().toISOString()} home indicators ${JSON.stringify({hasMessage,hasNotification,indicators})}\n`);
   if(hasMessage){
     await view.webContents.loadURL('https://www.instagram.com/direct/inbox/');
@@ -623,7 +636,9 @@ async function findFollowerFromAccessibility(contents){
   }finally{if(!attached&&debug.isAttached())debug.detach();}
 }
 async function openFollowerNotifications(contents){
-  await contents.loadURL('https://www.instagram.com/accounts/activity/');
+  // A interface atual do Instagram redireciona /accounts/activity para
+  // /notifications. Use a rota vigente para evitar uma navegação extra.
+  await contents.loadURL('https://www.instagram.com/notifications/');
   await wait(2200);
   let state=await contents.executeJavaScript(`(()=>({url:location.href,hasFollowerText:/(começou a seguir você|started following you)/i.test(document.body?.innerText||'')}))()`,true);
   if(state.hasFollowerText)return {...state,opened:false};
@@ -682,7 +697,14 @@ async function followAndOpenMessage(contents,username,openMessage=true){
 let followerProcessing=false;
 const followerTimer=setInterval(async()=>{
   if(followerProcessing||!app.isReady()||!window||window.isDestroyed())return;
+  const now=Date.now();
+  // O timer normal evita custo desnecessário. Uma bolinha detectada na página
+  // inicial concede prioridade à próxima execução em vez de esperar o ciclo
+  // longo da leitura de notificações.
+  if(!followerScanRequested&&now-lastFollowerScanAt<45000)return;
   followerProcessing=true;
+  followerScanRequested=false;
+  lastFollowerScanAt=now;
   let claimedUsername='';
   try{
     const state=await backend('agentStatus');
