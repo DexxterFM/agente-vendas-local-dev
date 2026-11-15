@@ -1,4 +1,4 @@
-const {app, BrowserWindow, dialog, ipcMain, shell, clipboard} = require('electron');
+const {app, BrowserWindow, dialog, ipcMain, shell} = require('electron');
 const http = require('node:http');
 const {spawn} = require('node:child_process');
 const path = require('node:path');
@@ -79,7 +79,7 @@ function metaVaultEnv(){
   }catch{} }
   return {...process.env};
 }
-const backendAllowed=['leads','create','messages','message','draft','queue','pause','followup','knowledge','saveKnowledge','responseLibrary','saveResponseTemplate','operatorAssist','trialOffer','saveTrialOffer','browserImportThread','campaignDiscover','followupRecords','completeFollowup','status','records','syncHistory','syncPostflow','analytics','saveDocument','ragContext','comparison','competitorCatalog','competitorMatch','competitorSeed','research','personality','probabilities','trial','outcome','installation','approveReply','dispatchDue','agentCycle','agentStatus','setAgentActive','followerCycle','followerConfirm','followerReset','startServices','browserScreenCycle','browserScreenConfirm','browserScreenReset','replyDelay','postflowStatus','metaStatus','metaOAuthUrl','metaOAuthExchange','browserHealth','browserTools','browserSnapshot','browserAct','browserInstagramInbox','browserRead'];
+const backendAllowed=['leads','create','messages','message','draft','queue','pause','followup','knowledge','saveKnowledge','responseLibrary','saveResponseTemplate','operatorAssist','trialOffer','saveTrialOffer','browserImportThread','campaignDiscover','followupRecords','completeFollowup','status','records','syncHistory','syncPostflow','analytics','saveDocument','ragContext','comparison','competitorCatalog','competitorMatch','competitorSeed','research','personality','probabilities','trial','outcome','installation','approveReply','dispatchDue','agentCycle','agentStatus','setAgentActive','prospectingPacing','followerCycle','followerConfirm','followerReset','startServices','browserScreenCycle','browserScreenConfirm','browserScreenReset','replyDelay','postflowStatus','metaStatus','metaOAuthUrl','metaOAuthExchange','browserHealth','browserTools','browserSnapshot','browserAct','browserInstagramInbox','browserRead'];
 function ensureBackend(){
   if(backendChild&&!backendChild.killed)return backendChild;
   const root=path.join(__dirname,'..');
@@ -175,6 +175,28 @@ function ensureFollowerWindow(){
   return followerWindow;
 }
 const wait=milliseconds=>new Promise(resolve=>setTimeout(resolve,milliseconds));
+function interactionDie(){return crypto.randomInt(1,7);}
+async function typeWithVirtualKeyboard(contents,value,label='message'){
+  // Eventos `char` são o teclado virtual do BrowserView. Não usamos área de
+  // transferência: cada caractere é inserido com uma pequena variação humana.
+  let totalDelay=0; const rolls=[];
+  for(const character of Array.from(String(value))){
+    const die=interactionDie(); rolls.push(die);
+    contents.sendInputEvent({type:'char',keyCode:character});
+    const delay=18+(die*13)+crypto.randomInt(0,24);
+    totalDelay+=delay;
+    await wait(delay);
+  }
+  return {method:'virtual-keyboard',characters:Array.from(String(value)).length,total_delay_ms:totalDelay,dice:rolls};
+}
+async function naturalInteractionPause(label,minMs=1800,maxMs=6000){
+  const die=interactionDie();
+  const span=Math.max(0,maxMs-minMs);
+  const delay=Math.min(maxMs,minMs+Math.floor((die/6)*span)+crypto.randomInt(0,Math.max(1,Math.floor(span/7))));
+  try{fs.appendFileSync(path.join(app.getPath('userData'),'browser-send.log'),`${new Date().toISOString()} timing ${label} die=${die} delay_ms=${delay}\n`);}catch{}
+  await wait(delay);
+  return {die,delay};
+}
 async function accessibilityAction(contents,pattern,{focus=false}={}){
   const debug=contents.debugger;
   const attached=debug.isAttached();
@@ -218,18 +240,14 @@ async function sendTextInFollowerWindow(text){
   })()`,true);
   if(!focused&&!(await accessibilityAction(contents,/mensagem|message|responder|reply/i,{focus:true})))throw new Error('Campo de mensagem do novo seguidor não encontrado.');
   contents.focus();
-  clipboard.writeText(value);
-  await wait(150);
-  contents.sendInputEvent({type:'keyDown',keyCode:'V',modifiers:['control']});
-  contents.sendInputEvent({type:'keyUp',keyCode:'V',modifiers:['control']});
-  await wait(700);
+  const typing=await typeWithVirtualKeyboard(contents,value,'follower-welcome');
   const entered=await contents.executeJavaScript(`(()=>{const e=document.activeElement;return (e?.value||e?.innerText||e?.textContent||'').trim()===${JSON.stringify(value)}})()`,true);
   if(!entered)throw new Error('A mensagem não entrou no campo do Instagram.');
   contents.sendInputEvent({type:'keyDown',keyCode:'ENTER'});
   contents.sendInputEvent({type:'keyUp',keyCode:'ENTER'});
   for(let i=0;i<12;i++){
     await wait(500);
-    if(await conversationMessageCount(contents,value)>before)return {sent:true,method:'accessibility-chat-metadata'};
+    if(await conversationMessageCount(contents,value)>before)return {sent:true,method:'virtual-keyboard-accessibility-chat-metadata',typing};
   }
   const error=new Error('O Instagram não confirmou a mensagem na área da conversa.');
   error.deliveryAttempted=true;
@@ -251,13 +269,10 @@ async function sendInBrowserView(text){
   })()`,true);
   if(!target) throw new Error('Campo de mensagem não encontrado na DM aberta.');
   view.webContents.focus();
-  clipboard.writeText(value);
   view.webContents.sendInputEvent({type:'mouseDown',x:Math.round(target.x),y:Math.round(target.y),button:'left',clickCount:1});
   view.webContents.sendInputEvent({type:'mouseUp',x:Math.round(target.x),y:Math.round(target.y),button:'left',clickCount:1});
   await new Promise(r=>setTimeout(r,120));
-  view.webContents.sendInputEvent({type:'keyDown',keyCode:'V',modifiers:['control']});
-  view.webContents.sendInputEvent({type:'keyUp',keyCode:'V',modifiers:['control']});
-  await new Promise(r=>setTimeout(r,700));
+  const typing=await typeWithVirtualKeyboard(view.webContents,value,'dm-reply');
   const entered=await view.webContents.executeJavaScript(`(()=>{const e=document.activeElement;return (e?.value||e?.innerText||e?.textContent||'').trim()===${JSON.stringify(value)}})()`,true);
   if(!entered) throw new Error('O texto não foi inserido no campo da mensagem.');
   if(view.webContents.getURL()!==url) throw new Error('A conversa mudou antes do envio.');
@@ -266,7 +281,7 @@ async function sendInBrowserView(text){
   for(let i=0;i<10;i++){
     await new Promise(r=>setTimeout(r,500));
     if(view.webContents.getURL()!==url) throw new Error('A conversa mudou antes da confirmação do envio.');
-    if(await countMatches()>before) return {sent:true,method:'mouse-paste-enter'};
+    if(await countMatches()>before) return {sent:true,method:'mouse-virtual-keyboard-enter',typing};
   }
   // O Instagram nem sempre expõe as bolhas como nós DOM consultáveis. A
   // árvore de acessibilidade continua sendo uma confirmação confiável porque
@@ -274,7 +289,7 @@ async function sendInBrowserView(text){
   const after=await observeBrowser();
   const delivered=after.messages.at(-1);
   if(delivered?.direction==='outgoing'&&delivered.text.trim()===value){
-    return {sent:true,method:'mouse-paste-enter-accessibility'};
+    return {sent:true,method:'mouse-virtual-keyboard-enter-accessibility',typing};
   }
   throw new Error('Não foi possível confirmar a mensagem na conversa.');
 }
@@ -639,7 +654,7 @@ const browserTimer=setInterval(async()=>{
     }
     const cycle=await backend('browserScreenCycle',{url:snap.url,thread_id:snap.threadId,username:snap.username,message_id:last.id,message:last.text,direction:'incoming',messages:snap.messages});
     if(cycle?.new_message&&cycle.text){
-      await new Promise(r=>setTimeout(r,3500));
+      await naturalInteractionPause('dm-reply',2400,11000);
       if(!(await backend('agentStatus')).active||activeView.webContents.getURL()!==snap.url)return;
       if(cycle.competitor?.asset_ready){
         try{
@@ -745,8 +760,8 @@ async function openFollowerNotifications(contents){
   state=await contents.executeJavaScript(`(()=>({url:location.href,hasFollowerText:/(começou a seguir você|started following you)/i.test(document.body?.innerText||'')}))()`,true);
   return {...state,opened};
 }
-async function followAndOpenMessage(contents,username,openMessage=true){
-  const followed=await contents.executeJavaScript(`(()=>{
+async function followAndOpenMessage(contents,username,openMessage=true,allowFollow=true){
+  const followed=allowFollow&&await contents.executeJavaScript(`(()=>{
     const wanted=${JSON.stringify(String(username).toLowerCase())};
     const visible=e=>!!e;
     const link=[...document.querySelectorAll('a[href]')].find(a=>new URL(a.href,location.href).pathname.split('/').filter(Boolean).join('/').toLowerCase()===wanted);
@@ -761,7 +776,7 @@ async function followAndOpenMessage(contents,username,openMessage=true){
   if(followed)await wait(1400);
   await contents.loadURL(`https://www.instagram.com/${encodeURIComponent(username)}/`);
   await wait(1800);
-  const followedOnProfile=await contents.executeJavaScript(`(()=>{
+  const followedOnProfile=allowFollow&&await contents.executeJavaScript(`(()=>{
     const button=[...document.querySelectorAll('button,[role="button"]')].find(e=>/^(seguir de volta|follow back|seguir|follow)$/i.test((e.innerText||e.getAttribute('aria-label')||'').replace(/\s+/g,' ').trim()));
     if(!button)return false;button.click();return true;
   })()`,true);
@@ -808,13 +823,27 @@ const followerTimer=setInterval(async()=>{
     let candidate=await findFollowerNotification(contents);
     if(!candidate?.username)candidate=await findFollowerFromAccessibility(contents)||candidate;
     if(!candidate?.username){followerLog(`unresolved ${JSON.stringify(candidate||{})}`);return;}
-    const inspection=await followAndOpenMessage(contents,candidate.username,false);
+    // Primeiro lê o perfil sem segui-lo. Só um perfil classificado como
+    // compatível e liberado pela roleta de ritmo pode disparar uma interação.
+    const inspection=await followAndOpenMessage(contents,candidate.username,false,false);
+    const pacing=await backend('prospectingPacing',{mode:'status'});
+    if(!pacing.ready){
+      followerLog(`paced @${candidate.username} wait_seconds=${pacing.wait_seconds}`);
+      return;
+    }
     const cycle=await backend('followerCycle',{username:candidate.username,profile:inspection.profile});
     if(!cycle?.new_follower)return;
     claimedUsername=candidate.username;
     followerLog(`detected @${claimedUsername}`);
+    const reserved=await backend('prospectingPacing',{mode:'reserve',kind:'instagram_new_follower',target:claimedUsername});
+    if(!reserved.reserved){
+      await backend('followerReset',{username:claimedUsername});
+      followerLog(`reservation-lost @${claimedUsername} wait_seconds=${reserved.wait_seconds||0}`);
+      return;
+    }
+    followerLog(`round @${claimedUsername} die=${reserved.roll} interval_seconds=${reserved.interval_seconds}`);
     await followAndOpenMessage(contents,claimedUsername,true);
-    await wait(3500);
+    await naturalInteractionPause('new-follower-message');
     if(!(await backend('agentStatus')).active)throw new Error('Agente desativado antes da mensagem.');
     const sent=await sendTextInFollowerWindow(cycle.text);
     await backend('followerConfirm',{username:claimedUsername});

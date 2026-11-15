@@ -103,6 +103,12 @@ def execute(command, args):
             active=bool(args.get('active'))
             memory.set_setting('sales.agent.active','true' if active else 'false')
             return {'active':active}
+        if command == 'prospectingPacing':
+            from core.prospecting_pacing import ProspectingPacing
+            pacing = ProspectingPacing(memory)
+            if str(args.get('mode','status')) == 'reserve':
+                return pacing.reserve_round(args.get('kind','instagram_outreach'), args.get('target',''))
+            return pacing.status()
         if command == 'followerCycle':
             import re
             username=str(args.get('username','')).strip().lstrip('@').lower()
