@@ -1,11 +1,19 @@
 [CmdletBinding(SupportsShouldProcess)]
 param(
-  [string]$InstallRoot = "$env:LOCALAPPDATA\Programs\SalesAgentLocal",
+  [string]$InstallRoot = "",
   [string]$Package = ""
 )
 
 if ([string]::IsNullOrWhiteSpace($Package)) {
   $Package = Join-Path (Split-Path -Parent $PSScriptRoot) "dist\AgenteVendasLocal-update.asar"
+}
+if ([string]::IsNullOrWhiteSpace($InstallRoot)) {
+  $candidates = @()
+  if ($env:LOCALAPPDATA) { $candidates += Join-Path $env:LOCALAPPDATA "Programs\SalesAgentLocal" }
+  $candidates += Get-ChildItem -LiteralPath "C:\Users" -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+    Join-Path $_.FullName "AppData\Local\Programs\SalesAgentLocal"
+  }
+  $InstallRoot = $candidates | Where-Object { Test-Path -LiteralPath (Join-Path $_ "resources\app.asar") } | Select-Object -First 1
 }
 $target = Join-Path $InstallRoot "resources\app.asar"
 if (!(Test-Path -LiteralPath $Package)) { throw "Pacote de atualização não encontrado: $Package" }
