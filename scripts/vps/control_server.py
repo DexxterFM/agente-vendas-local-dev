@@ -7,13 +7,15 @@ import os
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parents[2]
 FRONTEND = ROOT / "frontend"
 if str(ROOT) not in os.sys.path:
     os.sys.path.insert(0, str(ROOT))
 from core.desktop_rpc import _response
+from core.memory import Memory
+from scripts.vps.meta_webhook import ingest, verify_signature, verify_subscription
 
 
 class ControlHandler(BaseHTTPRequestHandler):
@@ -32,9 +34,23 @@ class ControlHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self) -> None:  # noqa: N802
-        path = unquote(urlsplit(self.path).path)
+        parsed = urlsplit(self.path)
+        path = unquote(parsed.path)
         if path == "/api/health":
             self._json(HTTPStatus.OK, {"ok": True, "service": "agente-vendas"})
+            return
+        if path == "/api/meta/webhook":
+            query = {key: values[-1] for key, values in parse_qs(parsed.query).items() if values}
+            challenge = verify_subscription(query)
+            if challenge is None:
+                self.send_error(HTTPStatus.FORBIDDEN)
+                return
+            body = challenge.encode("utf-8")
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
             return
         relative = "index.html" if path in ("", "/") else path.lstrip("/")
         candidate = (FRONTEND / relative).resolve()
@@ -50,6 +66,24 @@ class ControlHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_POST(self) -> None:  # noqa: N802
+        if urlsplit(self.path).path == "/api/meta/webhook":
+            try:
+                size = int(self.headers.get("Content-Length", "0"))
+                if size <= 0 or size > 1_000_000:
+                    raise ValueError("Corpo inválido")
+                body = self.rfile.read(size)
+                if not verify_signature(body, self.headers.get("X-Hub-Signature-256")):
+                    self.send_error(HTTPStatus.FORBIDDEN)
+                    return
+                memory = Memory()
+                try:
+                    result = ingest(memory, json.loads(body.decode("utf-8")))
+                finally:
+                    memory.close()
+                self._json(HTTPStatus.OK, {"ok": True, **result})
+            except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+                self.send_error(HTTPStatus.BAD_REQUEST)
+            return
         if urlsplit(self.path).path != "/api/rpc":
             self.send_error(HTTPStatus.NOT_FOUND)
             return
