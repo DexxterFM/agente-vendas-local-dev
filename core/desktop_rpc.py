@@ -161,6 +161,30 @@ def execute(command, args):
                 memory.set_setting(key,'stored'); stored += 1
             memory.set_setting('instagram.thread:'+str(lead_id),thread)
             return {'lead_id':lead_id,'stored':stored,'contact':username}
+        if command == 'campaignDiscover':
+            profiles = args.get('profiles') if isinstance(args.get('profiles'), list) else []
+            created=[]
+            for profile in profiles[:30]:
+                if not isinstance(profile,dict) or profile.get('following'): continue
+                username=str(profile.get('username','')).strip().lstrip('@').lower()
+                if not re.fullmatch(r'[a-z0-9._]{1,30}', username): continue
+                segment=_follower_segment({'username':username,'text':str(profile.get('text',''))[:4000]})
+                if segment['segment']=='community': continue
+                key='sales.campaign.profile:'+username
+                if memory.get_setting(key,''): continue
+                lead_id=memory.add_lead(username,username,'Descoberto no feed: '+segment['reason'])
+                payload={'lead_id':lead_id,'username':username,'segment':segment['segment'],'intro':'Olá! Muito legal o trabalho de vocês ❤️','profile_text':str(profile.get('text',''))[:1200]}
+                action_id=memory.create_pending_action('instagram_follow_intro',payload,'Perfil público compatível com o público do ERP Clínica TEA')
+                memory.set_setting(key,str(action_id));created.append({'id':action_id,**payload})
+            return {'created':created,'reviewed':len(profiles)}
+        if command == 'followupRecords':
+            cursor=memory.db.execute("select f.id,f.lead_id,f.due_at,f.task,f.done,coalesce(f.draft,''),coalesce(f.status,'draft'),coalesce(f.channel,'manual'),l.name,l.contact from followups f join leads l on l.id=f.lead_id order by f.due_at asc limit 100")
+            return [dict(zip([col[0] for col in cursor.description],row)) for row in cursor.fetchall()]
+        if command == 'completeFollowup':
+            followup_id=int(args.get('id',0))
+            memory.db.execute("update followups set done=1,status='done' where id=?",(followup_id,));memory.db.commit()
+            memory.audit('followup.completed',f'followup:{followup_id}','ok','operator completed')
+            return {'id':followup_id,'done':True}
         if command == 'browserScreenCycle':
             if memory.get_setting('sales.agent.active','false') != 'true':
                 return {'active':False,'new_message':False}

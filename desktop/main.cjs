@@ -40,7 +40,7 @@ function metaVaultEnv(){
   }catch{} }
   return {...process.env};
 }
-const backendAllowed=['leads','create','messages','message','draft','queue','pause','followup','knowledge','saveKnowledge','responseLibrary','saveResponseTemplate','operatorAssist','trialOffer','saveTrialOffer','browserImportThread','status','records','syncHistory','syncPostflow','analytics','saveDocument','ragContext','comparison','competitorCatalog','competitorMatch','competitorSeed','research','personality','probabilities','trial','outcome','installation','approveReply','dispatchDue','agentCycle','agentStatus','setAgentActive','followerCycle','followerConfirm','followerReset','startServices','browserScreenCycle','browserScreenConfirm','browserScreenReset','replyDelay','postflowStatus','metaStatus','metaOAuthUrl','metaOAuthExchange','browserHealth','browserTools','browserSnapshot','browserAct','browserInstagramInbox','browserRead'];
+const backendAllowed=['leads','create','messages','message','draft','queue','pause','followup','knowledge','saveKnowledge','responseLibrary','saveResponseTemplate','operatorAssist','trialOffer','saveTrialOffer','browserImportThread','campaignDiscover','followupRecords','completeFollowup','status','records','syncHistory','syncPostflow','analytics','saveDocument','ragContext','comparison','competitorCatalog','competitorMatch','competitorSeed','research','personality','probabilities','trial','outcome','installation','approveReply','dispatchDue','agentCycle','agentStatus','setAgentActive','followerCycle','followerConfirm','followerReset','startServices','browserScreenCycle','browserScreenConfirm','browserScreenReset','replyDelay','postflowStatus','metaStatus','metaOAuthUrl','metaOAuthExchange','browserHealth','browserTools','browserSnapshot','browserAct','browserInstagramInbox','browserRead'];
 function ensureBackend(){
   if(backendChild&&!backendChild.killed)return backendChild;
   const root=path.join(__dirname,'..');
@@ -458,6 +458,17 @@ ipcMain.handle('sales:importBrowserInbox', async (event) => {
   }
   await view.webContents.loadURL('https://www.instagram.com/direct/inbox/');
   return {threads:imported,messages,skipped};
+});
+ipcMain.handle('sales:scanFeedProfiles', async (event) => {
+  if(event.sender!==window.webContents) throw new Error('Origem inválida');
+  const view=ensureBrowserView();const url=view.webContents.getURL()||'';
+  if(!url.includes('instagram.com')) throw new Error('Abra o feed do Instagram no navegador interno antes de procurar perfis.');
+  const candidates=await view.webContents.executeJavaScript(`(()=>{
+    const reserved=new Set(['accounts','direct','explore','reels','stories','about','developer','legal','privacy','web','p']);
+    return [...new Set([...document.querySelectorAll('a[href]')].map(a=>{const parts=new URL(a.href,location.href).pathname.split('/').filter(Boolean);return parts.length===1&&!reserved.has(parts[0])?parts[0].toLowerCase():''}).filter(Boolean))].slice(0,30).map(username=>({username,text:document.body?.innerText?.slice(0,3000)||'',following:false}));
+  })()`,true);
+  const result=await backend('campaignDiscover',{profiles:candidates});
+  return {...result,scanned:candidates.length};
 });
 ipcMain.handle('sales:browserSend', async (event, text='') => {
   if(event.sender!==window.webContents) throw new Error('Origem inválida');
