@@ -6,6 +6,14 @@ from adapters import postflow
 
 
 class PostflowConfigurationTests(unittest.TestCase):
+    def test_internal_channel_uses_only_the_official_loopback_endpoint(self):
+        with patch.dict(os.environ, {
+            "POSTFLOW_BASE_URL": "http://127.0.0.1:3999",
+            "POSTFLOW_TRUSTED_LOCAL": "true",
+            "SALES_AGENT_INTERNAL_TOKEN": "test",
+        }, clear=True):
+            self.assertEqual(postflow._base(), "http://127.0.0.1:3110")
+
     def test_trusted_local_requires_explicit_flag_loopback_and_internal_token(self):
         with patch.dict(os.environ, {"POSTFLOW_BASE_URL": "http://127.0.0.1:3110", "POSTFLOW_TRUSTED_LOCAL": "true", "SALES_AGENT_INTERNAL_TOKEN": "test"}, clear=True):
             self.assertTrue(postflow.configured())

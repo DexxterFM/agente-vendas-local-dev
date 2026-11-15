@@ -16,6 +16,11 @@ from urllib.parse import urlparse
 
 
 def _base() -> str:
+    # O canal interno é explícito e só é permitido no PostFlow local oficial.
+    # Evita que uma configuração legada de loopback envie a ingestão para outro
+    # processo na mesma VPS.
+    if os.getenv("POSTFLOW_TRUSTED_LOCAL", "").strip().lower() in {"1", "true", "yes"} and os.getenv("SALES_AGENT_INTERNAL_TOKEN", "").strip():
+        return "http://127.0.0.1:3110"
     return os.getenv("POSTFLOW_BASE_URL", "https://postflow.avanthcode.com").rstrip("/")
 
 
