@@ -91,6 +91,7 @@ def _operator_assist(message, stage, context, links, images):
     }
 
 def execute(command, args):
+    import re
     config = load_config()
     # O supervisor não precisa manter uma transação na memória comercial
     # enquanto aguarda portas locais. Isso deixa o botão de ativação livre.
@@ -187,6 +188,37 @@ def execute(command, args):
                 action_id=memory.create_pending_action('instagram_follow_intro',payload,'Perfil público compatível com o público do ERP Clínica TEA')
                 memory.set_setting(key,str(action_id));created.append({'id':action_id,**payload})
             return {'created':created,'reviewed':len(profiles)}
+        if command == 'campaignClaim':
+            row=memory.db.execute(
+                "select id,payload from pending_actions where action='instagram_follow_intro' and status in ('pending','approved') order by id asc limit 1"
+            ).fetchone()
+            if not row:
+                return {'claimed':False}
+            action_id=int(row[0])
+            claimed=memory.db.execute(
+                "update pending_actions set status='processing',decided_at=? where id=? and status in ('pending','approved')",
+                (datetime.now().isoformat(),action_id),
+            ).rowcount
+            memory.db.commit()
+            if not claimed:
+                return {'claimed':False}
+            payload=json.loads(row[1])
+            memory.audit('sales.campaign.claim',f'campaign:{action_id}','ok','browser interaction reserved')
+            return {'claimed':True,'id':action_id,'payload':payload}
+        if command == 'campaignConfirm':
+            action_id=int(args.get('id',0))
+            state=str(args.get('state','needs_check'))
+            if state not in ('sent','skipped','pending','needs_check'):
+                raise ValueError('Estado de campanha inválido')
+            updated=memory.db.execute(
+                "update pending_actions set status=?,decided_at=?,decision_note=? where id=? and status='processing'",
+                (state,datetime.now().isoformat(),str(args.get('note',''))[:1000],action_id),
+            ).rowcount
+            memory.db.commit()
+            if not updated:
+                raise ValueError('Campanha não estava reservada')
+            memory.audit('sales.campaign.result',f'campaign:{action_id}',state,str(args.get('note',''))[:1000])
+            return {'id':action_id,'state':state}
         if command == 'followupRecords':
             cursor=memory.db.execute("select f.id,f.lead_id,f.due_at,f.task,f.done,coalesce(f.draft,'') as draft,coalesce(f.status,'draft') as status,coalesce(f.channel,'manual') as channel,l.name,l.contact from followups f join leads l on l.id=f.lead_id order by f.due_at asc limit 100")
             return [dict(zip([col[0] for col in cursor.description],row)) for row in cursor.fetchall()]

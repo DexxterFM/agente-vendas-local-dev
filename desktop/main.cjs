@@ -95,7 +95,7 @@ function metaVaultEnv(){
   }catch{} }
   return {...process.env};
 }
-const backendAllowed=['leads','create','messages','message','draft','queue','pause','followup','knowledge','saveKnowledge','responseLibrary','saveResponseTemplate','operatorAssist','trialOffer','saveTrialOffer','browserImportThread','campaignDiscover','followupRecords','completeFollowup','status','records','syncHistory','syncPostflow','analytics','saveDocument','ragContext','comparison','competitorCatalog','competitorMatch','competitorSeed','research','personality','probabilities','trial','outcome','installation','approveReply','dispatchDue','agentCycle','agentStatus','setAgentActive','prospectingPacing','followerCycle','followerConfirm','followerReset','startServices','browserScreenCycle','browserScreenConfirm','browserScreenReset','replyDelay','postflowStatus','metaStatus','metaOAuthUrl','metaOAuthExchange','browserHealth','browserTools','browserSnapshot','browserAct','browserInstagramInbox','browserRead'];
+const backendAllowed=['leads','create','messages','message','draft','queue','pause','followup','knowledge','saveKnowledge','responseLibrary','saveResponseTemplate','operatorAssist','trialOffer','saveTrialOffer','browserImportThread','campaignDiscover','campaignClaim','campaignConfirm','followupRecords','completeFollowup','status','records','syncHistory','syncPostflow','analytics','saveDocument','ragContext','comparison','competitorCatalog','competitorMatch','competitorSeed','research','personality','probabilities','trial','outcome','installation','approveReply','dispatchDue','agentCycle','agentStatus','setAgentActive','prospectingPacing','followerCycle','followerConfirm','followerReset','startServices','browserScreenCycle','browserScreenConfirm','browserScreenReset','replyDelay','postflowStatus','metaStatus','metaOAuthUrl','metaOAuthExchange','browserHealth','browserTools','browserSnapshot','browserAct','browserInstagramInbox','browserRead'];
 function ensureBackend(){
   if(backendChild&&!backendChild.killed)return backendChild;
   const root=path.join(__dirname,'..');
@@ -883,6 +883,49 @@ const followerTimer=setInterval(async()=>{
   }finally{followerProcessing=false;}
 },8000);
 followerTimer.unref();
+// A prospecção ativa usa a mesma roleta persistente do CRM. Uma rodada pega
+// somente uma campanha por vez, confere o perfil e confirma o envio apenas
+// depois que a mensagem aparece na própria conversa do Instagram.
+let campaignProcessing=false;
+const campaignTimer=setInterval(async()=>{
+  if(campaignProcessing||!browserAutomationArmed||!app.isReady()||!window||window.isDestroyed())return;
+  campaignProcessing=true;
+  let campaignId=0;
+  try{
+    const state=await backend('agentStatus');
+    if(!state.active)return;
+    const pacing=await backend('prospectingPacing',{mode:'status'});
+    if(!pacing.ready)return;
+    const claim=await backend('campaignClaim',{});
+    if(!claim?.claimed)return;
+    campaignId=Number(claim.id);
+    const payload=claim.payload||{};
+    const username=String(payload.username||'').replace(/^@/,'').toLowerCase();
+    const intro=String(payload.intro||'Olá! Muito legal o trabalho de vocês ❤️').trim();
+    if(!/^[a-z0-9._]{1,30}$/.test(username)||!intro)throw new Error('Dados de campanha inválidos.');
+    const reserved=await backend('prospectingPacing',{mode:'reserve',kind:'instagram_campaign',target:username});
+    if(!reserved.reserved){
+      await backend('campaignConfirm',{id:campaignId,state:'pending',note:'Aguardando a próxima janela da roleta'});
+      return;
+    }
+    const contents=ensureFollowerWindow().webContents;
+    // Inspeção antes da interação evita seguir perfis cuja tela não possa ser
+    // lida no momento; não executa ação externa nesta primeira passagem.
+    await followAndOpenMessage(contents,username,false,false);
+    await followAndOpenMessage(contents,username,true,true);
+    await naturalInteractionPause('campaign-intro',2200,8500);
+    const sent=await sendTextInFollowerWindow(intro);
+    await backend('campaignConfirm',{id:campaignId,state:'sent',note:`DM confirmada por metadados (${sent.method||'browser'})`});
+    followerLog(`campaign @${username} die=${reserved.roll} interval_seconds=${reserved.interval_seconds}`);
+  }catch(error){
+    if(campaignId){
+      const state=error?.deliveryAttempted?'needs_check':'pending';
+      await backend('campaignConfirm',{id:campaignId,state,note:String(error?.message||error).slice(0,900)}).catch(()=>null);
+    }
+    followerLog(`campaign-error ${error?.message||error}`);
+  }finally{campaignProcessing=false;}
+},15000);
+campaignTimer.unref();
 // Supervisor autônomo: inicia as IAs e serviços locais ao abrir e recupera-os
 // se algum processo parar. O produto não depende do Codex em runtime.
 const serviceTimer=setInterval(()=>backend('startServices').catch(error=>{

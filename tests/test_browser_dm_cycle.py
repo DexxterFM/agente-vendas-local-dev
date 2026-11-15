@@ -220,6 +220,20 @@ class BrowserDmCycleTests(unittest.TestCase):
             execute("draft", {"id": lead_id, "browser_history": history})
             self.assertEqual(len(execute("followupRecords", {})), 1)
 
+    def test_campaign_claim_is_exclusive_and_records_result(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}
+        ):
+            created = execute("campaignDiscover", {"profiles": [{
+                "username": "clinica.teste", "text": "Clínica multidisciplinar TEA", "following": False,
+            }]})["created"]
+            self.assertEqual(len(created), 1)
+            claimed = execute("campaignClaim", {})
+            self.assertTrue(claimed["claimed"])
+            self.assertEqual(claimed["payload"]["username"], "clinica.teste")
+            self.assertFalse(execute("campaignClaim", {})["claimed"])
+            self.assertEqual(execute("campaignConfirm", {"id": claimed["id"], "state": "sent"})["state"], "sent")
+
     def test_positive_reaction_keeps_the_sales_flow_open(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(
             os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}
