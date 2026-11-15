@@ -762,8 +762,14 @@ async function isInstagramAuthenticatedArea(view,url){
       const target=${JSON.stringify(String(process.env.INSTAGRAM_TARGET_USERNAME||'erpclinicatea').replace(/^@/,'').toLowerCase())};
       const links=[...document.querySelectorAll('a[href]')];
       const ownProfile=links.some(link=>new URL(link.href,location.href).pathname.replace(/^\\/+|\\/+$/g,'').toLowerCase()===target);
-      const navigation=links.some(link=>/perfil|profile|página inicial|home|mensagens|messages|notificações|notifications/i.test([link.innerText,link.getAttribute('aria-label'),link.getAttribute('title')].filter(Boolean).join(' ')));
-      return ownProfile&&navigation;
+      const controls=[...document.querySelectorAll('a,button,[role="link"],[role="button"]')];
+      const labels=controls.map(item=>[item.innerText,item.getAttribute('aria-label'),item.getAttribute('title')].filter(Boolean).join(' ')).join(' ').toLowerCase();
+      const navigation=/perfil|profile|página inicial|home|mensagens|messages|notificações|notifications/.test(labels);
+      const loginPrompt=/\\b(?:entrar|login|log in|sign up|cadastre-se|criar conta)\\b/.test(labels);
+      // A navegação autenticada muda frequentemente de estrutura e pode não
+      // expor o link do próprio perfil. Os controles de Inbox/Notificações,
+      // sem campos ou ações de login, são a fonte estável de autenticação.
+      return navigation&&!loginPrompt&&(ownProfile||navigation);
     })()`,true);
   }catch{return false;}
 }
