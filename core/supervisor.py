@@ -7,7 +7,8 @@ import sqlite3
 import os
 import subprocess
 import time
-import os
+import urllib.error
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 from typing import Callable
@@ -128,12 +129,38 @@ class Supervisor:
         result = instagram_check_connection(timeout=min(self.config.http_timeout, 15.0))
         return _status(result.get("status", "unavailable"), result.get("detail", "Instagram não configurado."), **result.get("meta", {}))
 
+    def _postflow_health(self) -> dict:
+        try:
+            from adapters.postflow import status
+            result = status()
+            detail = "PostFlow conectado." if result.get("status") == "connected" else result.get("detail", "PostFlow indisponível.")
+            return _status(result.get("status", "unavailable"), detail)
+        except Exception as exc:
+            return _status("unavailable", f"PostFlow indisponível: {exc}")
+
+    def _erp_health(self) -> dict:
+        base = os.getenv("ERP_CLINICATEA_API_BASE_URL", "").strip().rstrip("/")
+        if not base:
+            return _status("not_configured", "Endpoint do ERP não configurado.")
+        headers = {"Accept": "application/json"}
+        token = os.getenv("ERP_CLINICATEA_API_TOKEN", "").strip()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        try:
+            request = urllib.request.Request(f"{base}/health", headers=headers)
+            with urllib.request.urlopen(request, timeout=8) as response:
+                return _status("connected" if 200 <= response.status < 300 else "unavailable", "ERP Clínica TEA disponível.")
+        except (urllib.error.URLError, urllib.error.HTTPError, ValueError) as exc:
+            return _status("unavailable", f"ERP Clínica TEA indisponível: {exc}")
+
     def health(self, deep: bool = True) -> dict[str, dict]:
         ollama = self._ollama_health()
         browser = self._browser_health(deep)
         memory = self._memory_health()
         rea = self._rea_health()
         instagram = self._instagram_health()
+        postflow = self._postflow_health()
+        erp = self._erp_health()
         model_status = ollama["status"]
         model_detail = self.config.ollama_model
         if model_status == "attention":
@@ -154,6 +181,8 @@ class Supervisor:
                 "Dados processados localmente; nenhum envio automático.",
             ),
             "instagram": {**instagram, "label": "Instagram/Meta"},
+            "postflow": {**postflow, "label": "PostFlow"},
+            "erp": {**erp, "label": "ERP Clínica TEA"},
         }
         result["model"]["label"] = "Modelo"
         result["privacy"]["label"] = "Privacidade"
