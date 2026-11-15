@@ -4,6 +4,7 @@ from __future__ import annotations
 import shutil
 import socket
 import sqlite3
+import os
 import subprocess
 import time
 import os
@@ -176,8 +177,17 @@ class Supervisor:
     # ------------------------------------------------------------ inicialização
     def start_services(self) -> list[dict[str, str]]:
         results: list[dict[str, str]] = []
-        results.append(self._start_ollama())
-        results.append(self._start_browseros())
+        # The desktop product owns its inference process.  When Electron has
+        # supplied LOCAL_LLM_URL, do not start a second Ollama service or an
+        # external browser: both would duplicate memory-heavy processes.
+        if os.getenv("LOCAL_LLM_URL"):
+            results.append({
+                "name": "Motor de IA embutido",
+                "running": True,
+                "detail": "llama.cpp local iniciado pelo aplicativo",
+            })
+        else:
+            results.append(self._start_ollama())
         if self.memory is not None:
             for item in results:
                 self.memory.audit(

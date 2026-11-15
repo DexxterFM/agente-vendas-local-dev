@@ -10,7 +10,16 @@ class LocalLlamaClient:
         self.model = model
 
     def chat(self, messages: list[dict], *, format_json: bool = False) -> str:
-        payload = {"model": self.model, "messages": messages, "temperature": 0.45, "stream": False}
+        # Qwen3 defaults to an internal thinking channel.  The desktop agent
+        # needs the concise visible reply, so use the model's no-think mode.
+        prepared = [dict(message) for message in messages]
+        for message in reversed(prepared):
+            if message.get("role") == "user":
+                content = str(message.get("content") or "")
+                if not content.lstrip().startswith("/no_think"):
+                    message["content"] = "/no_think\n" + content
+                break
+        payload = {"model": self.model, "messages": prepared, "temperature": 0.45, "stream": False}
         if format_json:
             payload["response_format"] = {"type": "json_object"}
         request = urllib.request.Request(
