@@ -1,0 +1,16 @@
+[Unit]
+Description=Exporta a conexão Meta do cofre AvanthCode para o Agente de Vendas
+After=network-online.target avanthcode.service
+Wants=network-online.target
+Before=postflow-test.service agente-vendas-worker.service
+
+[Service]
+Type=oneshot
+User=avanthcode
+Environment=AVANTHCODE_AGENT_STATE_DIR=/var/lib/avanthcode-agent
+Environment=SALES_AGENT_META_ENV=/var/lib/avanthcode-agent/config/sales-agent-meta.env
+ExecStart=/opt/node-v22.23.4-linux-x64/bin/node /opt/agente-vendas-local/app/scripts/vps/export_meta_vault.mjs
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
