@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
@@ -188,9 +189,13 @@ class SupervisorTests(unittest.TestCase):
             port_checker=lambda _port: True,
             popen=lambda *args, **kwargs: calls.append(args),
         )
-        results = supervisor.start_services()
-        self.assertEqual(len(results), 2)
-        self.assertTrue(all(item["ok"] for item in results))
+        # The packaged desktop version owns llama.cpp.  It must not launch a
+        # second Ollama process or a separate browser process beside it.
+        with patch.dict(os.environ, {"LOCAL_LLM_URL": "http://127.0.0.1:19090"}):
+            results = supervisor.start_services()
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["name"], "Motor de IA embutido")
+        self.assertTrue(results[0]["running"])
         self.assertEqual(calls, [])
 
     def test_health_shape(self):

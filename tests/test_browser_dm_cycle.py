@@ -155,13 +155,23 @@ class BrowserDmCycleTests(unittest.TestCase):
             clinic = execute("draft", {"id": lead_id, "browser_history": [
                 {"role": "assistant", "text": question}, {"role": "user", "text": "Somos uma clínica multiprofissional"},
             ]})
+            clinic_link = execute("draft", {"id": lead_id, "browser_history": [
+                {"role": "assistant", "text": question}, {"role": "user", "text": "Somos uma clínica multiprofissional"},
+                {"role": "assistant", "text": clinic}, {"role": "user", "text": "Sim, pode enviar o link"},
+            ]})
             individual = execute("draft", {"id": lead_id, "browser_history": [
                 {"role": "assistant", "text": question}, {"role": "user", "text": "Atendo sozinha no consultório"},
             ]})
-            self.assertIn("erpclinicatea.com/planos", clinic)
-            self.assertIn("convite_tres_meses", clinic)
-            self.assertIn("produto-profissional?convite=3-meses", individual)
-            self.assertIn("3 meses grátis", individual)
+            individual_link = execute("draft", {"id": lead_id, "browser_history": [
+                {"role": "assistant", "text": question}, {"role": "user", "text": "Atendo sozinha no consultório"},
+                {"role": "assistant", "text": individual}, {"role": "user", "text": "Claro, pode mandar o link"},
+            ]})
+            self.assertIn("Posso enviar o link", clinic)
+            self.assertIn("erpclinicatea.com/planos", clinic_link)
+            self.assertIn("convite_tres_meses", clinic_link)
+            self.assertIn("Posso enviar o link", individual)
+            self.assertIn("produto-profissional?convite=3-meses", individual_link)
+            self.assertIn("3 meses gratuitos", individual_link)
 
     def test_persona_answers_name_and_location(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(

@@ -518,7 +518,16 @@ def execute(command, args):
             if (
                 trial_segment in ('clinic', 'professional')
                 and latest_user
-                and re.fullmatch(r'(?:sim|s[ií]m|quero|pode\s+(?:enviar|mandar)|claro)[.! 😊👍]*', latest_user, re.I)
+                # A confirmação costuma vir em uma frase natural, por exemplo
+                # "sim, pode enviar o link".  Aceitar somente uma palavra
+                # fazia o fluxo voltar à descoberta em vez de entregar a opção
+                # correta que acabara de ser qualificada.
+                and re.fullmatch(
+                    r'(?:sim|s[ií]m|quero|claro)(?:[,.! ]+(?:pode\s+)?(?:enviar|mandar)(?:\s+o)?\s*(?:link)?)?[.! 😊👍]*'
+                    r'|pode\s+(?:enviar|mandar)(?:\s+o)?\s*(?:link)?[.! 😊👍]*',
+                    latest_user.strip(),
+                    re.I,
+                )
                 and previous_assistant
                 and re.search(r'\b(?:3\s+meses|link|ativa[cç][aã]o)\b', previous_assistant, re.I)
             ):
