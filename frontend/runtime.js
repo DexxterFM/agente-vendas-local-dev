@@ -19,7 +19,7 @@ async function refreshSystemSummary(){
  const model=health.model||{};const postflow=health.postflow||{};const erp=health.erp||{};
  const modelText=el('#model-status-text');if(modelText)modelText.textContent=`Ollama · ${model.detail||'indisponível'}`;
  const modelDot=el('#model-status-dot');if(modelDot)modelDot.className=model.status==='connected'?'':'attention';
- const postflowText=el('#postflow-status-text');if(postflowText)postflowText.textContent=postflow.status==='connected'?'PostFlow conectado':'PostFlow requer atenção';
+ const postflowThreads=Number(postflow.meta?.threads||0);const postflowText=el('#postflow-status-text');if(postflowText)postflowText.textContent=postflow.status==='connected'?`PostFlow conectado · ${postflowThreads} DMs`:'PostFlow requer atenção';
  const postflowIcon=el('#postflow-status-icon');if(postflowIcon)postflowIcon.textContent=postflow.status==='connected'?'✓':'!';
  const postflowCard=el('#postflow-status-card');if(postflowCard)postflowCard.classList.toggle('attention',postflow.status!=='connected');
  const live=el('#live-data-label');if(live)live.textContent=`ERP ${erp.status==='connected'?'online':'atenção'} · PostFlow ${postflow.status==='connected'?'online':'atenção'}`;

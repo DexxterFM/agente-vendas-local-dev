@@ -134,7 +134,10 @@ class Supervisor:
             from adapters.postflow import status
             result = status()
             detail = result.get("detail", "PostFlow conectado." if result.get("status") == "connected" else "PostFlow indisponível.")
-            return _status(result.get("status", "unavailable"), detail)
+            return _status(
+                result.get("status", "unavailable"), detail,
+                threads=int(result.get("threads", 0) or 0),
+            )
         except Exception as exc:
             return _status("unavailable", f"PostFlow indisponível: {exc}")
 
