@@ -749,7 +749,13 @@ function record(error) {
 }
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
-  app.on('second-instance', () => { if(window) {window.restore(); window.focus();} });
+  // O atalho pode ser acionado enquanto o Electron ainda descarrega uma
+  // janela anterior. Não tente restaurar um BrowserWindow já destruído.
+  app.on('second-instance', () => {
+    if(!window||window.isDestroyed()) return;
+    if(window.isMinimized()) window.restore();
+    window.focus();
+  });
   app.whenReady().then(async () => {
     startMetaCallbackServer();
     // O supervisor sobe os serviços locais em paralelo. A janela não deve
@@ -767,7 +773,7 @@ else {
       app.quit();
     }
   }).catch(record);
-  app.on('window-all-closed',()=>app.quit());
+  app.on('window-all-closed',()=>{window=null;app.quit();});
   app.on('will-quit',()=>{if(metaCallbackServer)metaCallbackServer.close();if(followerWindow&&!followerWindow.isDestroyed())followerWindow.destroy();if(backendChild&&!backendChild.killed)backendChild.kill();});
 }
 process.on('uncaughtException', record);
