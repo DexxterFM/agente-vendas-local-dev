@@ -8,8 +8,17 @@ from __future__ import annotations
 
 import os
 import signal
+import sys
 import time
 from datetime import datetime, timezone
+from pathlib import Path
+
+# Quando executado pelo systemd, o diretório do script (scripts/vps) é o
+# primeiro item do sys.path. Inclua explicitamente a raiz da aplicação para
+# importar o mesmo núcleo usado pelo desktop.
+APP_ROOT = Path(__file__).resolve().parents[2]
+if str(APP_ROOT) not in sys.path:
+    sys.path.insert(0, str(APP_ROOT))
 
 from core.desktop_rpc import execute
 
