@@ -574,6 +574,18 @@ function isInstagramAuthenticationPage(url){
     return path.startsWith('/accounts/login')||path.startsWith('/accounts/signup')||path.startsWith('/accounts/password')||path.startsWith('/challenge')||path.startsWith('/checkpoint')||path.startsWith('/two_factor_authentication');
   }catch{return false;}
 }
+async function isInstagramAuthenticationScreen(view,url){
+  if(isInstagramAuthenticationPage(url))return true;
+  try{
+    return await view.webContents.executeJavaScript(`(()=>{
+      const fields=[...document.querySelectorAll('input,textarea,[contenteditable="true"]')];
+      return fields.some(field=>{
+        const text=[field.name,field.type,field.autocomplete,field.placeholder,field.getAttribute('aria-label')].filter(Boolean).join(' ').toLowerCase();
+        return /username|senha|password|one-time-code|verification|security code|c[oó]digo/.test(text);
+      });
+    })()`,true);
+  }catch{return false;}
+}
 const browserTimer=setInterval(async()=>{
   if(browserProcessing||!window||window.isDestroyed())return;
   browserProcessing=true;
@@ -587,7 +599,7 @@ const browserTimer=setInterval(async()=>{
     // Nunca interrompa a autenticação manual. Enquanto a página de login,
     // desafio ou checkpoint estiver aberta, o operador controla a tela e o
     // ciclo aguarda o Instagram concluir a sessão por conta própria.
-    if(isInstagramAuthenticationPage(url))return;
+    if(await isInstagramAuthenticationScreen(activeView,url))return;
     if(url.includes('instagram.com/')&&!url.includes('instagram.com/direct')){
       const home=await scanInstagramHome(activeView);
       if(home.hasNotification)followerScanRequested=true;

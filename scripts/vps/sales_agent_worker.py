@@ -33,6 +33,9 @@ def stop(*_args):
 def main() -> None:
     interval = max(10, min(300, int(os.getenv("SALES_AGENT_CYCLE_SECONDS", "30"))))
     auto_dispatch = os.getenv("SALES_AGENT_AUTO_DISPATCH", "false").strip().lower() == "true"
+    postflow_sync = os.getenv("POSTFLOW_SYNC_ENABLED", "false").strip().lower() == "true"
+    postflow_interval = max(30, min(900, int(os.getenv("POSTFLOW_SYNC_INTERVAL_SECONDS", "90"))))
+    next_postflow_sync = 0.0
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
     # BrowserOS pertence ao app Windows e não deve ser inicializado no Linux.
@@ -41,17 +44,23 @@ def main() -> None:
     print(
         datetime.now(timezone.utc).isoformat(),
         "worker_started",
-        {"interval": interval, "auto_dispatch": auto_dispatch},
+        {"interval": interval, "auto_dispatch": auto_dispatch, "postflow_sync": postflow_sync},
         flush=True,
     )
     while RUNNING:
         try:
+            if postflow_sync and time.monotonic() >= next_postflow_sync:
+                result = execute("syncPostflow", {})
+                next_postflow_sync = time.monotonic() + postflow_interval
+                print(datetime.now(timezone.utc).isoformat(), "postflow_sync", result, flush=True)
             result = execute("agentCycle", {})
             if auto_dispatch and result.get("active"):
                 execute("dispatchDue", {})
             print(datetime.now(timezone.utc).isoformat(), result, flush=True)
         except Exception as exc:  # systemd reinicia somente se o processo cair
             print(datetime.now(timezone.utc).isoformat(), "cycle_error", str(exc), flush=True)
+            if postflow_sync:
+                next_postflow_sync = time.monotonic() + postflow_interval
         for _ in range(interval):
             if not RUNNING:
                 break
