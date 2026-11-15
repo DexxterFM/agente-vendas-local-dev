@@ -30,8 +30,20 @@ function renderEmptyConversation(){
 }
 
 function bindBrowserControls(){
- el('#browser-pane-btn')?.addEventListener('click',async()=>{const result=await window.sales.browserPane('open');if(result?.open){el('#browser-toolbar').hidden=false;el('#browser-address').value=result.url||el('#browser-address').value;report({message:'Navegador interno aberto.'});}});
- document.querySelectorAll('[data-browser-action]').forEach(button=>button.addEventListener('click',async()=>{const result=await window.sales.browserPane(button.dataset.browserAction);if(button.dataset.browserAction==='hide'||button.dataset.browserAction==='close'){el('#browser-toolbar').hidden=true;}else if(result?.url){el('#browser-address').value=result.url;}}));
+ let browserVisible=true;
+ const browserButton=el('#browser-pane-btn');
+ const toolbar=el('#browser-toolbar');
+ const updateBrowserToggle=()=>{if(!browserButton)return;browserButton.textContent=browserVisible?'▣ Ocultar navegador':'🌐 Mostrar navegador';browserButton.setAttribute('aria-pressed',String(browserVisible));};
+ updateBrowserToggle();
+ // O BrowserView é uma camada nativa acima do painel. Este alternador mantém
+ // o navegador como ferramenta principal, mas libera o CRM e o importador de
+ // DMs sem o operador precisar fechar o aplicativo.
+ browserButton?.addEventListener('click',async()=>{
+   if(browserVisible){await window.sales.browserPane('hide');browserVisible=false;toolbar.hidden=true;updateBrowserToggle();report({message:'Painel comercial exibido.'});return;}
+   const result=await window.sales.browserPane('open');
+   if(result?.open){browserVisible=true;toolbar.hidden=false;el('#browser-address').value=result.url||el('#browser-address').value;updateBrowserToggle();report({message:'Navegador interno exibido.'});}
+ });
+ document.querySelectorAll('[data-browser-action]').forEach(button=>button.addEventListener('click',async()=>{const result=await window.sales.browserPane(button.dataset.browserAction);if(button.dataset.browserAction==='hide'||button.dataset.browserAction==='close'){browserVisible=false;toolbar.hidden=true;updateBrowserToggle();}else if(result?.url){browserVisible=true;toolbar.hidden=false;updateBrowserToggle();el('#browser-address').value=result.url;}}));
  el('#browser-go')?.addEventListener('click',async()=>{const result=await window.sales.browserPane('navigate',el('#browser-address').value);if(result?.url)el('#browser-address').value=result.url;});
  el('#browser-address')?.addEventListener('keydown',event=>{if(event.key==='Enter')el('#browser-go')?.click();});
  el('#edit-btn')?.addEventListener('click',()=>{const draft=el('#draft-text');draft.contentEditable=String(draft.contentEditable!=='true');draft.focus();});
