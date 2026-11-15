@@ -10,9 +10,21 @@ import json, os, secrets, urllib.parse, urllib.request
 SCOPES = ('instagram_business_basic','instagram_business_manage_messages','instagram_business_manage_comments','instagram_business_manage_insights')
 
 def values(memory):
-    account=(memory.get_setting('meta.account_id','') or os.getenv('IG_BUSINESS_ACCOUNT_ID','') or os.getenv('INSTAGRAM_BUSINESS_ACCOUNT_ID','')).strip()
-    token=(memory.get_setting('meta.access_token','') or os.getenv('INSTAGRAM_ACCESS_TOKEN','') or os.getenv('PAGE_ACCESS_TOKEN','')).strip()
-    version=(memory.get_setting('meta.graph_version','') or os.getenv('META_GRAPH_VERSION','v23.0')).strip()
+    environment_account=(os.getenv('IG_BUSINESS_ACCOUNT_ID','') or os.getenv('INSTAGRAM_BUSINESS_ACCOUNT_ID','')).strip()
+    environment_token=(os.getenv('INSTAGRAM_ACCESS_TOKEN','') or os.getenv('PAGE_ACCESS_TOKEN','')).strip()
+    environment_version=os.getenv('META_GRAPH_VERSION','').strip()
+    # No VPS o cofre de EnvironmentFile é a fonte rotacionável. Evita que um
+    # token histórico do SQLite vença uma credencial recém-atualizada. O app
+    # desktop mantém o comportamento OAuth local por padrão.
+    prefer_environment=os.getenv('SALES_AGENT_PREFER_ENV_CREDENTIALS','').strip().lower() in {'1','true','yes'}
+    if prefer_environment:
+        account=(environment_account or memory.get_setting('meta.account_id','')).strip()
+        token=(environment_token or memory.get_setting('meta.access_token','')).strip()
+        version=(environment_version or memory.get_setting('meta.graph_version','') or 'v23.0').strip()
+    else:
+        account=(memory.get_setting('meta.account_id','') or environment_account).strip()
+        token=(memory.get_setting('meta.access_token','') or environment_token).strip()
+        version=(memory.get_setting('meta.graph_version','') or environment_version or 'v23.0').strip()
     return account,token,version
 
 def authorization_url(memory):

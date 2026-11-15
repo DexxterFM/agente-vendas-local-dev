@@ -42,6 +42,23 @@ class CoreTests(unittest.TestCase):
                 "active": True, "queued": 2, "synced": 3,
                 "meta_sync_enabled": False, "postflow_sync_enabled": True,
             })
+
+    def test_vps_can_prefer_rotatable_environment_meta_credentials(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {
+            "SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3"),
+            "SALES_AGENT_PREFER_ENV_CREDENTIALS": "true",
+            "IG_BUSINESS_ACCOUNT_ID": "environment-account",
+            "INSTAGRAM_ACCESS_TOKEN": "environment-token",
+            "META_GRAPH_VERSION": "v23.0",
+        }, clear=False):
+            from core.meta_credentials import values
+            memory = Memory(Path(folder) / "agent.sqlite3")
+            try:
+                memory.set_setting("meta.account_id", "stale-account")
+                memory.set_setting("meta.access_token", "stale-token")
+                self.assertEqual(values(memory), ("environment-account", "environment-token", "v23.0"))
+            finally:
+                memory.close()
     def test_plain_text_is_answer(self):
         self.assertEqual(parse_decision("Olá cliente"), {"action": "answer", "text": "Olá cliente"})
 
