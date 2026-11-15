@@ -23,6 +23,14 @@ let localLlmChild=null;
 let remoteTunnelChild=null;
 let remoteTunnelStartedAt=0;
 const localLlmPort=11535;
+function persistentAgentDataDir(){
+  // app.getPath('userData') pertence ao perfil real do Electron. Derivar a
+  // pasta Local dele evita que um launcher/sandbox substitua LOCALAPPDATA e
+  // faça o backend abrir um banco temporário, perdendo o estado do agente.
+  const userData=app.getPath('userData');
+  const appData=path.dirname(path.dirname(userData));
+  return path.join(appData,'Local','SalesAgentLocal');
+}
 function remoteControlConfig(){
   const candidates=[path.join(process.resourcesPath,'remote-control.json'),path.join(app.getPath('userData'),'remote-control.json')];
   for(const file of candidates){try{const config=JSON.parse(fs.readFileSync(file,'utf8'));if(config?.enabled&&config?.sshHost)return config;}catch{}}
@@ -102,7 +110,7 @@ function ensureBackend(){
   const root=path.join(__dirname,'..');
   const packaged=path.join(process.resourcesPath,'SalesAgentBackend.exe');
   const embedded=startEmbeddedLlm();
-  const env={...metaVaultEnv(),SALES_AGENT_RPC_STREAM:'1',...(embedded?{LOCAL_LLM_URL:`http://127.0.0.1:${localLlmPort}`,LOCAL_LLM_MODEL:'qwen3-sales'}:{})};
+  const env={...metaVaultEnv(),SALES_AGENT_RPC_STREAM:'1',SALES_AGENT_DATA_DIR:persistentAgentDataDir(),...(embedded?{LOCAL_LLM_URL:`http://127.0.0.1:${localLlmPort}`,LOCAL_LLM_MODEL:'qwen3-sales'}:{})};
   backendChild=app.isPackaged?spawn(packaged,[],{windowsHide:true,env}):spawn('python',['-m','core.desktop_rpc'],{cwd:root,windowsHide:true,env});
   backendBuffer='';
   backendChild.stdout.on('data',data=>{
@@ -775,10 +783,11 @@ const browserTimer=setInterval(async()=>{
   if(browserProcessing||!window||window.isDestroyed())return;
   browserProcessing=true;
   try{
-    fs.mkdirSync(app.getPath('userData'),{recursive:true}); fs.appendFileSync(path.join(app.getPath('userData'),'browser-send.log'),`${new Date().toISOString()} tick\n`);
+    fs.mkdirSync(app.getPath('userData'),{recursive:true});
     const activeView=ensureBrowserView();
     const state=await backend('agentStatus');
     let url=activeView.webContents.getURL()||'';
+    fs.appendFileSync(path.join(app.getPath('userData'),'browser-send.log'),`${new Date().toISOString()} tick ${JSON.stringify({active:!!state.active,url,armed:browserAutomationArmed})}\n`);
     if(!state.active||!url)return;
     // A sessão é sempre concluída manualmente. O perfil oficial aberto é o
     // único gatilho que libera as rotinas; até então nenhum ciclo muda a tela.
