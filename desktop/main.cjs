@@ -740,7 +740,10 @@ async function scanInstagramHome(view,{openInbox=true}={}){
   })()`,true);
   const hasMessage=indicators.messages.some(item=>item.badge||/nova|new|unread|não lida/i.test(item.text));
   const hasNotification=Boolean(indicators.redBadge)||indicators.notifications.some(item=>item.badge||/nova|new/i.test(item.text));
-  fs.appendFileSync(path.join(app.getPath('userData'),'browser-send.log'),`${new Date().toISOString()} home indicators ${JSON.stringify({hasMessage,hasNotification,indicators})}\n`);
+  // O registro é somente diagnóstico agregado. Nunca inclua URLs integrais
+  // do feed/notificações, pois links de redirecionamento podem conter dados
+  // efêmeros da sessão.
+  fs.appendFileSync(path.join(app.getPath('userData'),'browser-send.log'),`${new Date().toISOString()} home indicators ${JSON.stringify({hasMessage,hasNotification,messageControls:indicators.messages.length,notificationControls:indicators.notifications.length,redBadge:indicators.redBadge})}\n`);
   if(hasMessage&&openInbox){
     await view.webContents.loadURL('https://www.instagram.com/direct/inbox/');
     return {openedInbox:true,hasNotification};
