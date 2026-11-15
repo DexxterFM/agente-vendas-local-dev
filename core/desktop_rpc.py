@@ -493,6 +493,20 @@ def execute(command, args):
             )
             if opening_thanks:
                 return 'Você merece! 😊 Mas me conta: já possui algum app ou programa para a gestão da sua clínica?'
+            # Uma saudação curta recebida de um lead já qualificado é apenas a
+            # reciprocidade da abertura humana. Retome a descoberta sem
+            # reiniciar o atendimento com uma apresentação genérica do ERP.
+            qualified_greeting = bool(
+                latest_user
+                and re.fullmatch(
+                    r'(?:oi|ol[aá]|bom\s+dia|boa\s+tarde|boa\s+noite)(?:[!., 😊👋👍]*|\s+(?:tudo\s+bem|como\s+vai)[!., 😊👋👍]*)',
+                    latest_user.strip(),
+                    re.I,
+                )
+                and history
+            )
+            if qualified_greeting:
+                return 'Tudo bem! Espero que sim 😊 Por acaso já utiliza algum app ou programa para administrar sua clínica? Se já usa, qual?'
             # Keep the first two turns deterministic so the sales flow does not
             # skip qualification or jump straight to a generic pitch.
             if not history:

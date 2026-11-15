@@ -210,6 +210,24 @@ class BrowserDmCycleTests(unittest.TestCase):
             )
             self.assertNotIn("testar", answer.casefold())
 
+    def test_qualified_greeting_returns_to_app_discovery(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}
+        ):
+            lead_id = execute("create", {"name": "Clínica teste", "contact": "clinica.teste"})
+            answer = execute("draft", {
+                "id": lead_id,
+                "browser_history": [
+                    {"role": "assistant", "text": "Muito legal o trabalho da clínica de vocês!"},
+                    {"role": "user", "text": "Boa tarde!"},
+                ],
+            })
+            self.assertEqual(
+                answer,
+                "Tudo bem! Espero que sim 😊 Por acaso já utiliza algum app ou programa para administrar sua clínica? Se já usa, qual?",
+            )
+            self.assertNotIn("como posso ajudar", answer.casefold())
+
     def test_new_follower_is_welcomed_once(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(
             os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}
