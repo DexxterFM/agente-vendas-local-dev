@@ -33,7 +33,7 @@ function startRemoteTunnel(){
   const executable=process.env.WINDIR?path.join(process.env.WINDIR,'System32','OpenSSH','ssh.exe'):'ssh';
   const port=String(remoteControl.localPort||8787);
   remoteTunnelStartedAt=Date.now();
-  remoteTunnelChild=spawn(executable,['-N','-o','BatchMode=yes','-o','ExitOnForwardFailure=yes','-L',`${port}:127.0.0.1:${remoteControl.remotePort||8787}`,remoteControl.sshHost],{windowsHide:true,stdio:['ignore','ignore','pipe']});
+  remoteTunnelChild=spawn(executable,['-N','-o','BatchMode=yes','-o','ExitOnForwardFailure=yes','-o','ServerAliveInterval=30','-o','ServerAliveCountMax=3','-L',`${port}:127.0.0.1:${remoteControl.remotePort||8787}`,remoteControl.sshHost],{windowsHide:true,stdio:['ignore','ignore','pipe']});
   remoteTunnelChild.stderr?.on('data',data=>{
     try{fs.appendFileSync(path.join(app.getPath('userData'),'desktop.log'),`${new Date().toISOString()} remote-tunnel ${String(data).slice(0,800)}\n`);}catch{}
   });
@@ -1020,6 +1020,11 @@ else {
   });
   app.whenReady().then(async () => {
     startMetaCallbackServer();
+    // A edição de controle remoto precisa manter seu próprio túnel durante
+    // toda a vida do aplicativo. Não espere o primeiro clique/consulta para
+    // abrir a conexão, pois isso deixava o painel em estado parcial após um
+    // reinício da aplicação.
+    if(remoteControl) startRemoteTunnel();
     // O supervisor sobe os serviços locais em paralelo. A janela não deve
     // esperar tentativas de conexão com Ollama/BrowserOS para ficar utilizável.
     backend('startServices').catch(()=>null);
