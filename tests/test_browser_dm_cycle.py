@@ -188,7 +188,7 @@ class BrowserDmCycleTests(unittest.TestCase):
             self.assertIn("convite_tres_meses", clinic_link)
             self.assertIn("Posso enviar o link", individual)
             self.assertIn("produto-profissional?convite=3-meses", individual_link)
-            self.assertIn("3 meses gratuitos", individual_link)
+            self.assertIn("3 meses grátis", individual_link)
 
     def test_persona_answers_name_and_location(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(
@@ -339,7 +339,7 @@ class BrowserDmCycleTests(unittest.TestCase):
             self.assertEqual(
                 first["text"],
                 "Obrigado por seguir! Parabéns pelo trabalho da clínica! Tenho um presente para a sua equipe. "
-                "Se quiser, diga “eu quero” que te mando para você. 😊",
+                "Diga “eu quero” que te mando para você. 😊",
             )
 
             reserved = execute("followerCycle", {"username": "clinica.nova"})
@@ -373,10 +373,13 @@ class BrowserDmCycleTests(unittest.TestCase):
                     {"role": "user", "text": "Eu quero"},
                 ],
             })
-            self.assertIn(BROWSER_BUBBLE_SEPARATOR, answer)
-            self.assertIn("3 meses grátis", answer)
-            self.assertIn("erpclinicatea.com/planos", answer)
-            self.assertIn("até 2 dias", answer)
+            parts = answer.split(BROWSER_BUBBLE_SEPARATOR)
+            self.assertEqual(len(parts), 2)
+            self.assertIn("3 meses grátis", parts[0])
+            self.assertIn("erpclinicatea.com/planos", parts[0])
+            self.assertNotIn("validade", parts[0])
+            self.assertIn("Você tem 3 meses grátis", parts[1])
+            self.assertIn("validade de 2 dias", parts[1])
 
     def test_follower_profile_selects_pro_or_community_message(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(

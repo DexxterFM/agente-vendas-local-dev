@@ -29,13 +29,16 @@ def _follower_segment(profile):
         return {
             'segment':'clinic_multi',
             'reason':'perfil público indica clínica, equipe ou atendimento multidisciplinar',
-            'text':'Obrigado por seguir! Parabéns pelo trabalho da clínica! Tenho um presente para a sua equipe. Se quiser, diga “eu quero” que te mando para você. 😊',
+            # Esta é deliberadamente só a primeira parte do contato. A oferta
+            # e o aviso de validade só aparecem depois de "eu quero", em dois
+            # balões distintos, para não despejar toda a proposta de uma vez.
+            'text':'Obrigado por seguir! Parabéns pelo trabalho da clínica! Tenho um presente para a sua equipe. Diga “eu quero” que te mando para você. 😊',
         }
     if is_professional:
         return {
             'segment':'professional_pro',
             'reason':'perfil público indica profissional de saúde/terapia individual',
-            'text':'Obrigado por seguir! Parabéns pelo seu trabalho! Tenho um presente para você. Se quiser, diga “eu quero” que te mando para você. 😊',
+            'text':'Obrigado por seguir! Parabéns pelo seu trabalho! Tenho um presente para você. Diga “eu quero” que te mando para você. 😊',
         }
     return {
         'segment':'community',
@@ -681,11 +684,12 @@ def execute(command, args):
             ):
                 offer = trial_offer[trial_segment]
                 return (
-                    f'Perfeito! Seu presente são 3 meses grátis do {offer["name"]}. '
-                    f'Aqui está o link de ativação: {offer["url"]}'
+                    f'3 meses grátis do {offer["name"]}. '
+                    f'Aqui está o seu link de ativação: {offer["url"]}'
                     + BROWSER_BUBBLE_SEPARATOR
-                    + 'Você terá 3 meses gratuitos para revolucionar a forma como administra sua clínica. '
-                    'Atenção: use o link de ativação em até 2 dias; depois disso a oportunidade expira. 😔'
+                    + 'Você tem 3 meses grátis para revolucionar a forma como administra sua clínica. '
+                    'Atenção: use o link de ativação imediatamente: ele tem validade de 2 dias. '
+                    'Caso não ative nesse prazo, a oportunidade será perdida. 😔'
                 )
             # Keep the first two turns deterministic so the sales flow does not
             # skip qualification or jump straight to a generic pitch.
