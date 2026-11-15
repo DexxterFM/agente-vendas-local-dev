@@ -520,6 +520,12 @@ def execute(command, args):
         if command == 'browserRead':
             from adapters.browseros import BrowserOSClient
             return BrowserOSClient(config.browseros_mcp_url,timeout=config.http_timeout,max_chars=config.max_page_chars).open_and_read(str(args.get('url',''))).text
+        if command == 'internalBrowserStatus':
+            from scripts.vps.internal_browser import status
+            return status()
+        if command == 'internalBrowserSnapshot':
+            from scripts.vps.internal_browser import snapshot
+            return snapshot()
         if command == 'importMetaEnvironment':
             account=(os.getenv('IG_BUSINESS_ACCOUNT_ID','') or os.getenv('INSTAGRAM_BUSINESS_ACCOUNT_ID','')).strip()
             token=(os.getenv('INSTAGRAM_ACCESS_TOKEN','') or os.getenv('PAGE_ACCESS_TOKEN','')).strip()
