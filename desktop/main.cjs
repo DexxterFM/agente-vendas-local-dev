@@ -95,7 +95,7 @@ function metaVaultEnv(){
   }catch{} }
   return {...process.env};
 }
-const backendAllowed=['leads','create','messages','message','draft','queue','pause','followup','knowledge','saveKnowledge','responseLibrary','saveResponseTemplate','operatorAssist','trialOffer','saveTrialOffer','browserImportThread','campaignDiscover','campaignClaim','campaignConfirm','followupRecords','completeFollowup','status','records','syncHistory','syncPostflow','analytics','saveDocument','ragContext','comparison','competitorCatalog','competitorMatch','competitorSeed','research','personality','probabilities','trial','outcome','installation','approveReply','dispatchDue','agentCycle','agentStatus','setAgentActive','prospectingPacing','followerCycle','followerConfirm','followerReset','startServices','browserScreenCycle','browserScreenConfirm','browserScreenReset','replyDelay','postflowStatus','metaStatus','metaOAuthUrl','metaOAuthExchange','browserHealth','browserTools','browserSnapshot','browserAct','browserInstagramInbox','browserRead'];
+const backendAllowed=['leads','create','messages','message','draft','queue','pause','followup','knowledge','saveKnowledge','responseLibrary','saveResponseTemplate','saveTrialOffer','browserImportThread','campaignDiscover','campaignClaim','campaignConfirm','followupRecords','completeFollowup','status','records','syncHistory','syncPostflow','analytics','saveDocument','ragContext','comparison','competitorCatalog','competitorMatch','competitorSeed','research','personality','probabilities','trial','outcome','installation','approveReply','dispatchDue','agentCycle','agentStatus','setAgentActive','setProspectingActive','prospectingPacing','followerCycle','followerConfirm','followerReset','startServices','browserScreenCycle','browserScreenConfirm','browserScreenReset','replyDelay','postflowStatus','metaStatus','metaOAuthUrl','metaOAuthExchange','browserHealth','browserTools','browserSnapshot','browserAct','browserInstagramInbox','browserRead'];
 function ensureBackend(){
   if(backendChild&&!backendChild.killed)return backendChild;
   const root=path.join(__dirname,'..');
@@ -580,6 +580,7 @@ let browserProcessing=false;
 let browserAutomationArmed=false;
 let followerScanRequested=false;
 let lastFollowerScanAt=0;
+let nextFollowerScanAt=0;
 function isSalesProfilePage(url){
   try{
     const parsed=new URL(url);
@@ -832,10 +833,9 @@ let followerProcessing=false;
 const followerTimer=setInterval(async()=>{
   if(followerProcessing||!browserAutomationArmed||!app.isReady()||!window||window.isDestroyed())return;
   const now=Date.now();
-  // O timer normal evita custo desnecessário. Uma bolinha detectada na página
-  // inicial concede prioridade à próxima execução em vez de esperar o ciclo
-  // longo da leitura de notificações.
-  if(!followerScanRequested&&now-lastFollowerScanAt<45000)return;
+  // Consulta de atualizações com ritmo humano: uma rodada inicial ao armar o
+  // perfil e, depois, somente após cinco minutos ou mais.
+  if(now<nextFollowerScanAt)return;
   followerProcessing=true;
   followerScanRequested=false;
   lastFollowerScanAt=now;
@@ -870,17 +870,29 @@ const followerTimer=setInterval(async()=>{
     }
     followerLog(`round @${claimedUsername} die=${reserved.roll} interval_seconds=${reserved.interval_seconds}`);
     await followAndOpenMessage(contents,claimedUsername,true);
+    if(await conversationMessageCount(contents,cycle.text)>0){
+      await backend('followerConfirm',{username:claimedUsername,text:cycle.text});
+      followerLog(`confirmed-existing @${claimedUsername}`);
+      return;
+    }
     await naturalInteractionPause('new-follower-message');
     if(!(await backend('agentStatus')).active)throw new Error('Agente desativado antes da mensagem.');
     const sent=await sendTextInFollowerWindow(cycle.text);
-    await backend('followerConfirm',{username:claimedUsername});
+    await backend('followerConfirm',{username:claimedUsername,text:cycle.text});
     followerLog(`completed @${claimedUsername} ${JSON.stringify(sent)}`);
   }catch(error){
     followerLog(`error ${claimedUsername?'@'+claimedUsername+' ':''}${error.message}`);
     if(claimedUsername&&error.deliveryAttempted){
       followerLog(`pending-confirmation @${claimedUsername}; envio bloqueado para evitar duplicação`);
     }else if(claimedUsername)await backend('followerReset',{username:claimedUsername}).catch(()=>null);
-  }finally{followerProcessing=false;}
+  }finally{
+    lastFollowerScanAt=Date.now();
+    const die=interactionDie();
+    const interval=300000+(die*30000)+crypto.randomInt(5000,45001);
+    nextFollowerScanAt=lastFollowerScanAt+interval;
+    followerLog(`next-scan die=${die} interval_seconds=${Math.round(interval/1000)}`);
+    followerProcessing=false;
+  }
 },8000);
 followerTimer.unref();
 // A prospecção ativa usa a mesma roleta persistente do CRM. Uma rodada pega
@@ -893,7 +905,7 @@ const campaignTimer=setInterval(async()=>{
   let campaignId=0;
   try{
     const state=await backend('agentStatus');
-    if(!state.active)return;
+    if(!state.active||!state.prospecting_active)return;
     const pacing=await backend('prospectingPacing',{mode:'status'});
     if(!pacing.ready)return;
     const claim=await backend('campaignClaim',{});

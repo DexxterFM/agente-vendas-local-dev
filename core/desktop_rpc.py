@@ -100,10 +100,17 @@ def execute(command, args):
         return Supervisor(config).start_services()
     with Memory(config.db_path) as memory:
         if command == 'agentStatus':
-            return {'active': memory.get_setting('sales.agent.active','false') == 'true'}
+            return {
+                'active': memory.get_setting('sales.agent.active','false') == 'true',
+                'prospecting_active': memory.get_setting('sales.agent.prospecting_active','false') == 'true',
+            }
         if command == 'setAgentActive':
             active=bool(args.get('active'))
             memory.set_setting('sales.agent.active','true' if active else 'false')
+            return {'active':active}
+        if command == 'setProspectingActive':
+            active=bool(args.get('active'))
+            memory.set_setting('sales.agent.prospecting_active','true' if active else 'false')
             return {'active':active}
         if command == 'prospectingPacing':
             from core.prospecting_pacing import ProspectingPacing
@@ -120,8 +127,19 @@ def execute(command, args):
                 return {'active':False,'new_follower':False}
             key='sales.agent.follower:'+username
             previous=memory.get_setting(key,'')
-            if previous in ('claimed','sent'):
+            if previous == 'sent':
                 return {'active':True,'new_follower':False,'status':previous}
+            if previous == 'claimed':
+                try:
+                    saved=json.loads(memory.get_setting(key+'.profile','{}'))
+                except Exception:
+                    saved={}
+                text=str(saved.get('text','')).strip()
+                if text:
+                    return {'active':True,'new_follower':True,'resume':True,'username':username,
+                            'text':text,'segment':saved.get('segment','community'),
+                            'reason':saved.get('reason','Mensagem pendente de confirmação.'),'key':key}
+                memory.set_setting(key,'')
             profile=args.get('profile') if isinstance(args.get('profile'),dict) else {}
             profile={key:str(profile.get(key,'') or '')[:3000] for key in ('username','name','bio','text')}
             segment=_follower_segment(profile)
@@ -138,8 +156,18 @@ def execute(command, args):
                 raise ValueError('Seguidor não estava reservado')
             memory.set_setting(key,'sent')
             detail=memory.get_setting(key+'.profile','')
+            text=' '.join(str(args.get('text','')).split())[:1200]
+            if text:
+                sent_key='sales.agent.follower_message:'+username
+                if memory.get_setting(sent_key,'') != text:
+                    lead=next((memory.get_lead_detail(row[0]) for row in memory.list_leads()
+                               if str(memory.get_lead_detail(row[0]).get('contact','')).strip().lower().lstrip('@') == username),None)
+                    lead_id=int(lead['id']) if lead else memory.add_lead(username,username,'Seguidor do Instagram')
+                    memory.add_conversation(lead_id,'assistant',text)
+                    memory.set_setting(sent_key,text)
+                    memory.set_setting('sales.agent.last_outbound:'+username,text)
             memory.audit('instagram.follower_welcome','@'+username,'ok','follow_back=true; dm_sent=true; '+detail[:1000])
-            return {'confirmed':True,'username':username}
+            return {'confirmed':True,'username':username,'message_recorded':bool(text)}
         if command == 'followerReset':
             import re
             username=str(args.get('username','')).strip().lstrip('@').lower()

@@ -234,6 +234,25 @@ class BrowserDmCycleTests(unittest.TestCase):
             self.assertFalse(execute("campaignClaim", {})["claimed"])
             self.assertEqual(execute("campaignConfirm", {"id": claimed["id"], "state": "sent"})["state"], "sent")
 
+    def test_pending_follower_resumes_and_records_last_message(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}
+        ):
+            execute("setAgentActive", {"active": True})
+            first = execute("followerCycle", {"username": "clinica.teste", "profile": {
+                "username": "clinica.teste", "bio": "Clínica multidisciplinar TEA", "text": "Clínica ABA",
+            }})
+            resumed = execute("followerCycle", {"username": "clinica.teste", "profile": {}})
+            self.assertTrue(resumed["new_follower"])
+            self.assertTrue(resumed["resume"])
+            self.assertEqual(resumed["text"], first["text"])
+            confirmed = execute("followerConfirm", {"username": "clinica.teste", "text": first["text"]})
+            self.assertTrue(confirmed["message_recorded"])
+            self.assertEqual(execute("agentStatus", {})["prospecting_active"], False)
+            execute("setProspectingActive", {"active": True})
+            self.assertTrue(execute("agentStatus", {})["prospecting_active"])
+            self.assertFalse(execute("followerCycle", {"username": "clinica.teste", "profile": {}})["new_follower"])
+
     def test_positive_reaction_keeps_the_sales_flow_open(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(
             os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}
@@ -307,10 +326,11 @@ class BrowserDmCycleTests(unittest.TestCase):
             )
 
             reserved = execute("followerCycle", {"username": "clinica.nova"})
-            self.assertFalse(reserved["new_follower"])
-            self.assertEqual(reserved["status"], "claimed")
+            self.assertTrue(reserved["new_follower"])
+            self.assertTrue(reserved["resume"])
+            self.assertEqual(reserved["text"], first["text"])
 
-            execute("followerConfirm", {"username": "clinica.nova"})
+            execute("followerConfirm", {"username": "clinica.nova", "text": first["text"]})
             sent = execute("followerCycle", {"username": "clinica.nova"})
             self.assertFalse(sent["new_follower"])
             self.assertEqual(sent["status"], "sent")
