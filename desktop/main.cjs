@@ -95,7 +95,7 @@ function metaVaultEnv(){
   }catch{} }
   return {...process.env};
 }
-const backendAllowed=['leads','create','messages','message','draft','queue','pause','followup','knowledge','saveKnowledge','responseLibrary','saveResponseTemplate','saveTrialOffer','browserImportThread','campaignDiscover','campaignClaim','campaignConfirm','followupRecords','completeFollowup','status','records','syncHistory','syncPostflow','analytics','saveDocument','ragContext','comparison','competitorCatalog','competitorMatch','competitorSeed','research','personality','probabilities','trial','outcome','installation','approveReply','dispatchDue','agentCycle','agentStatus','setAgentActive','setProspectingActive','prospectingPacing','followerCycle','followerConfirm','followerReset','startServices','browserScreenCycle','browserScreenConfirm','browserScreenReset','replyDelay','postflowStatus','metaStatus','metaOAuthUrl','metaOAuthExchange','browserHealth','browserTools','browserSnapshot','browserAct','browserInstagramInbox','browserRead'];
+const backendAllowed=['leads','create','messages','message','draft','queue','pause','followup','knowledge','saveKnowledge','responseLibrary','saveResponseTemplate','saveTrialOffer','browserImportThread','classifyImportedHistory','campaignDiscover','campaignClaim','campaignConfirm','followupRecords','completeFollowup','status','records','syncHistory','syncPostflow','analytics','saveDocument','ragContext','comparison','competitorCatalog','competitorMatch','competitorSeed','research','personality','probabilities','trial','outcome','installation','approveReply','dispatchDue','agentCycle','agentStatus','setAgentActive','setProspectingActive','prospectingPacing','followerCycle','followerConfirm','followerReset','startServices','browserScreenCycle','browserScreenConfirm','browserScreenReset','replyDelay','postflowStatus','metaStatus','metaOAuthUrl','metaOAuthExchange','browserHealth','browserTools','browserSnapshot','browserAct','browserInstagramInbox','browserRead'];
 function ensureBackend(){
   if(backendChild&&!backendChild.killed)return backendChild;
   const root=path.join(__dirname,'..');
@@ -603,7 +603,8 @@ ipcMain.handle('sales:importBrowserInbox', async (event) => {
     }
   }
   await view.webContents.loadURL('https://www.instagram.com/direct/inbox/');
-  return {threads:imported,messages,skipped};
+  const classification=await backend('classifyImportedHistory',{});
+  return {threads:imported,messages,skipped,classified:Number(classification.count||0)};
 });
 ipcMain.handle('sales:scanFeedProfiles', async (event) => {
   if(event.sender!==window.webContents) throw new Error('Origem inválida');

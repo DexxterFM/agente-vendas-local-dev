@@ -7,11 +7,28 @@ from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from core.desktop_rpc import execute
+from core.desktop_rpc import BROWSER_BUBBLE_SEPARATOR, execute
 from core.memory import Memory
 
 
 class BrowserDmCycleTests(unittest.TestCase):
+
+    def test_browser_history_import_classifies_lead_and_can_backfill(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}
+        ):
+            imported = execute("browserImportThread", {
+                "thread_id": "history-01", "username": "clinica.quente",
+                "messages": [
+                    {"id": "a" * 64, "direction": "outgoing", "text": "Posso mostrar os planos?"},
+                    {"id": "b" * 64, "direction": "incoming", "text": "Qual o preço para contratar hoje?"},
+                ],
+            })
+            self.assertEqual(imported["qualification"]["stage"], "hot")
+            self.assertGreaterEqual(imported["qualification"]["score"], 70)
+            result = execute("classifyImportedHistory", {})
+            self.assertEqual(result["count"], 1)
+            self.assertEqual(result["classified"][0]["contact"], "clinica.quente")
     def _payload(self, messages):
         latest = messages[-1]
         return {
@@ -321,8 +338,8 @@ class BrowserDmCycleTests(unittest.TestCase):
             self.assertEqual(first["segment"], "clinic_multi")
             self.assertEqual(
                 first["text"],
-                "Obrigado por seguir! Parabéns pelo trabalho da clínica! Tenho um presente para a sua equipe: "
-                "3 meses grátis do ERP Clínica TEA Multi. Se quiser, é só dizer “eu quero” que já envio para você. 😊",
+                "Obrigado por seguir! Parabéns pelo trabalho da clínica! Tenho um presente para a sua equipe. "
+                "Se quiser, diga “eu quero” que te mando para você. 😊",
             )
 
             reserved = execute("followerCycle", {"username": "clinica.nova"})
@@ -335,6 +352,32 @@ class BrowserDmCycleTests(unittest.TestCase):
             self.assertFalse(sent["new_follower"])
             self.assertEqual(sent["status"], "sent")
 
+    def test_follower_gift_is_split_from_the_trial_link_and_expiry(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}
+        ):
+            execute("setAgentActive", {"active": True})
+            greeting = execute("followerCycle", {
+                "username": "clinica.nova",
+                "profile": {"bio": "Clínica multidisciplinar com equipe ABA"},
+            })
+            execute("followerConfirm", {
+                "username": "clinica.nova", "text": greeting["text"],
+            })
+            with Memory(Path(folder) / "agent.sqlite3") as memory:
+                lead_id = next(row[0] for row in memory.list_leads() if row[2] == "clinica.nova")
+            answer = execute("draft", {
+                "id": lead_id,
+                "browser_history": [
+                    {"role": "assistant", "text": greeting["text"]},
+                    {"role": "user", "text": "Eu quero"},
+                ],
+            })
+            self.assertIn(BROWSER_BUBBLE_SEPARATOR, answer)
+            self.assertIn("3 meses grátis", answer)
+            self.assertIn("erpclinicatea.com/planos", answer)
+            self.assertIn("até 2 dias", answer)
+
     def test_follower_profile_selects_pro_or_community_message(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(
             os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}
@@ -345,7 +388,8 @@ class BrowserDmCycleTests(unittest.TestCase):
                 "profile": {"name": "Fono Teste", "bio": "Fonoaudióloga infantil"},
             })
             self.assertEqual(professional["segment"], "professional_pro")
-            self.assertIn("ERP Clínica TEA Pro", professional["text"])
+            self.assertIn("Tenho um presente", professional["text"])
+            self.assertNotIn("ERP Clínica TEA Pro", professional["text"])
 
             community = execute("followerCycle", {
                 "username": "musica.teste",
