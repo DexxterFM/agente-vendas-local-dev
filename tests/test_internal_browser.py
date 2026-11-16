@@ -42,6 +42,17 @@ class InternalBrowserTests(unittest.TestCase):
 
         self.assertEqual("home", page["id"])
 
+    @patch("scripts.vps.internal_browser._http")
+    def test_target_keeps_authenticated_page_ahead_of_stale_password_recovery(self, request):
+        request.return_value = [
+            {"id": "inbox", "type": "page", "url": "https://www.instagram.com/direct/inbox/"},
+            {"id": "recovery", "type": "page", "url": "https://www.instagram.com/auth_platform/reset_password/?apc=redacted"},
+        ]
+
+        page = internal_browser._target()
+
+        self.assertEqual("inbox", page["id"])
+
     @patch("scripts.vps.internal_browser.evaluate")
     def test_snapshot_preserves_unauthenticated_state(self, evaluate):
         evaluate.return_value = {

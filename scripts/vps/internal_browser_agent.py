@@ -50,7 +50,8 @@ def _login_or_identity_step(url: str) -> bool:
     path = parsed.path.casefold()
     return any(marker in path for marker in (
         "/accounts/login", "/accounts/signup", "/accounts/password",
-        "/challenge", "/checkpoint", "/two_factor", "/login", "/oidc",
+        "/auth_platform/", "/challenge", "/checkpoint", "/two_factor",
+        "/login", "/oidc",
     ))
 
 

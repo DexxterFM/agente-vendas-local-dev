@@ -185,7 +185,11 @@ def _is_instagram_login_window(item: dict[str, Any]) -> bool:
     if parsed.hostname not in _PRIMARY_HOSTS:
         return False
     path = parsed.path.casefold()
-    return path.startswith(("/accounts/login", "/accounts/signup", "/accounts/emailsignup", "/accounts/password", "/challenge", "/checkpoint", "/two_factor", "/login"))
+    return path.startswith((
+        "/accounts/login", "/accounts/signup", "/accounts/emailsignup",
+        "/accounts/password", "/auth_platform/", "/challenge",
+        "/checkpoint", "/two_factor", "/login",
+    ))
 
 
 def _target() -> dict[str, Any]:
