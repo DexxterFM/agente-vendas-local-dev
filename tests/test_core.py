@@ -41,6 +41,10 @@ class CoreTests(unittest.TestCase):
             self.assertEqual(status["worker_cycle"], {
                 "active": True, "queued": 2, "synced": 3,
                 "meta_sync_enabled": False, "postflow_sync_enabled": True,
+                "browser": {
+                    "state": "unknown", "processed": False,
+                    "replied": False, "threads": 0,
+                },
             })
 
     def test_vps_can_prefer_rotatable_environment_meta_credentials(self):
