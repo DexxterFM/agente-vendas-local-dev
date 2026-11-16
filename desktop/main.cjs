@@ -1055,6 +1055,49 @@ async function followAndOpenMessage(contents,username,openMessage=true,allowFoll
   }
   throw new Error('A conversa de @'+username+' não abriu.');
 }
+async function engageWithProfilePost(contents,username){
+  // Uma rodada positiva usa a própria janela e não repete o mesmo perfil.
+  // Controles opcionais ausentes em uma versão da interface não bloqueiam a DM.
+  const result={liked:false,commented:false,reshared:false};
+  const postOpened=await contents.executeJavaScript(`(()=>{
+    const link=[...document.querySelectorAll('a[href]')].find(a=>{try{return /\/(?:p|reel)\/[A-Za-z0-9_-]+/.test(new URL(a.href,location.href).pathname)}catch{return false}});
+    if(!link)return false;(link.closest('a')||link).click();return true;
+  })()`,true);
+  if(postOpened)await wait(1800);
+  result.liked=Boolean(await contents.executeJavaScript(`(()=>{
+    const buttons=[...document.querySelectorAll('button,[role="button"],[aria-label]')];
+    const button=buttons.find(e=>/^(?:curtir|like)$/i.test((e.getAttribute('aria-label')||e.innerText||'').trim())&&!/(?:descurtir|unlike)/i.test((e.getAttribute('aria-label')||e.innerText||'')));
+    if(!button)return false;(button.closest('button,[role="button"]')||button).click();return true;
+  })()`,true));
+  if(result.liked)await naturalInteractionPause('campaign-like',900,2600);
+  const commentReady=await contents.executeJavaScript(`(()=>{
+    const fields=[...document.querySelectorAll('textarea,input,[contenteditable="true"],[role="textbox"]')];
+    const field=fields.find(e=>/coment[aá]rio|comment|adicionar/i.test((e.getAttribute('placeholder')||'')+' '+(e.getAttribute('aria-label')||'')));
+    if(!field)return false;field.focus();return document.activeElement===field;
+  })()`,true);
+  if(commentReady){
+    await typeWithVirtualKeyboard(contents,'Muito bonito o trabalho de vocês! 😊','campaign-comment');
+    contents.sendInputEvent({type:'keyDown',keyCode:'ENTER'});contents.sendInputEvent({type:'keyUp',keyCode:'ENTER'});
+    result.commented=true;await naturalInteractionPause('campaign-comment',1200,3200);
+  }
+  const shareClicked=await contents.executeJavaScript(`(()=>{
+    const buttons=[...document.querySelectorAll('button,[role="button"],[aria-label]')];
+    const button=buttons.find(e=>/^(?:compartilhar|share|repost|recompartilhar)$/i.test((e.getAttribute('aria-label')||e.innerText||'').trim()));
+    if(!button)return false;(button.closest('button,[role="button"]')||button).click();return true;
+  })()`,true);
+  if(shareClicked){
+    await wait(700);
+    const reposted=await contents.executeJavaScript(`(()=>{
+      const items=[...document.querySelectorAll('button,[role="button"],a')];
+      const item=items.find(e=>/^(?:repost|recompartilhar|compartilhar no feed|share to feed)$/i.test((e.innerText||e.getAttribute('aria-label')||'').replace(/\s+/g,' ').trim()));
+      if(!item)return false;(item.closest('button,[role="button"],a')||item).click();return true;
+    })()`,true);
+    result.reshared=Boolean(reposted);
+    if(result.reshared)await naturalInteractionPause('campaign-reshare',1000,2800);
+  }
+  try{fs.appendFileSync(path.join(app.getPath('userData'),'browser-send.log'),`${new Date().toISOString()} campaign-engagement @${username} ${JSON.stringify(result)}\n`);}catch{}
+  return result;
+}
 let followerProcessing=false;
 const followerTimer=setInterval(async()=>{
   if(isRemoteControl)return;
@@ -1152,6 +1195,7 @@ const campaignTimer=setInterval(async()=>{
     // Inspeção antes da interação evita seguir perfis cuja tela não possa ser
     // lida no momento; não executa ação externa nesta primeira passagem.
     await followAndOpenMessage(contents,username,false,false);
+    await engageWithProfilePost(contents,username);
     await followAndOpenMessage(contents,username,true,true);
     await naturalInteractionPause('campaign-intro',2200,8500);
     const sent=await sendTextInFollowerWindow(intro);
