@@ -558,8 +558,14 @@ def _mark_sweep() -> None:
 
 def _notification_candidates() -> list[dict[str, Any]]:
     """Lê somente perfis associados explicitamente a novo seguidor."""
-    if not _open_notifications():
-        return []
+    opened = _open_notifications()
+    if not opened:
+        # Algumas versões deixam os eventos da central renderizados na página
+        # inicial e o ícone não muda a rota. Se já há botões Follow Back
+        # visíveis, a central está disponível para leitura mesmo sem navegação.
+        available = _page(r'''(()=>[...document.querySelectorAll('button,[role="button"]')].some(e=>/seguir(?:\s+de)?\s+volta|follow\s+back/i.test(String(e.getAttribute('aria-label')||e.innerText||''))))()''')
+        if not available:
+            return []
     _wait(1.4)
     value = _page(r'''(()=>{
       const reserved=new Set(['accounts','direct','explore','reels','stories','about','developer','legal','privacy','web']);
