@@ -732,7 +732,9 @@ def execute(command, args):
                 return (
                     'Não, de forma alguma. O teste não gera cobrança automática; dez dias antes do fim avisamos e você decide se quer continuar.'
                     + BROWSER_BUBBLE_SEPARATOR
-                    + 'Entendo você, hoje em dia é complicado. Nossa empresa é familiar e o CEO é um pai atípico. Se quiser que eu mande o link, é só dizer “quero” que te mando. 😊'
+                    + 'Entendo sua preocupação. Mas somos uma empresa séria e comprometida com a qualidade.'
+                    + BROWSER_BUBBLE_SEPARATOR
+                    + 'Nosso compromisso é atender você com excelência, para que tenha uma experiência realmente transformadora na forma de administrar sua clínica. 😊'
                 )
             proposal_analysis = bool(latest_user and re.search(
                 r'\b(?:vou|vamos|iremos|preciso|precisamos).{0,45}\b(?:analis|avali|pensar|ver com (?:a |o )?(?:equipe|s[oó]ci[oa]|respons[aá]vel))',
@@ -905,7 +907,9 @@ def execute(command, args):
                         return (
                             'Não, de forma alguma. O teste não gera cobrança automática; dez dias antes do fim avisamos e você decide se quer continuar.'
                             + BROWSER_BUBBLE_SEPARATOR
-                            + 'Entendo você, hoje em dia é complicado. Nossa empresa é familiar e o CEO é um pai atípico. Se quiser que eu mande o link, é só dizer “quero” que te mando. 😊'
+                            + 'Entendo sua preocupação. Mas somos uma empresa séria e comprometida com a qualidade.'
+                            + BROWSER_BUBBLE_SEPARATOR
+                            + 'Nosso compromisso é atender você com excelência, para que tenha uma experiência realmente transformadora na forma de administrar sua clínica. 😊'
                         )
                     return 'Entendi! Vou seguir com você por aqui. Qual é a principal necessidade da sua clínica?'
                 return generated

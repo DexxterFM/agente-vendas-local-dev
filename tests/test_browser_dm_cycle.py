@@ -36,10 +36,10 @@ class BrowserDmCycleTests(unittest.TestCase):
                 ],
             })
             parts = answer.split(BROWSER_BUBBLE_SEPARATOR)
-            self.assertEqual(2, len(parts))
+            self.assertEqual(3, len(parts))
             self.assertIn("não gera cobrança automática", parts[0])
-            self.assertIn("empresa é familiar", parts[1])
-            self.assertIn("pai atípico", parts[1])
+            self.assertIn("empresa séria e comprometida com a qualidade", parts[1])
+            self.assertIn("experiência realmente transformadora", parts[2])
             self.assertNotRegex(answer, r"(?i)okay|we've|next step|lead")
 
     def test_automatic_reply_authorization_approves_waiting_dm_actions(self):
