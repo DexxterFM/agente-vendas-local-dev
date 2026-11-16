@@ -198,6 +198,8 @@ class InternalBrowserTests(unittest.TestCase):
         self.assertEqual({"ok": True}, result)
         self.assertEqual(["Control", "a", "a", "Control"], [payload["key"] for _, payload in calls])
         self.assertEqual(2, calls[1][1]["modifiers"])
+        self.assertEqual("keyDown", calls[0][1]["type"])
+        self.assertEqual("keyDown", calls[1][1]["type"])
 
     @patch("scripts.vps.internal_browser.time.sleep")
     @patch("scripts.vps.internal_browser._with_page")
