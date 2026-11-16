@@ -7,6 +7,7 @@ from scripts.vps import internal_browser_agent
 class InternalBrowserAgentMetadataTests(unittest.TestCase):
     def setUp(self):
         internal_browser_agent._RECENT_UNREAD_TARGETS.clear()
+        internal_browser_agent._LAST_NOTIFICATION_SCAN = 0.0
 
     @patch("scripts.vps.internal_browser_agent._page")
     def test_inbox_targets_prioritize_blue_unread_metadata(self, page):
@@ -62,12 +63,37 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
 
         result = internal_browser_agent.cycle()
 
-        self.assertEqual("ready", result["browser"])
+        self.assertEqual("notification", result["browser"])
         self.assertTrue(result["notification_pending"])
         self.assertFalse(result["message_pending"])
         self.assertEqual(1, result["notification_controls"])
         self.assertEqual(1, result["notification_queued"])
         capture.assert_called_once_with()
+
+    @patch("scripts.vps.internal_browser_agent._capture_notification_actions")
+    @patch("scripts.vps.internal_browser_agent._inbox_targets")
+    @patch("scripts.vps.internal_browser_agent.browser.metadata")
+    @patch("scripts.vps.internal_browser_agent.browser.snapshot")
+    @patch("scripts.vps.internal_browser_agent.browser.status")
+    @patch("scripts.vps.internal_browser_agent.execute")
+    def test_notification_is_processed_before_dm_when_both_are_pending(
+        self, execute, status, snapshot, metadata, inbox_targets, capture
+    ):
+        execute.return_value = {"active": True}
+        status.return_value = {"running": True, "ready": True}
+        snapshot.return_value = {"url": "https://www.instagram.com/", "authenticated": True}
+        metadata.return_value = {
+            "message_pending": True, "notification_pending": True,
+            "message_controls": 1, "notification_controls": 1,
+        }
+        capture.return_value = {"notification_candidates": 1, "notification_queued": 1}
+
+        result = internal_browser_agent.cycle()
+
+        self.assertEqual("notification", result["browser"])
+        self.assertEqual(1, result["notification_candidates"])
+        capture.assert_called_once_with()
+        inbox_targets.assert_not_called()
 
     @patch("scripts.vps.internal_browser_agent._sweep_due", return_value=False)
     @patch("scripts.vps.internal_browser_agent._process_thread", return_value={"processed": True, "replied": True})

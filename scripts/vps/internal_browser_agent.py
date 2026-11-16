@@ -24,6 +24,8 @@ INBOX_URL = "https://www.instagram.com/direct/inbox/"
 HOME_URL = "https://www.instagram.com/"
 WEEKLY_SWEEP = timedelta(days=7)
 _RECENT_UNREAD_TARGETS: dict[str, float] = {}
+_LAST_NOTIFICATION_SCAN = 0.0
+NOTIFICATION_SCAN_COOLDOWN_SECONDS = 90
 
 
 def _now() -> datetime:
@@ -47,6 +49,15 @@ def _actionable_unread(targets: list[dict[str, Any]]) -> list[dict[str, Any]]:
         target for target in targets
         if target.get("unread") and _RECENT_UNREAD_TARGETS.get(_unread_target_key(target), 0) <= now
     ]
+
+
+def _notification_scan_due() -> bool:
+    return time.monotonic() - _LAST_NOTIFICATION_SCAN >= NOTIFICATION_SCAN_COOLDOWN_SECONDS
+
+
+def _mark_notification_scan() -> None:
+    global _LAST_NOTIFICATION_SCAN
+    _LAST_NOTIFICATION_SCAN = time.monotonic()
 
 
 def _page(expression: str) -> Any:
@@ -405,6 +416,13 @@ def cycle() -> dict[str, Any]:
         "frontend_events": len(event_rows),
         "frontend_unread_rows": int(last_event.get("unread_rows") or 0),
     }
+    # A central de notificações tem prioridade quando os dois indicadores
+    # vermelhos aparecem juntos. Antes, o retorno antecipado do ramo de DMs
+    # impedia esta rotina de ser alcançada indefinidamente.
+    if aggregate["notification_pending"] and _notification_scan_due():
+        notification_result = _capture_notification_actions()
+        _mark_notification_scan()
+        return {"active": True, "browser": "notification", **aggregate, **notification_result}
     if aggregate["message_pending"]:
         if urlparse(url).path.rstrip("/") != "/direct/inbox":
             browser.action({"kind": "navigate", "url": INBOX_URL})
@@ -423,8 +441,6 @@ def cycle() -> dict[str, Any]:
             return {"active": True, "browser": "message", **aggregate, **processed}
         return {"active": True, "browser": "inbox-no-new-unread", **aggregate}
     notification_result = {}
-    if aggregate["notification_pending"]:
-        notification_result = _capture_notification_actions()
     if _sweep_due():
         return {"active": True, "browser": "sweep", **aggregate, **notification_result, **sweep("weekly")}
     if open_thread_result is not None:
