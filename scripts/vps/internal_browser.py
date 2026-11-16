@@ -302,7 +302,17 @@ def metadata() -> dict[str, Any]:
         const colors=[style.backgroundColor,style.color,style.borderColor,style.fill,style.stroke].join(' ');
         return /rgb\((?:2[0-5]\d|1[89]\d),\s*(?:[0-9]|[1-9]\d|1[0-5]\d),\s*(?:[0-9]|[1-9]\d|1[0-5]\d)\)/.test(colors);
       };
-      const controls=[...document.querySelectorAll('[aria-label]')].filter(element=>/^(notifications|notificações|messages|mensagens)$/i.test(norm(element.getAttribute('aria-label'))));
+      const hasRedBadge=element=>{
+        if(isRed(element))return true;
+        for(const pseudo of ['::before','::after']){
+          const style=getComputedStyle(element,pseudo), content=String(style.content||'');
+          const colors=[style.backgroundColor,style.color,style.borderColor].join(' ');
+          if(content!=='none'&&content!==''&&/rgb\((?:2[0-5]\d|1[89]\d),\s*(?:[0-9]|[1-9]\d|1[0-5]\d),\s*(?:[0-9]|[1-9]\d|1[0-5]\d)\)/.test(colors))return true;
+        }
+        return false;
+      };
+      const controlLabel=element=>norm(element.getAttribute('aria-label')||element.getAttribute('title'));
+      const controls=[...document.querySelectorAll('[aria-label],[title]')].filter(element=>/^(?:notifications|notificações|messages|mensagens)(?:\s*\(?\d{1,3}\)?)?$/i.test(controlLabel(element)));
       const inspect=(pattern)=>{
         const matches=controls.filter(element=>pattern.test(norm(element.getAttribute('aria-label'))));
         let pending=false;
@@ -310,16 +320,17 @@ def metadata() -> dict[str, Any]:
           let scope=element;
           for(let depth=0;depth<6&&scope;depth++,scope=scope.parentElement){
             const nodes=[scope,...scope.querySelectorAll('*')];
-            if(nodes.some(node=>{const rect=node.getBoundingClientRect();return rect.width>0&&rect.height>0&&rect.width<=80&&rect.height<=80&&isRed(node)}))pending=true;
+            if(nodes.some(node=>{const rect=node.getBoundingClientRect();return rect.width>0&&rect.height>0&&rect.width<=80&&rect.height<=80&&hasRedBadge(node)}))pending=true;
             if(nodes.some(node=>/^\d{1,3}$/.test(norm(node.textContent))))pending=true;
             if(scope.matches('a,button,[role="link"],[role="button"]'))break;
           }
         }
         return {controls:matches.length,pending};
       };
-      const messages=inspect(/^(messages|mensagens)$/i);
-      const notifications=inspect(/^(notifications|notificações)$/i);
-      return {path:location.pathname,message_controls:messages.controls,notification_controls:notifications.controls,message_pending:messages.pending,notification_pending:notifications.pending};
+      const messages=inspect(/^(?:messages|mensagens)(?:\s*\(?\d{1,3}\)?)?$/i);
+      const notifications=inspect(/^(?:notifications|notificações)(?:\s*\(?\d{1,3}\)?)?$/i);
+      const followBack=[...document.querySelectorAll('button,[role="button"]')].some(element=>/^(?:seguir(?:\s+de)?\s+volta|follow\s+back)$/i.test(norm(element.getAttribute('aria-label')||element.innerText)));
+      return {path:location.pathname,message_controls:messages.controls,notification_controls:notifications.controls,message_pending:messages.pending,notification_pending:notifications.pending||followBack};
     })()'''
     value = evaluate(expression)
     if not isinstance(value, dict):
@@ -341,7 +352,7 @@ def frontend_events(clear: bool = True) -> dict[str, Any]:
     """
     clear_js = "state.events.splice(0,state.events.length)" if clear else "state.events.slice()"
     expression = rf'''(()=>{{
-      const KEY='__salesAgentFrontEventsV1';
+      const KEY='__salesAgentFrontEventsV3';
       const norm=value=>String(value||'').replace(/\s+/g,' ').trim();
       const visible=e=>{{const r=e.getBoundingClientRect();return r.width>0&&r.height>0}};
       const rgb=value=>{{const m=String(value||'').match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);return m?[+m[1],+m[2],+m[3]]:null}};
@@ -349,18 +360,28 @@ def frontend_events(clear: bool = True) -> dict[str, Any]:
         const s=getComputedStyle(e), values=[s.backgroundColor,s.color,s.borderColor,s.fill,s.stroke];
         return values.some(value=>{{const c=rgb(value);return c&&c[0]>=180&&c[0]>c[1]*1.35&&c[0]>c[2]*1.2}});
       }};
+      const hasRedBadge=e=>{{
+        if(isRed(e))return true;
+        for(const pseudo of ['::before','::after']){{
+          const s=getComputedStyle(e,pseudo), content=String(s.content||'');
+          if(content==='none'||content==='')continue;
+          const c=rgb(s.backgroundColor)||rgb(s.color)||rgb(s.borderColor);
+          if(c&&c[0]>=180&&c[0]>c[1]*1.35&&c[0]>c[2]*1.2)return true;
+        }}
+        return false;
+      }};
       const isBlue=e=>{{
         const s=getComputedStyle(e), values=[s.backgroundColor,s.color,s.borderColor,s.fill,s.stroke];
         return values.some(value=>{{const c=rgb(value);return c&&c[2]>=140&&c[2]-c[0]>=35&&c[2]-c[1]>=10}});
       }};
       const inspectControl=pattern=>{{
-        const controls=[...document.querySelectorAll('[aria-label]')].filter(e=>pattern.test(norm(e.getAttribute('aria-label'))));
+        const controls=[...document.querySelectorAll('[aria-label],[title]')].filter(e=>pattern.test(norm(e.getAttribute('aria-label')||e.getAttribute('title'))));
         let pending=false;
         for(const control of controls){{
           let scope=control;
           for(let depth=0;depth<6&&scope;depth++,scope=scope.parentElement){{
             const nodes=[scope,...scope.querySelectorAll('*')].filter(visible);
-            if(nodes.some(node=>{{const r=node.getBoundingClientRect();return r.width<=80&&r.height<=80&&isRed(node)}}))pending=true;
+            if(nodes.some(node=>{{const r=node.getBoundingClientRect();return r.width<=80&&r.height<=80&&hasRedBadge(node)}}))pending=true;
             if(nodes.some(node=>/^\d{{1,3}}$/.test(norm(node.textContent))))pending=true;
             if(scope.matches('a,button,[role="link"],[role="button"]'))break;
           }}
@@ -397,9 +418,10 @@ def frontend_events(clear: bool = True) -> dict[str, Any]:
       }};
       const read=()=>{{
         const messages=inspectControl(/^(messages|mensagens)$/i);
-        const notifications=inspectControl(/^(notifications|notificações)$/i);
+        const notifications=inspectControl(/^(?:notifications|notificações)(?:\s*\(?\d{{1,3}}\)?)?$/i);
         const unread=location.pathname.startsWith('/direct')?unreadRows():{{count:0,confirmed:0}};
-        return {{path:location.pathname,message_pending:messages.pending,notification_pending:notifications.pending,unread_rows:unread.count,unread_confirmed:unread.confirmed}};
+        const followBack=[...document.querySelectorAll('button,[role="button"]')].some(e=>/^(?:seguir(?:\s+de)?\s+volta|follow\s+back)$/i.test(norm(e.getAttribute('aria-label')||e.innerText)));
+        return {{path:location.pathname,message_pending:messages.pending,notification_pending:notifications.pending||followBack,unread_rows:unread.count,unread_confirmed:unread.confirmed}};
       }};
       let state=window[KEY];
       if(!state||!state.observer){{
@@ -414,12 +436,14 @@ def frontend_events(clear: bool = True) -> dict[str, Any]:
         }};
         const schedule=()=>{{if(state.timer)return;state.timer=setTimeout(sample,350)}};
         state.observer=new MutationObserver(schedule);
-        state.observer.observe(document.documentElement,{{subtree:true,childList:true,attributes:true,attributeFilter:['class','style','aria-label','title']}});
+        state.observer.observe(document.documentElement,{{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['class','style','aria-label','title','aria-hidden','data-visualcompletion']}});
         addEventListener('popstate',schedule,{{passive:true}});
         addEventListener('hashchange',schedule,{{passive:true}});
         document.addEventListener('visibilitychange',schedule,{{passive:true}});
+        state.sample=sample;
         window[KEY]=state;sample();
       }}
+      state.sample();
       const events={clear_js};
       const last=events.length?events[events.length-1]:null;
       return {{installed:true,sequence:state.sequence,event_count:events.length,last,events}};

@@ -707,6 +707,51 @@ def _notification_candidates() -> list[dict[str, Any]]:
     return result
 
 
+def _click_live_follow_back(username: str, fallback: dict[str, Any]) -> bool:
+    """Resolve novamente o botão no HTML imediatamente antes do clique.
+
+    A central muda a posição das linhas após cada interação; coordenadas
+    capturadas em uma leitura anterior nunca são a fonte primária do clique.
+    """
+    point = _page(fr'''(()=>{{
+      const username={username!r}.toLowerCase();
+      const isFollowBack=e=>/^(?:seguir(?:\s+de)?\s+volta|follow\s+back)$/i.test(String(e.getAttribute('aria-label')||e.innerText||'').replace(/\s+/g,' ').trim());
+      for(const anchor of document.querySelectorAll('a[href]')){{
+        let path='';try{{path=new URL(anchor.href,location.href).pathname.split('/').filter(Boolean)[0]||''}}catch{{}}
+        if(path.toLowerCase()!==username)continue;
+        let row=anchor;
+        for(let depth=0;row&&depth<10;depth++,row=row.parentElement){{
+          const button=[...row.querySelectorAll('button,[role="button"]')].find(isFollowBack);
+          if(!button)continue;
+          const r=button.getBoundingClientRect();
+          if(r.width>0&&r.height>0)return {{x:r.left+r.width/2,y:r.top+r.height/2}};
+        }}
+      }}
+      return null;
+    }})()''')
+    if not isinstance(point, dict):
+        point = {"x": fallback.get("x"), "y": fallback.get("y")}
+    try:
+        browser.action({'kind': 'click', 'x': float(point['x']), 'y': float(point['y'])})
+        _wait(.7)
+        # A confirmação também é estrutural: o botão da própria linha deixa
+        # de ser "Seguir de volta" depois do clique aceito.
+        state = _page(fr'''(()=>{{
+          const username={username!r}.toLowerCase();
+          for(const a of document.querySelectorAll('a[href]')){{
+            let p='';try{{p=new URL(a.href,location.href).pathname.split('/').filter(Boolean)[0]||''}}catch{{}}
+            if(p.toLowerCase()!==username)continue;
+            let row=a;for(let d=0;row&&d<10;d++,row=row.parentElement){{
+              const labels=[...row.querySelectorAll('button,[role="button"]')].map(e=>String(e.getAttribute('aria-label')||e.innerText||'').replace(/\s+/g,' ').trim());
+              if(labels.some(v=>/^(?:seguindo|following)$/i.test(v)))return true;
+            }}
+          }}return false;
+        }})()''')
+        return bool(state)
+    except (KeyError, TypeError, ValueError, browser.InternalBrowserError):
+        return False
+
+
 def _capture_notification_actions() -> dict[str, int]:
     candidates = _notification_candidates()
     queued = 0
@@ -718,9 +763,8 @@ def _capture_notification_actions() -> dict[str, int]:
         if result.get("queued") or result.get("duplicate"):
             if result.get("queued"):
                 queued += 1
-            x,y=candidate.get('x'),candidate.get('y')
-            if isinstance(x,(int,float)) and isinstance(y,(int,float)):
-                browser.action({'kind':'click','x':float(x),'y':float(y)}); _wait(.7); followed += 1
+            if _click_live_follow_back(username, candidate):
+                followed += 1
             plan=execute('followerCycle', {'username':username,'profile':{'text':candidate.get('profile_text','')}})
             href=str(candidate.get('profile_href') or '')
             if plan.get('new_follower') and href and _login_or_identity_step(href) is False:
@@ -804,8 +848,8 @@ def cycle() -> dict[str, Any]:
     event_rows = [item for item in frontend.get("events") or [] if isinstance(item, dict)]
     last_event = frontend.get("last") if isinstance(frontend.get("last"), dict) else {}
     aggregate = {
-        "message_pending": bool(indicators.get("message_pending") or last_event.get("message_pending") or last_event.get("unread_rows")),
-        "notification_pending": bool(indicators.get("notification_pending") or last_event.get("notification_pending")),
+        "message_pending": bool(indicators.get("message_pending") or any(e.get("message_pending") or e.get("unread_rows") for e in event_rows) or last_event.get("message_pending") or last_event.get("unread_rows")),
+        "notification_pending": bool(indicators.get("notification_pending") or any(e.get("notification_pending") for e in event_rows) or last_event.get("notification_pending")),
         "message_controls": int(indicators.get("message_controls") or 0),
         "notification_controls": int(indicators.get("notification_controls") or 0),
         "frontend_events": len(event_rows),
@@ -824,7 +868,7 @@ def cycle() -> dict[str, Any]:
     # assim, perfis com o botão real "Seguir de volta" permanecem acionáveis;
     # faça uma varredura periódica fora de uma conversa aberta para não perder
     # o evento apenas porque ele já foi marcado como visualizado.
-    if (_notification_scan_due() and "/direct/t/" not in url
+    if (_notification_scan_due()
             and (aggregate["notification_pending"] or not aggregate["message_pending"])):
         notification_result = _capture_notification_actions()
         _mark_notification_scan()
