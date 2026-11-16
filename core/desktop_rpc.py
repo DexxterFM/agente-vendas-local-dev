@@ -10,7 +10,7 @@ from core.memory import Memory
 from adapters.ollama import OllamaClient
 from adapters.local_llama import LocalLlamaClient
 
-BROWSER_DRAFT_VERSION = 'context-v6-pacing-and-partnerships'
+BROWSER_DRAFT_VERSION = 'context-v7-short-bubbles-explicit-link-consent'
 BROWSER_BUBBLE_SEPARATOR = '\n[[AGENT_BUBBLE]]\n'
 
 def _follower_segment(profile):
@@ -800,7 +800,8 @@ def execute(command, args):
                 # fazia o fluxo voltar à descoberta em vez de entregar a opção
                 # correta que acabara de ser qualificada.
                 and re.fullmatch(
-                    r'(?:sim|s[ií]m|(?:eu\s+)?quero|claro)(?:[,.! ]+(?:pode\s+)?(?:enviar|mandar)(?:\s+o)?\s*(?:link)?)?[.! 😊👍]*'
+                    r'(?:sim|s[ií]m|(?:eu\s+)?quero|claro|manda|me\s+manda)'
+                    r'(?:[,.! ]+(?:pode\s+)?(?:enviar|mandar)(?:\s+o)?\s*(?:link)?)?[.! 😊👍]*'
                     r'|pode\s+(?:enviar|mandar)(?:\s+o)?\s*(?:link)?[.! 😊👍]*',
                     latest_user.strip(),
                     re.I,
@@ -810,12 +811,11 @@ def execute(command, args):
             ):
                 offer = trial_offer[trial_segment]
                 return (
-                    f'3 meses grátis do {offer["name"]}. '
-                    f'Aqui está o seu link de ativação: {offer["url"]}'
+                    f'Perfeito! Você ganhou 3 meses grátis do {offer["name"]}.'
                     + BROWSER_BUBBLE_SEPARATOR
-                    + 'Você tem 3 meses grátis para revolucionar a forma como administra sua clínica. '
-                    'Atenção: use o link de ativação imediatamente: ele tem validade de 2 dias. '
-                    'Caso não ative nesse prazo, a oportunidade será perdida. 😔'
+                    + f'Seu link de ativação: {offer["url"]}'
+                    + BROWSER_BUBBLE_SEPARATOR
+                    + 'Use o link em até 2 dias para aproveitar essa condição. 😊'
                 )
             # Keep the first two turns deterministic so the sales flow does not
             # skip qualification or jump straight to a generic pitch.
@@ -832,8 +832,11 @@ def execute(command, args):
                 )
             )
             if no_app_answer:
-                return ('Então chegou o momento de conhecer algo que vai salvar muitas horas do seu dia e permitir que você faça o que mais importa: cuidar dos seus pacientes. 😊 '
-                        'Você atende em uma clínica com equipe ou trabalha em consultório individual?')
+                return ('Então chegou o momento de conhecer algo que pode salvar muitas horas do seu dia.'
+                        + BROWSER_BUBBLE_SEPARATOR
+                        + 'Assim sobra mais tempo para o que importa: cuidar dos seus pacientes. 😊'
+                        + BROWSER_BUBBLE_SEPARATOR
+                        + 'Você atende em uma clínica com equipe ou em consultório individual?')
             asks_profile = bool(
                 previous_assistant
                 and re.search(r'cl[ií]nica.{0,30}(?:equipe|consult[oó]rio)|(?:equipe|consult[oó]rio).{0,30}individual',previous_assistant,re.I)
@@ -841,12 +844,14 @@ def execute(command, args):
             if asks_profile and latest_user:
                 if re.search(r'\b(?:cl[ií]nica|equipe|multiprofissional|multi(?:disciplinar|profissional)|v[aá]rios profissionais|somos)\b',latest_user,re.I):
                     memory.set_setting('sales.agent.trial_segment:'+str(int(args['id'])), 'clinic')
-                    return ('Perfeito! Para uma clínica com equipe, o ERP Clínica TEA Multiprofissional reúne agenda, prontuários e a operação em um só lugar. '
-                            'Posso enviar o link para ativar os 3 meses gratuitos?')
+                    return ('Perfeito! O ERP Clínica TEA Multiprofissional reúne agenda, prontuários e a operação da equipe em um só lugar.'
+                            + BROWSER_BUBBLE_SEPARATOR
+                            + 'Posso enviar o link para ativar os 3 meses gratuitos?')
                 if re.search(r'\b(?:sozinh[oa]|individual|consult[oó]rio|aut[oô]nom[oa]|s[oó] eu|atendo s[oó])\b',latest_user,re.I):
                     memory.set_setting('sales.agent.trial_segment:'+str(int(args['id'])), 'professional')
-                    return ('Perfeito! O Clínica TEA Profissional foi pensado para quem atende de forma independente e quer uma rotina organizada. '
-                            'Posso enviar o link para ativar os 3 meses gratuitos?')
+                    return ('Perfeito! O Clínica TEA Profissional foi pensado para quem atende de forma independente e quer uma rotina organizada.'
+                            + BROWSER_BUBBLE_SEPARATOR
+                            + 'Posso enviar o link para ativar os 3 meses gratuitos?')
             if matched:
                 detail=catalog.lookup(latest_user)
                 advantages=matched['erp_advantages'][:2]

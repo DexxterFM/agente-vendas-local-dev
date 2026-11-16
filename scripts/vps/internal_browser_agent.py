@@ -52,6 +52,20 @@ def _actionable_unread(targets: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ]
 
 
+def _pending_message_fallback_targets(targets: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Recupera DMs recentes quando o celular já removeu o marcador azul.
+
+    O evento estrutural de mensagem nova continua sendo a condição de entrada.
+    Abrimos no máximo seis linhas recentes, e o histórico da própria conversa
+    decide se a última fala é nova antes de qualquer resposta.
+    """
+    now = time.monotonic()
+    return [
+        target for target in targets
+        if target.get("href") and _RECENT_UNREAD_TARGETS.get(_unread_target_key(target), 0) <= now
+    ][:6]
+
+
 def _notification_scan_due() -> bool:
     return time.monotonic() - _LAST_NOTIFICATION_SCAN >= NOTIFICATION_SCAN_COOLDOWN_SECONDS
 
@@ -595,6 +609,20 @@ def cycle() -> dict[str, Any]:
             cooldown = 300 if processed.get("reason") == "no-pending-incoming" else 60
             _RECENT_UNREAD_TARGETS[_unread_target_key(actionable[0])] = time.monotonic() + cooldown
             return {"active": True, "browser": "message", **aggregate, **processed}
+        # Uma resposta feita pelo celular pode marcar a conversa como lida
+        # antes do próximo ciclo. Se o próprio navegador sinalizou uma nova
+        # mensagem, percorremos poucas conversas recentes e só respondemos se
+        # o snapshot confirmar uma fala nova recebida.
+        for target in _pending_message_fallback_targets(targets):
+            if not _open_target(target):
+                continue
+            processed = _process_thread("message-event-fallback")
+            cooldown = 300 if processed.get("reason") == "no-pending-incoming" else 60
+            _RECENT_UNREAD_TARGETS[_unread_target_key(target)] = time.monotonic() + cooldown
+            if processed.get("replied") or processed.get("reason") != "no-pending-incoming":
+                return {"active": True, "browser": "message", **aggregate, **processed}
+            _open_inbox()
+            _wait(.35)
         return {"active": True, "browser": "inbox-no-new-unread", **aggregate}
     notification_result = {}
     if _sweep_due():

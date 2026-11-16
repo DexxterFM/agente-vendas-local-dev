@@ -84,6 +84,45 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
         changed_time = {**target, "label": "Denis Machado Boa tarde 6 min"}
         self.assertEqual([], internal_browser_agent._actionable_unread([changed_time]))
 
+    @patch("scripts.vps.internal_browser_agent.time.monotonic", return_value=100.0)
+    def test_message_event_fallback_checks_recent_rows_even_if_blue_dot_was_cleared(self, _clock):
+        rows = [
+            {"key": "new", "href": "https://www.instagram.com/direct/t/new/", "label": "Mensagem recente", "unread": False},
+            {"key": "old", "href": "https://www.instagram.com/direct/t/old/", "label": "Mensagem antiga", "unread": False},
+        ]
+        internal_browser_agent._RECENT_UNREAD_TARGETS["old"] = 200.0
+
+        result = internal_browser_agent._pending_message_fallback_targets(rows)
+
+        self.assertEqual([rows[0]], result)
+
+    @patch("scripts.vps.internal_browser_agent._sweep_due", return_value=False)
+    @patch("scripts.vps.internal_browser_agent._wait")
+    @patch("scripts.vps.internal_browser_agent._pending_message_fallback_targets")
+    @patch("scripts.vps.internal_browser_agent._process_thread")
+    @patch("scripts.vps.internal_browser_agent._open_target", return_value=True)
+    @patch("scripts.vps.internal_browser_agent._inbox_targets", return_value=[{"key": "manual", "href": "https://www.instagram.com/direct/t/manual/", "unread": False}])
+    @patch("scripts.vps.internal_browser_agent._open_inbox", return_value=True)
+    @patch("scripts.vps.internal_browser_agent.browser.metadata")
+    @patch("scripts.vps.internal_browser_agent.browser.snapshot")
+    @patch("scripts.vps.internal_browser_agent.browser.status")
+    @patch("scripts.vps.internal_browser_agent.execute")
+    def test_cycle_falls_back_to_recent_thread_when_phone_marked_message_as_read(
+        self, execute, status, snapshot, metadata, _open_inbox, _targets, open_target, process, fallback, _wait, _sweep_due
+    ):
+        execute.side_effect = [{"active": True}, {"event_count": 0, "events": [], "last": {}}]
+        status.return_value = {"running": True, "ready": True}
+        snapshot.return_value = {"url": "https://www.instagram.com/direct/inbox", "authenticated": True}
+        metadata.return_value = {"message_pending": True, "notification_pending": False, "message_controls": 1, "notification_controls": 0}
+        fallback.return_value = [{"key": "manual", "href": "https://www.instagram.com/direct/t/manual/", "unread": False}]
+        process.return_value = {"processed": True, "replied": True, "source": "message-event-fallback"}
+
+        result = internal_browser_agent.cycle()
+
+        self.assertEqual("message", result["browser"])
+        self.assertTrue(result["replied"])
+        open_target.assert_called_once_with(fallback.return_value[0])
+
     @patch("scripts.vps.internal_browser_agent._wait")
     @patch("scripts.vps.internal_browser_agent._page")
     @patch("scripts.vps.internal_browser_agent._open_notifications", return_value=True)

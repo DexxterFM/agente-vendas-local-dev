@@ -252,8 +252,10 @@ class BrowserDmCycleTests(unittest.TestCase):
                 {"role": "assistant", "text": individual}, {"role": "user", "text": "Claro, pode mandar o link"},
             ]})
             self.assertIn("Posso enviar o link", clinic)
+            self.assertEqual(2, len(clinic.split(BROWSER_BUBBLE_SEPARATOR)))
             self.assertIn("erpclinicatea.com/planos", clinic_link)
             self.assertIn("convite_tres_meses", clinic_link)
+            self.assertEqual(3, len(clinic_link.split(BROWSER_BUBBLE_SEPARATOR)))
             self.assertIn("Posso enviar o link", individual)
             self.assertIn("produto-profissional?convite=3-meses", individual_link)
             self.assertIn("3 meses grátis", individual_link)
@@ -442,12 +444,11 @@ class BrowserDmCycleTests(unittest.TestCase):
                 ],
             })
             parts = answer.split(BROWSER_BUBBLE_SEPARATOR)
-            self.assertEqual(len(parts), 2)
+            self.assertEqual(len(parts), 3)
             self.assertIn("3 meses grátis", parts[0])
-            self.assertIn("erpclinicatea.com/planos", parts[0])
-            self.assertNotIn("validade", parts[0])
-            self.assertIn("Você tem 3 meses grátis", parts[1])
-            self.assertIn("validade de 2 dias", parts[1])
+            self.assertNotIn("erpclinicatea.com/planos", parts[0])
+            self.assertIn("erpclinicatea.com/planos", parts[1])
+            self.assertIn("2 dias", parts[2])
 
     def test_follower_profile_selects_pro_or_community_message(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(
