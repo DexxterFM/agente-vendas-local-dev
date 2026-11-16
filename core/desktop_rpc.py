@@ -545,7 +545,7 @@ def execute(command, args):
             return snapshot()
         if command == 'internalBrowserScreenshot':
             from scripts.vps.internal_browser import screenshot
-            return {'png': screenshot()}
+            return screenshot()
         if command == 'internalBrowserAction':
             from scripts.vps.internal_browser import action
             return action(args)

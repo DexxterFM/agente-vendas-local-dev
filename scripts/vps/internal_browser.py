@@ -191,10 +191,18 @@ def snapshot() -> dict[str, Any]:
     return {key: value.get(key) for key in ("url", "authenticated", "hasMessages", "hasNotifications")}
 
 
-def screenshot() -> str:
+def screenshot() -> dict[str, Any]:
     def run(page: DevTools):
         page.call("Page.enable")
-        return str(page.call("Page.captureScreenshot", {"format": "png"}).get("data") or "")
+        data = str(page.call("Page.captureScreenshot", {"format": "png"}).get("data") or "")
+        try:
+            image = base64.b64decode(data)
+            if image[:8] != b"\x89PNG\r\n\x1a\n":
+                raise ValueError("PNG inválido")
+            width, height = struct.unpack(">II", image[16:24])
+        except (ValueError, struct.error):
+            width, height = 1280, 900
+        return {"png": data, "width": int(width), "height": int(height)}
     return _with_page(run)
 
 

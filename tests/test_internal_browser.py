@@ -1,4 +1,6 @@
 import unittest
+import base64
+import struct
 from unittest.mock import patch
 
 from scripts.vps import internal_browser
@@ -79,3 +81,18 @@ class InternalBrowserTests(unittest.TestCase):
         self.assertEqual("Input.dispatchKeyEvent", calls[0][0])
         self.assertEqual("Backspace", calls[0][1]["key"])
         self.assertEqual(8, calls[0][1]["windowsVirtualKeyCode"])
+
+    @patch("scripts.vps.internal_browser._with_page")
+    def test_screenshot_reports_actual_image_dimensions(self, with_page):
+        header = b"\x89PNG\r\n\x1a\n" + b"\x00" * 8 + struct.pack(">II", 1279, 756)
+
+        class Page:
+            def call(self, method, _payload=None):
+                return {} if method == "Page.enable" else {"data": base64.b64encode(header).decode("ascii")}
+
+        with_page.side_effect = lambda callback: callback(Page())
+
+        image = internal_browser.screenshot()
+
+        self.assertEqual(1279, image["width"])
+        self.assertEqual(756, image["height"])
