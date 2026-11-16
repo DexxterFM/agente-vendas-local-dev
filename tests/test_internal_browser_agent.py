@@ -165,7 +165,7 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
 
         result = internal_browser_agent._notification_candidates()
 
-        self.assertEqual(["clinica.teste", "fono_legal"], result)
+        self.assertEqual(["clinica.teste", "fono_legal"], [item["username"] for item in result])
         open_notifications.assert_called_once_with()
 
     @patch("scripts.vps.internal_browser_agent._wait")
