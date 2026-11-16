@@ -697,7 +697,13 @@ def cycle() -> dict[str, Any]:
     # A central de notificações tem prioridade quando os dois indicadores
     # vermelhos aparecem juntos. Antes, o retorno antecipado do ramo de DMs
     # impedia esta rotina de ser alcançada indefinidamente.
-    if aggregate["notification_pending"] and _notification_scan_due():
+    # A bolinha pode desaparecer assim que o operador abre a central. Ainda
+    # assim, perfis com o botão real "Seguir de volta" permanecem acionáveis;
+    # faça uma varredura periódica fora de uma conversa aberta para não perder
+    # o evento apenas porque ele já foi marcado como visualizado.
+    if (_notification_scan_due() and "/direct/t/" not in url
+            and not aggregate["message_pending"]
+            and aggregate["notification_controls"] > 0):
         notification_result = _capture_notification_actions()
         _mark_notification_scan()
         return {"active": True, "browser": "notification", **aggregate, **notification_result}
