@@ -96,6 +96,12 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
 
         self.assertEqual([rows[0]], result)
 
+    @patch("scripts.vps.internal_browser_agent.time.monotonic", return_value=100.0)
+    def test_message_event_fallback_accepts_a_native_click_target_without_href(self, _clock):
+        row = {"key": "native", "href": "", "label": "Mensagem recente", "x": 270.0, "y": 340.0}
+
+        self.assertEqual([row], internal_browser_agent._pending_message_fallback_targets([row]))
+
     @patch("scripts.vps.internal_browser_agent._sweep_due", return_value=False)
     @patch("scripts.vps.internal_browser_agent._wait")
     @patch("scripts.vps.internal_browser_agent._pending_message_fallback_targets")
@@ -159,6 +165,18 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
 
         self.assertTrue(opened)
         action.assert_called_once_with({"kind": "navigate", "url": target["href"]})
+
+    @patch("scripts.vps.internal_browser_agent._wait")
+    @patch("scripts.vps.internal_browser_agent._page")
+    @patch("scripts.vps.internal_browser_agent.browser.action")
+    def test_open_target_clicks_native_row_when_inbox_has_no_thread_href(self, action, page, _wait):
+        page.side_effect = [False, "https://www.instagram.com/direct/t/789/"]
+        target = {"href": "", "label": "Conversa", "x": 270.0, "y": 340.0}
+
+        opened = internal_browser_agent._open_target(target)
+
+        self.assertTrue(opened)
+        action.assert_called_once_with({"kind": "click", "x": 270.0, "y": 340.0})
 
     @patch("scripts.vps.internal_browser_agent._wait")
     @patch("scripts.vps.internal_browser_agent.browser.action")

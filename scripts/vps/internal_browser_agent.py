@@ -62,7 +62,8 @@ def _pending_message_fallback_targets(targets: list[dict[str, Any]]) -> list[dic
     now = time.monotonic()
     return [
         target for target in targets
-        if target.get("href") and _RECENT_UNREAD_TARGETS.get(_unread_target_key(target), 0) <= now
+        if (target.get("href") or (target.get("x") is not None and target.get("y") is not None))
+        and _RECENT_UNREAD_TARGETS.get(_unread_target_key(target), 0) <= now
     ][:6]
 
 
@@ -218,7 +219,7 @@ def _thread_snapshot() -> dict[str, Any]:
     return {"url": str(value.get("url") or ""), "thread_id": thread, "username": str(value.get("username") or ""), "messages": messages[-40:]}
 
 
-def _inbox_targets() -> list[dict[str, str]]:
+def _inbox_targets() -> list[dict[str, Any]]:
     value = _page(r'''(()=>{
       const visible=e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0};
       const norm=v=>String(v||'').replace(/\s+/g,' ').trim();
@@ -260,7 +261,9 @@ def _inbox_targets() -> list[dict[str, str]]:
           const profile=[...scope.querySelectorAll('a[href]')].map(anchor=>new URL(anchor.href,location.href).pathname.split('/').filter(Boolean))
             .find(parts=>parts.length===1&&/^[a-z0-9._]{1,30}$/i.test(parts[0])&&!reserved.has(parts[0].toLowerCase()));
           const stableKey=href||(profile?profile[0].toLowerCase():label.replace(time,'').slice(0,160));
-          output.push({key:stableKey,href,label:label.slice(0,360),unread:Boolean(blue),bold:Boolean(bold),blue:Boolean(blue)});
+          const clickNode=node.closest('a[href*="/direct/t/"],button,[role="button"]')||node;
+          const clickRect=clickNode.getBoundingClientRect();
+          output.push({key:stableKey,href,label:label.slice(0,360),unread:Boolean(blue),bold:Boolean(bold),blue:Boolean(blue),x:clickRect.left+clickRect.width/2,y:clickRect.top+clickRect.height/2});
         }
       }
       return output.slice(0,70);
@@ -273,6 +276,8 @@ def _inbox_targets() -> list[dict[str, str]]:
             "unread": bool(item.get("unread")),
             "bold": bool(item.get("bold")),
             "blue": bool(item.get("blue")),
+            "x": float(item.get("x")) if isinstance(item.get("x"), (int, float)) else None,
+            "y": float(item.get("y")) if isinstance(item.get("y"), (int, float)) else None,
         }
         for item in (value if isinstance(value, list) else []) if isinstance(item, dict)
     ]
@@ -281,7 +286,7 @@ def _inbox_targets() -> list[dict[str, str]]:
     return sorted(targets, key=lambda item: (not item["unread"], not item["bold"]))
 
 
-def _open_target(target: dict[str, str]) -> bool:
+def _open_target(target: dict[str, Any]) -> bool:
     href = target.get("href") or ""
     target_path = urlparse(href).path if href else ""
     label = str(target.get("label") or "")
@@ -296,6 +301,15 @@ def _open_target(target: dict[str, str]) -> bool:
       (node.closest('a[href],button,[role="button"],[role="link"]')||node).click();return true;
     }})()''')
     if clicked:
+        for _ in range(16):
+            _wait(.45)
+            current = _page("location.href")
+            path = urlparse(str(current or "")).path.strip("/").split("/")
+            if len(path) == 3 and path[:2] == ["direct", "t"]:
+                return True
+    x, y = target.get("x"), target.get("y")
+    if isinstance(x, (int, float)) and isinstance(y, (int, float)):
+        browser.action({"kind": "click", "x": float(x), "y": float(y)})
         for _ in range(16):
             _wait(.45)
             current = _page("location.href")

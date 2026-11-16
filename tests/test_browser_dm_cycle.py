@@ -389,8 +389,11 @@ class BrowserDmCycleTests(unittest.TestCase):
                 ],
             })
             self.assertEqual(
-                answer,
-                "Tudo bem! Espero que sim 😊 Por acaso já utiliza algum app ou programa para administrar sua clínica? Se já usa, qual?",
+                answer.split(BROWSER_BUBBLE_SEPARATOR),
+                [
+                    "Tudo bem! Espero que sim 😊",
+                    "Por acaso já utiliza algum app ou programa para administrar sua clínica?",
+                ],
             )
             self.assertNotIn("como posso ajudar", answer.casefold())
 

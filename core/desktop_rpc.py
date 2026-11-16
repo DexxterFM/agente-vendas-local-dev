@@ -790,7 +790,12 @@ def execute(command, args):
                 and history
             )
             if qualified_greeting:
-                return 'Tudo bem! Espero que sim 😊 Por acaso já utiliza algum app ou programa para administrar sua clínica? Se já usa, qual?'
+                # A saudação de retorno precisa soar como uma conversa já em
+                # andamento. Separe acolhimento e descoberta em balões para
+                # não despejar duas perguntas de uma vez.
+                return ('Tudo bem! Espero que sim 😊'
+                        + BROWSER_BUBBLE_SEPARATOR
+                        + 'Por acaso já utiliza algum app ou programa para administrar sua clínica?')
             trial_segment = memory.get_setting('sales.agent.trial_segment:'+str(int(args['id'])), '')
             if (
                 trial_segment in ('clinic', 'professional')
