@@ -94,6 +94,34 @@ class BrowserDmCycleTests(unittest.TestCase):
             second = execute("browserScreenCycle", payload)
             self.assertFalse(second["new_message"])
 
+    def test_unavailable_message_is_reaction_only_and_never_gets_sales_text(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}
+        ):
+            execute("setAgentActive", {"active": True})
+            messages = [
+                {"id": "e" * 64, "direction": "outgoing", "text": "Obrigado por seguir! Curta nossos conteúdos."},
+                {
+                    "id": "f" * 64,
+                    "direction": "incoming",
+                    "text": "Message unavailable This content may have been deleted by its owner or hidden by their privacy settings.",
+                },
+            ]
+
+            first = execute("browserScreenCycle", self._payload(messages))
+            repeated = execute("browserScreenCycle", self._payload(messages))
+
+            self.assertFalse(first["new_message"])
+            self.assertEqual("like", first["reaction"])
+            self.assertTrue(first["reaction_pending"])
+            self.assertEqual("reaction-only-content", first["reason"])
+            self.assertFalse(repeated["new_message"])
+            with Memory(Path(folder) / "agent.sqlite3") as memory:
+                actions = memory.db.execute(
+                    "select action,status from pending_actions where action='instagram_message_like_review'"
+                ).fetchall()
+                self.assertEqual(actions, [("instagram_message_like_review", "pending")])
+
     def test_repeated_literal_message_is_stored_when_its_stable_id_is_new(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(
             os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}

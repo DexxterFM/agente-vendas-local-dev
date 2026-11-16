@@ -106,6 +106,11 @@ def _inbox_targets() -> list[dict[str, str]]:
     value = _page(r'''(()=>{
       const visible=e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0};
       const norm=v=>String(v||'').replace(/\s+/g,' ').trim();
+      const rgb=value=>{const m=String(value||'').match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);return m?[+m[1],+m[2],+m[3]]:null};
+      const isBlue=e=>{
+        const s=getComputedStyle(e), colors=[s.backgroundColor,s.color,s.borderColor,s.fill,s.stroke];
+        return colors.some(value=>{const c=rgb(value);return c&&c[2]>=140&&c[2]-c[0]>=35&&c[2]-c[1]>=10});
+      };
       const time=/(?:agora|now|ontem|yesterday|há\s+(?:\d+|um|uma)\s+(?:minuto|minutos|hora|horas|dia|dias)|\b\d+\s*(?:s|min|m|h|d|w))\s*$/i;
       const ignored=/^(?:avançar|voltar|nova mensagem|more options|pesquisar|primary|general|pedidos)$/i;
       const output=[], seen=new Set();
@@ -117,14 +122,29 @@ def _inbox_targets() -> list[dict[str, str]]:
         if(!href&&!ignored.test(label)&&!(label.length>8&&time.test(label)))continue;
         if(!href&&ignored.test(label))continue;
         const key=href||label;
-        if(key&& !seen.has(key)){seen.add(key);output.push({href,label:label.slice(0,360)});}
+        if(key&& !seen.has(key)){
+          seen.add(key);
+          const elements=[node,...node.querySelectorAll('*')].filter(visible);
+          const bold=elements.some(e=>Number.parseInt(getComputedStyle(e).fontWeight,10)>=600&&norm(e.textContent).length>1);
+          const blue=elements.some(e=>{const r=e.getBoundingClientRect();return r.width>=3&&r.height>=3&&r.width<=20&&r.height<=20&&isBlue(e)});
+          output.push({href,label:label.slice(0,360),unread:Boolean(blue),bold:Boolean(bold),blue:Boolean(blue)});
+        }
       }
       return output.slice(0,70);
     })()''')
-    return [
-        {"href": str(item.get("href") or ""), "label": str(item.get("label") or "")}
+    targets = [
+        {
+            "href": str(item.get("href") or ""),
+            "label": str(item.get("label") or ""),
+            "unread": bool(item.get("unread")),
+            "bold": bool(item.get("bold")),
+            "blue": bool(item.get("blue")),
+        }
         for item in (value if isinstance(value, list) else []) if isinstance(item, dict)
     ]
+    # A bolinha azul é o marcador autoritativo de DM não lida. O peso da
+    # tipografia fica registrado como confirmação visual, sem usar OCR.
+    return sorted(targets, key=lambda item: (not item["unread"], not item["bold"]))
 
 
 def _open_target(target: dict[str, str]) -> bool:
@@ -213,7 +233,13 @@ def _process_thread(source: str) -> dict[str, Any]:
         "message_id": last["id"], "message": last["text"], "direction": "incoming", "messages": snap["messages"],
     })
     if not cycle.get("new_message") or not cycle.get("text"):
-        return {"processed": True, "replied": False, "reason": "already-handled-or-no-draft"}
+        return {
+            "processed": True,
+            "replied": False,
+            "reason": str(cycle.get("reason") or "already-handled-or-no-draft")[:80],
+            "reaction": str(cycle.get("reaction") or "")[:20],
+            "reaction_pending": bool(cycle.get("reaction_pending")),
+        }
     _wait(2.4 + random.random() * 8.6)
     if not execute("agentStatus", {}).get("active"):
         return {"processed": True, "replied": False, "reason": "agent-paused"}
@@ -338,8 +364,13 @@ def cycle() -> dict[str, Any]:
         browser.action({"kind": "navigate", "url": INBOX_URL})
         _wait(1.4)
         targets = _inbox_targets()
-        if targets and _open_target(targets[0]):
-            return {"active": True, "browser": "message", **aggregate, **_process_thread("message-indicator")}
+        unread = [target for target in targets if target.get("unread")]
+        aggregate["inbox_unread"] = len(unread)
+        # Nunca escolhe a primeira conversa por posição. A linha precisa ter
+        # o estado visual de não lida exposto pelo próprio navegador interno.
+        if unread and _open_target(unread[0]):
+            return {"active": True, "browser": "message", **aggregate, **_process_thread("unread-row-metadata")}
+        return {"active": True, "browser": "inbox-no-unread", **aggregate}
     notification_result = {}
     if aggregate["notification_pending"]:
         notification_result = _capture_notification_actions()

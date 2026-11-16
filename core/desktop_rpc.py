@@ -369,9 +369,14 @@ def execute(command, args):
             digest=hashlib.sha256((thread+'\0'+message_id).encode('utf-8')).hexdigest()
             key='sales.agent.browser_message:'+digest
             previous=memory.get_setting(key,'')
-            if previous == 'sent':
+            reaction_only=bool(re.search(
+                r'message unavailable|mensagem indispon[ií]vel|content may have been deleted|conte[uú]do (?:pode ter sido|foi) (?:exclu[ií]do|removido)|hidden by (?:their )?(?:privacy )?settings|ocultado pelas configura[cç][oõ]es',
+                text,
+                re.IGNORECASE,
+            ))
+            if previous in ('sent','reaction_queued'):
                 return {'active':True,'new_message':False}
-            if previous.startswith('{'):
+            if previous.startswith('{') and not reaction_only:
                 prepared=json.loads(previous)
                 if prepared.get('draft_version') == BROWSER_DRAFT_VERSION:
                     return prepared
@@ -445,6 +450,20 @@ def execute(command, args):
                 memory.set_setting(history_key,'stored')
             memory.set_setting(last_sent_key,json.dumps(sorted(last_sent),ensure_ascii=False) if last_sent else '')
             memory.set_setting(bootstrap_key,'true')
+            if reaction_only:
+                reaction_key='sales.agent.browser_reaction:'+digest
+                queued=False
+                if memory.get_setting(reaction_key,'')!='queued':
+                    memory.create_pending_action(
+                        'instagram_message_like_review',
+                        {'username':username,'thread_id':thread,'message_id':message_id},
+                        'Conteúdo indisponível, removido ou oculto: reagir somente com curtida; não enviar texto.'
+                    )
+                    memory.set_setting(reaction_key,'queued')
+                    queued=True
+                memory.set_setting(key,'reaction_queued')
+                memory.audit('instagram.message_reaction_only','@'+(username or 'contato'),'ok','reaction=like; text_reply=false')
+                return {'active':True,'new_message':False,'reaction':'like','reaction_pending':True,'queued':queued,'reason':'reaction-only-content'}
             # O rascunho usa a sequência completa que está na tela, não apenas
             # a última frase. O mesmo histórico fica persistido no SQLite.
             draft=execute('draft',{'id':lead_id,'browser_history':screen_history})
