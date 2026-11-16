@@ -51,7 +51,10 @@ async function vpsInternalBrowserView(){
  const action=async payload=>{await call('internalBrowserAction',payload);await new Promise(resolve=>setTimeout(resolve,650));await refresh();};
  let keyQueue=Promise.resolve(),keyRefresh=null;
  const queueKey=payload=>{keyQueue=keyQueue.then(()=>call('internalBrowserAction',payload)).then(()=>{clearTimeout(keyRefresh);keyRefresh=setTimeout(()=>refresh().catch(()=>null),180);}).catch(report);};
- stage.onpointerdown=event=>{event.preventDefault();stage.focus({preventScroll:true});const rect=screen.getBoundingClientRect(),width=Number(screen.dataset.remoteWidth)||1280,height=Number(screen.dataset.remoteHeight)||900;action({kind:'click',x:Math.round((event.clientX-rect.left)*width/rect.width),y:Math.round((event.clientY-rect.top)*height/(rect.height||1))}).catch(report);};
+ let lastPointer=0;
+ const forwardPointer=event=>{stage.focus({preventScroll:true});const rect=screen.getBoundingClientRect(),width=Number(screen.dataset.remoteWidth)||1280,height=Number(screen.dataset.remoteHeight)||900;status.textContent='Enviando clique para a sessão interna…';action({kind:'click',x:Math.round((event.clientX-rect.left)*width/rect.width),y:Math.round((event.clientY-rect.top)*height/(rect.height||1))}).catch(report);};
+ stage.onpointerdown=event=>{lastPointer=Date.now();event.preventDefault();forwardPointer(event);};
+ stage.onclick=event=>{if(Date.now()-lastPointer>250)forwardPointer(event);};
  stage.onkeydown=event=>{if(event.ctrlKey||event.metaKey||event.altKey)return;const special=new Set(['Enter','Tab','Escape','Backspace','Delete','ArrowLeft','ArrowUp','ArrowRight','ArrowDown']);if(event.key.length===1){event.preventDefault();queueKey({kind:'type',text:event.key});return;}if(special.has(event.key)){event.preventDefault();queueKey({kind:'key',key:event.key});}};
  el('#vps-browser-input').onsubmit=event=>{event.preventDefault();const text=new FormData(event.target).get('text');if(!String(text||'').trim())return;action({kind:'type',text:String(text)}).then(()=>event.target.reset()).catch(report);};
  el('#vps-browser-refresh').onclick=()=>refresh().catch(report);el('#vps-browser-enter').onclick=()=>action({kind:'key',key:'Enter'}).catch(report);el('#vps-browser-tab').onclick=()=>action({kind:'key',key:'Tab'}).catch(report);await refresh();
