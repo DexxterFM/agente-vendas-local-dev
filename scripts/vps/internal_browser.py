@@ -23,6 +23,8 @@ except ImportError:  # a unidade da VPS instala python3-websocket-client
 
 
 DEBUG_URL = "http://127.0.0.1:9222"
+_PRIMARY_HOSTS = {"instagram.com", "www.instagram.com"}
+_ACCESS_HOSTS = _PRIMARY_HOSTS | {"facebook.com", "www.facebook.com"}
 
 
 class InternalBrowserError(RuntimeError):
@@ -108,11 +110,40 @@ class DevTools:
         raise InternalBrowserError("Navegador interno não respondeu")
 
 
+def _is_access_window(item: dict[str, Any]) -> bool:
+    """Retorna somente janelas abertas pelo fluxo de entrada da própria conta."""
+    try:
+        parsed = urllib.parse.urlparse(str(item.get("url") or ""))
+    except (TypeError, ValueError):
+        return False
+    return parsed.scheme == "https" and parsed.hostname in _ACCESS_HOSTS
+
+
+def _is_recovery_window(item: dict[str, Any]) -> bool:
+    """Janelas de recuperação podem abrir fora da página principal.
+
+    A tela remota precisa acompanhá-las, caso contrário o operador enxerga a
+    página inicial carregando enquanto o campo de SMS foi aberto em outra
+    janela pelo próprio fluxo de acesso.
+    """
+    parsed = urllib.parse.urlparse(str(item.get("url") or ""))
+    if parsed.hostname not in {"facebook.com", "www.facebook.com"}:
+        return False
+    path = parsed.path.casefold()
+    return any(marker in path for marker in ("/login", "/recover", "/identify", "/checkpoint"))
+
+
 def _target() -> dict[str, Any]:
     pages = _http("/json/list")
     if not isinstance(pages, list):
         raise InternalBrowserError("Lista de páginas inválida")
-    page = next((item for item in pages if item.get("type") == "page" and "instagram.com" in str(item.get("url", ""))), None)
+    windows = [item for item in pages if isinstance(item, dict) and item.get("type") == "page" and _is_access_window(item)]
+    # Prioriza a janela de recuperação aberta pelo operador. A página
+    # principal permanece disponível e volta a ser selecionada quando a
+    # recuperação termina ou é fechada.
+    page = next((item for item in windows if _is_recovery_window(item)), None)
+    if page is None:
+        page = next((item for item in windows if urllib.parse.urlparse(str(item.get("url") or "")).hostname in _PRIMARY_HOSTS), None)
     if page:
         return page
     created = _http("/json/new?" + urllib.parse.quote("https://www.instagram.com/", safe="/:?=&"), method="PUT")
@@ -134,7 +165,7 @@ def status() -> dict[str, Any]:
     try:
         version = _http("/json/version")
         pages = _http("/json/list")
-        active = next((item for item in pages if item.get("type") == "page" and "instagram.com" in str(item.get("url", ""))), None)
+        active = next((item for item in pages if isinstance(item, dict) and item.get("type") == "page" and _is_access_window(item)), None)
         return {"running": True, "ready": bool(active), "product": str(version.get("Browser", "navegador interno"))[:80]}
     except InternalBrowserError:
         return {"running": False, "ready": False, "product": ""}
@@ -151,7 +182,7 @@ def evaluate(expression: str) -> Any:
 
 
 def snapshot() -> dict[str, Any]:
-    expression = """(()=>{const url=location.href;const text=(document.body?.innerText||'').slice(0,12000);const fields=[...document.querySelectorAll('input,textarea,[contenteditable=true]')].map(e=>[e.name,e.type,e.placeholder,e.getAttribute('aria-label')].filter(Boolean).join(' ').toLowerCase());const authenticated=!fields.some(v=>/password|senha|username|login|c[oó]digo/.test(v));const controls=[...document.querySelectorAll('a,button,[role=button],[role=link]')];const label=e=>[e.innerText,e.getAttribute('aria-label'),e.getAttribute('title'),e.getAttribute('href')].filter(Boolean).join(' ');return {url,authenticated,hasMessages:controls.some(e=>/mensagens|messages|direct/i.test(label(e))),hasNotifications:controls.some(e=>/notifica|notifications|activity/i.test(label(e))),text};})()"""
+    expression = """(()=>{const url=location.href;const text=(document.body?.innerText||'').slice(0,12000);const path=location.pathname.toLowerCase();const fields=[...document.querySelectorAll('input,textarea,[contenteditable=true]')].map(e=>[e.name,e.type,e.placeholder,e.getAttribute('aria-label')].filter(Boolean).join(' ').toLowerCase());const controls=[...document.querySelectorAll('a,button,[role=button],[role=link]')];const label=e=>[e.innerText,e.getAttribute('aria-label'),e.getAttribute('title'),e.getAttribute('href')].filter(Boolean).join(' ');const href=e=>{try{return new URL(e.getAttribute('href')||'',location.href).pathname.toLowerCase()}catch{return ''}};const credentialSurface=fields.some(v=>/password|senha|username|login|c[oó]digo/.test(v));const accessRoute=/^\\/(?:accounts\\/(?:login|signup|password)|challenge|checkpoint|two_factor|login|oidc)/.test(path);const signedInShell=controls.some(e=>/^\\/direct(?:\\/inbox)?\\/?$/.test(href(e))||/^\\/accounts\\/edit\\/?$/.test(href(e))||/mensagens|messages|direct/.test(label(e)));const authenticated=!credentialSurface&&!accessRoute&&signedInShell;return {url,authenticated,hasMessages:controls.some(e=>/mensagens|messages|direct/i.test(label(e))),hasNotifications:controls.some(e=>/notifica|notifications|activity/i.test(label(e))),text};})()"""
     value = evaluate(expression)
     if not isinstance(value, dict):
         raise InternalBrowserError("Leitura do navegador interno inválida")
@@ -178,7 +209,7 @@ def action(payload: dict[str, Any]) -> dict[str, Any]:
     kind = str(payload.get("kind") or "").strip().lower()
     if kind == "navigate":
         target = urllib.parse.urlparse(str(payload.get("url") or ""))
-        if target.scheme != "https" or target.hostname not in {"instagram.com", "www.instagram.com"}:
+        if target.scheme != "https" or target.hostname not in _PRIMARY_HOSTS:
             raise ValueError("Destino interno não autorizado")
 
     def run(page: DevTools):

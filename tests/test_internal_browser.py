@@ -16,6 +16,32 @@ class InternalBrowserTests(unittest.TestCase):
             {"running": True, "ready": True, "product": "Internal Browser 1"},
         )
 
+    @patch("scripts.vps.internal_browser._http")
+    def test_target_prefers_recovery_window_opened_by_login(self, request):
+        request.return_value = [
+            {"id": "home", "type": "page", "url": "https://www.instagram.com/"},
+            {"id": "recovery", "type": "page", "url": "https://www.facebook.com/login/identify/"},
+        ]
+
+        page = internal_browser._target()
+
+        self.assertEqual("recovery", page["id"])
+
+    @patch("scripts.vps.internal_browser.evaluate")
+    def test_snapshot_preserves_unauthenticated_state(self, evaluate):
+        evaluate.return_value = {
+            "url": "https://www.instagram.com/accounts/login/",
+            "authenticated": False,
+            "hasMessages": False,
+            "hasNotifications": False,
+            "text": "conteúdo privado",
+        }
+
+        result = internal_browser.snapshot()
+
+        self.assertFalse(result["authenticated"])
+        self.assertNotIn("text", result)
+
     @patch("scripts.vps.internal_browser.evaluate")
     def test_snapshot_does_not_return_page_text(self, evaluate):
         evaluate.return_value = {
