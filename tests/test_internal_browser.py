@@ -165,6 +165,23 @@ class InternalBrowserTests(unittest.TestCase):
         self.assertEqual("Backspace", calls[0][1]["key"])
         self.assertEqual(8, calls[0][1]["windowsVirtualKeyCode"])
 
+    @patch("scripts.vps.internal_browser._with_page")
+    def test_action_select_all_uses_control_a_keyboard_sequence(self, with_page):
+        calls = []
+
+        class Page:
+            def call(self, method, payload):
+                calls.append((method, payload))
+                return {}
+
+        with_page.side_effect = lambda callback: callback(Page())
+
+        result = internal_browser.action({"kind": "key", "key": "SelectAll"})
+
+        self.assertEqual({"ok": True}, result)
+        self.assertEqual(["Control", "a", "a", "Control"], [payload["key"] for _, payload in calls])
+        self.assertEqual(2, calls[1][1]["modifiers"])
+
     @patch("scripts.vps.internal_browser.time.sleep")
     @patch("scripts.vps.internal_browser._with_page")
     def test_action_types_each_character_through_native_text_input(self, with_page, _sleep):

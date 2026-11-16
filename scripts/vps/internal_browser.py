@@ -536,6 +536,12 @@ def action(payload: dict[str, Any]) -> dict[str, Any]:
                 time.sleep((18 + random.randint(0, 42)) / 1000)
         elif kind == "key":
             key = str(payload.get("key") or "")
+            if key == "SelectAll":
+                page.call("Input.dispatchKeyEvent", {"type": "keyDown", "key": "Control", "code": "ControlLeft", "windowsVirtualKeyCode": 17})
+                page.call("Input.dispatchKeyEvent", {"type": "keyDown", "key": "a", "code": "KeyA", "windowsVirtualKeyCode": 65, "modifiers": 2})
+                page.call("Input.dispatchKeyEvent", {"type": "keyUp", "key": "a", "code": "KeyA", "windowsVirtualKeyCode": 65, "modifiers": 2})
+                page.call("Input.dispatchKeyEvent", {"type": "keyUp", "key": "Control", "code": "ControlLeft", "windowsVirtualKeyCode": 17})
+                return {"ok": True}
             key_codes = {
                 "Enter": 13,
                 "Tab": 9,

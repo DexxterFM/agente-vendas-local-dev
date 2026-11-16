@@ -312,6 +312,14 @@ def _send_bubble(text: str, expected_url: str) -> dict[str, Any]:
     before = _message_count(text)
     browser.action({"kind": "click", **point})
     _wait(.15 + random.random() * .25)
+    existing = _page("(()=>{const e=document.activeElement;return String(e?.value||e?.innerText||e?.textContent||'').trim()})()")
+    if existing:
+        browser.action({"kind": "key", "key": "SelectAll"})
+        browser.action({"kind": "key", "key": "Backspace"})
+        _wait(.2)
+        remaining = _page("(()=>{const e=document.activeElement;return String(e?.value||e?.innerText||e?.textContent||'').trim()})()")
+        if remaining:
+            raise browser.InternalBrowserError("Rascunho anterior não pôde ser limpo")
     browser.action({"kind": "type", "text": text})
     entered = _page("(()=>{const e=document.activeElement;return (e?.value||e?.innerText||e?.textContent||'').trim()})()")
     if str(entered or "").strip() != text:
