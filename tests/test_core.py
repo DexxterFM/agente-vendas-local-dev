@@ -44,6 +44,8 @@ class CoreTests(unittest.TestCase):
                 "browser": {
                     "state": "unknown", "processed": False,
                     "replied": False, "threads": 0,
+                    "message_pending": False, "notification_pending": False,
+                    "message_controls": 0, "notification_controls": 0,
                 },
             })
 

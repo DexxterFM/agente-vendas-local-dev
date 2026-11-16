@@ -149,6 +149,10 @@ def execute(command, args):
                 'processed': bool(raw_browser.get('processed')),
                 'replied': bool(raw_browser.get('replied')),
                 'threads': browser_threads,
+                'message_pending': bool(raw_browser.get('message_pending')),
+                'notification_pending': bool(raw_browser.get('notification_pending')),
+                'message_controls': max(0,min(20,int(raw_browser.get('message_controls',0) or 0))),
+                'notification_controls': max(0,min(20,int(raw_browser.get('notification_controls',0) or 0))),
             }
             heartbeat=datetime.now(timezone.utc).replace(microsecond=0).isoformat()
             memory.set_setting('sales.agent.worker.heartbeat_at',heartbeat)
@@ -543,6 +547,9 @@ def execute(command, args):
         if command == 'internalBrowserSnapshot':
             from scripts.vps.internal_browser import snapshot
             return snapshot()
+        if command == 'internalBrowserMetadata':
+            from scripts.vps.internal_browser import metadata
+            return metadata()
         if command == 'internalBrowserScreenshot':
             from scripts.vps.internal_browser import screenshot
             return screenshot()

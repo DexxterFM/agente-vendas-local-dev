@@ -71,6 +71,21 @@ class InternalBrowserTests(unittest.TestCase):
         self.assertTrue(result["hasMessages"])
         self.assertNotIn("text", result)
 
+    @patch("scripts.vps.internal_browser.evaluate")
+    def test_metadata_returns_only_aggregate_indicators(self, evaluate):
+        evaluate.return_value = {
+            "path": "/", "message_controls": 3, "notification_controls": 1,
+            "message_pending": False, "notification_pending": True,
+            "private_text": "não pode sair",
+        }
+
+        result = internal_browser.metadata()
+
+        self.assertEqual("/", result["path"])
+        self.assertFalse(result["message_pending"])
+        self.assertTrue(result["notification_pending"])
+        self.assertNotIn("private_text", result)
+
     @patch("scripts.vps.internal_browser._with_page")
     def test_action_rejects_external_navigation_without_touching_page(self, page):
         with self.assertRaises(ValueError):

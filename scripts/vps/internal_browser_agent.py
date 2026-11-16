@@ -287,16 +287,19 @@ def cycle() -> dict[str, Any]:
     url = str(snap.get("url") or "")
     if "/direct/t/" in url:
         return {"active": True, "browser": "thread", **_process_thread("open-thread")}
-    indicators = _page(r'''(()=>{
-      const labels=[...document.querySelectorAll('a,button,[role="link"],[role="button"]')].map(e=>[e.innerText,e.getAttribute('aria-label'),e.getAttribute('title')].filter(Boolean).join(' ').toLowerCase());
-      return {messages:labels.some(v=>/mensagens|messages|direct/.test(v)&&(/nova|new|não lida|unread/.test(v)||/\b[1-9]\d*\b/.test(v)))};
-    })()''')
-    if isinstance(indicators, dict) and indicators.get("messages"):
+    indicators = browser.metadata()
+    aggregate = {
+        "message_pending": bool(indicators.get("message_pending")),
+        "notification_pending": bool(indicators.get("notification_pending")),
+        "message_controls": int(indicators.get("message_controls") or 0),
+        "notification_controls": int(indicators.get("notification_controls") or 0),
+    }
+    if aggregate["message_pending"]:
         browser.action({"kind": "navigate", "url": INBOX_URL})
         _wait(1.4)
         targets = _inbox_targets()
         if targets and _open_target(targets[0]):
-            return {"active": True, "browser": "message", **_process_thread("message-indicator")}
+            return {"active": True, "browser": "message", **aggregate, **_process_thread("message-indicator")}
     if _sweep_due():
-        return {"active": True, "browser": "sweep", **sweep("weekly")}
-    return {"active": True, "browser": "ready"}
+        return {"active": True, "browser": "sweep", **aggregate, **sweep("weekly")}
+    return {"active": True, "browser": "ready", **aggregate}

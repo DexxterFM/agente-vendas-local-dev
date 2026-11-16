@@ -255,6 +255,46 @@ def snapshot() -> dict[str, Any]:
     return {key: value.get(key) for key in ("url", "authenticated", "hasMessages", "hasNotifications")}
 
 
+def metadata() -> dict[str, Any]:
+    """Retorna somente indicadores agregados da interface autenticada."""
+    expression = r'''(()=>{
+      const norm=value=>String(value||'').replace(/\s+/g,' ').trim();
+      const isRed=element=>{
+        const style=getComputedStyle(element);
+        const colors=[style.backgroundColor,style.color,style.borderColor,style.fill,style.stroke].join(' ');
+        return /rgb\((?:2[0-5]\d|1[89]\d),\s*(?:[0-9]|[1-9]\d|1[0-5]\d),\s*(?:[0-9]|[1-9]\d|1[0-5]\d)\)/.test(colors);
+      };
+      const controls=[...document.querySelectorAll('[aria-label]')].filter(element=>/^(notifications|notificações|messages|mensagens)$/i.test(norm(element.getAttribute('aria-label'))));
+      const inspect=(pattern)=>{
+        const matches=controls.filter(element=>pattern.test(norm(element.getAttribute('aria-label'))));
+        let pending=false;
+        for(const element of matches){
+          let scope=element;
+          for(let depth=0;depth<6&&scope;depth++,scope=scope.parentElement){
+            const nodes=[scope,...scope.querySelectorAll('*')];
+            if(nodes.some(node=>{const rect=node.getBoundingClientRect();return rect.width>0&&rect.height>0&&rect.width<=80&&rect.height<=80&&isRed(node)}))pending=true;
+            if(nodes.some(node=>/^\d{1,3}$/.test(norm(node.textContent))))pending=true;
+            if(scope.matches('a,button,[role="link"],[role="button"]'))break;
+          }
+        }
+        return {controls:matches.length,pending};
+      };
+      const messages=inspect(/^(messages|mensagens)$/i);
+      const notifications=inspect(/^(notifications|notificações)$/i);
+      return {path:location.pathname,message_controls:messages.controls,notification_controls:notifications.controls,message_pending:messages.pending,notification_pending:notifications.pending};
+    })()'''
+    value = evaluate(expression)
+    if not isinstance(value, dict):
+        raise InternalBrowserError("Metadados do navegador interno inválidos")
+    return {
+        "path": str(value.get("path") or "")[:240],
+        "message_controls": max(0, min(20, int(value.get("message_controls") or 0))),
+        "notification_controls": max(0, min(20, int(value.get("notification_controls") or 0))),
+        "message_pending": bool(value.get("message_pending")),
+        "notification_pending": bool(value.get("notification_pending")),
+    }
+
+
 def screenshot() -> dict[str, Any]:
     def run(page: DevTools):
         page.call("Page.enable")
