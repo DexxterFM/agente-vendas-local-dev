@@ -1200,7 +1200,7 @@ else {
     // O supervisor sobe os serviços locais em paralelo. A janela não deve
     // esperar tentativas de conexão com Ollama/BrowserOS para ficar utilizável.
     backend('startServices').catch(()=>null);
-    window = new BrowserWindow({width:1660,height:980,minWidth:1000,minHeight:700,title:'Agente de Vendas Local',backgroundColor:'#07111f',autoHideMenuBar:true,show:true,webPreferences:{preload:path.join(__dirname,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true}});
+    window = new BrowserWindow({width:1660,height:980,minWidth:1000,minHeight:700,title:'Agente de Vendas Local',icon:path.join(__dirname,'..','frontend','icon.svg'),backgroundColor:'#07111f',autoHideMenuBar:true,show:true,webPreferences:{preload:path.join(__dirname,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true}});
     window.webContents.setWindowOpenHandler(() => ({action:'deny'}));
     window.webContents.on('will-navigate', (event, url) => {if(!url.startsWith('file:')) event.preventDefault();});
     window.once('ready-to-show', () => window.show());
