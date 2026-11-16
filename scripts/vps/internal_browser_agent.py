@@ -144,12 +144,18 @@ def _thread_snapshot() -> dict[str, Any]:
       const path=location.pathname.split('/').filter(Boolean);
       const threadId=path.length===3&&path[0]==='direct'&&path[1]==='t'?path[2]:'';
       const normalize=v=>String(v||'').replace(/\s+/g,' ').trim();
-      const profile=[...document.querySelectorAll('a[aria-label],a[href]')].map(a=>{
+      const anchors=[...document.querySelectorAll('a[aria-label],a[href]')];
+      const labeledProfile=anchors.map(a=>{
         const label=a.getAttribute('aria-label')||'';
-        const parts=new URL(a.href,location.href).pathname.split('/').filter(Boolean);
         const match=label.match(/(?:abrir a página de perfil de |open the profile page of )([^,]+)$/i);
-        return match?match[1]:(parts.length===1&&/^[a-z0-9._]{1,30}$/i.test(parts[0])?parts[0]:'');
+        return match?match[1]:'';
       }).find(Boolean)||'';
+      const reserved=new Set(['accounts','direct','explore','reels','stories','about','developer','legal','privacy','web']);
+      const fallbackProfile=anchors.filter(a=>a.getBoundingClientRect().left>(innerWidth||1280)*.3).map(a=>{
+        const parts=new URL(a.href,location.href).pathname.split('/').filter(Boolean);
+        return parts.length===1&&/^[a-z0-9._]{1,30}$/i.test(parts[0])&&!reserved.has(parts[0].toLowerCase())?parts[0]:'';
+      }).find(Boolean)||'';
+      const profile=labeledProfile||fallbackProfile;
       const width=innerWidth||1280, seen=new Map();
       const nodes=[...document.querySelectorAll('[role="message"],[role="article"],[role="row"],[role="listitem"]')];
       const messages=[];
@@ -217,10 +223,12 @@ def _inbox_targets() -> list[dict[str, str]]:
           const elements=[scope,...scope.querySelectorAll('*')].filter(visible);
           const bold=elements.some(e=>Number.parseInt(getComputedStyle(e).fontWeight,10)>=600&&norm(e.textContent).length>1);
           const scopeRect=scope.getBoundingClientRect();
-          const blue=elements.some(e=>{
+           const blue=elements.some(e=>{
             const r=e.getBoundingClientRect(), accessibility=norm([e.getAttribute('aria-label'),e.getAttribute('title')].join(' '));
             const rightDot=r.width>=3&&r.height>=3&&r.width<=14&&r.height<=14&&Math.abs(r.width-r.height)<=3&&r.left>=scopeRect.right-48;
-            return /^(?:unread|não lida|nova mensagem)$/i.test(accessibility)||(rightDot&&isBlue(e));
+             const tag=e.tagName.toLowerCase(), background=rgb(getComputedStyle(e).backgroundColor);
+             const emptyBlueDot=(tag==='div'||tag==='span')&&!norm(e.textContent)&&background&&background[2]>=140&&background[2]-background[0]>=35&&background[2]-background[1]>=10;
+             return /^(?:unread|não lida|nova mensagem)$/i.test(accessibility)||(rightDot&&emptyBlueDot);
           });
           const reserved=new Set(['accounts','direct','explore','reels','stories','about','developer','legal','privacy','web']);
           const profile=[...scope.querySelectorAll('a[href]')].map(anchor=>new URL(anchor.href,location.href).pathname.split('/').filter(Boolean))

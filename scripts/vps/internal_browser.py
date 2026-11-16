@@ -353,7 +353,9 @@ def frontend_events(clear: bool = True) -> dict[str, Any]:
           const blue=elements.some(e=>{{
             const r=e.getBoundingClientRect(),label=norm([e.getAttribute('aria-label'),e.getAttribute('title')].join(' '));
             const rightDot=r.width>=3&&r.height>=3&&r.width<=14&&r.height<=14&&Math.abs(r.width-r.height)<=3&&r.left>=scopeRect.right-48;
-            return /^(?:unread|não lida|nova mensagem)$/i.test(label)||(rightDot&&isBlue(e));
+            const tag=e.tagName.toLowerCase(),background=rgb(getComputedStyle(e).backgroundColor);
+            const emptyBlueDot=(tag==='div'||tag==='span')&&!norm(e.textContent)&&background&&background[2]>=140&&background[2]-background[0]>=35&&background[2]-background[1]>=10;
+            return /^(?:unread|não lida|nova mensagem)$/i.test(label)||(rightDot&&emptyBlueDot);
           }});
           if(blue){{count++;if(bold)confirmed++;}}
         }}
