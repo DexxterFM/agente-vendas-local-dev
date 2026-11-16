@@ -37,6 +37,7 @@ function remoteControlConfig(){
   return null;
 }
 const remoteControl=remoteControlConfig();
+const isRemoteControl=Boolean(remoteControl);
 function startRemoteTunnel(){
   if(!remoteControl||(remoteTunnelChild&&!remoteTunnelChild.killed))return;
   const executable=process.env.WINDIR?path.join(process.env.WINDIR,'System32','OpenSSH','ssh.exe'):'ssh';
@@ -405,6 +406,10 @@ ipcMain.handle('sales:browserPane', async (event, action='open', value='') => {
   else if(action==='forward'&&view.webContents.canGoForward()) view.webContents.goForward();
   else if(action==='reload') view.webContents.reload();
   return {open:true,url:view.webContents.getURL()||browserPaneUrl,browser_error:browserLoadError||undefined};
+});
+ipcMain.handle('sales:remoteMode', async event => {
+  if(event.sender!==window.webContents) throw new Error('Origem inválida');
+  return isRemoteControl;
 });
 // Leitura e interação do navegador interno. Tudo acontece no BrowserView
 // persistente do próprio aplicativo; não depende de uma sessão do Chrome.
@@ -814,6 +819,7 @@ async function isInstagramAuthenticationScreen(view,url){
   }catch{return false;}
 }
 const browserTimer=setInterval(async()=>{
+  if(isRemoteControl)return;
   if(browserProcessing||!window||window.isDestroyed())return;
   browserProcessing=true;
   try{
@@ -871,6 +877,7 @@ async function processMessageNotification(view){
   return processCurrentBrowserThread(view,{source:'message-notification'});
 }
 const messageTimer=setInterval(async()=>{
+  if(isRemoteControl)return;
   if(messageProcessing||browserProcessing||!messageScanRequested||!browserAutomationArmed||!app.isReady()||!window||window.isDestroyed())return;
   messageProcessing=true;
   browserProcessing=true;
@@ -1035,6 +1042,7 @@ async function followAndOpenMessage(contents,username,openMessage=true,allowFoll
 }
 let followerProcessing=false;
 const followerTimer=setInterval(async()=>{
+  if(isRemoteControl)return;
   if(followerProcessing||!browserAutomationArmed||!app.isReady()||!window||window.isDestroyed())return;
   const now=Date.now();
   // Consulta de atualizações com ritmo humano: uma rodada inicial ao armar o
@@ -1104,6 +1112,7 @@ followerTimer.unref();
 // depois que a mensagem aparece na própria conversa do Instagram.
 let campaignProcessing=false;
 const campaignTimer=setInterval(async()=>{
+  if(isRemoteControl)return;
   if(campaignProcessing||!browserAutomationArmed||!app.isReady()||!window||window.isDestroyed())return;
   campaignProcessing=true;
   let campaignId=0;
@@ -1181,16 +1190,18 @@ else {
     await window.loadFile(path.join(__dirname,'..','frontend','index.html'));
     // O navegador interno é a ferramenta principal do agente: já abre
     // exposto no Instagram para o operador iniciar ou acompanhar interações.
-    const initialBrowser=ensureBrowserView();
-    browserUserVisible=true;
-    window.setBrowserView(initialBrowser);
-    browserAttached=true;
-    initialBrowser.setBounds(browserBounds());
-    initialBrowser.setAutoResize({width:true,height:true});
-    if(!initialBrowser.webContents.getURL()) await initialBrowser.webContents.loadURL(browserPaneUrl).catch(error=>{
-      browserLoadError=String(error?.message||error).slice(0,180);
-      try{fs.appendFileSync(path.join(app.getPath('userData'),'desktop.log'),`${new Date().toISOString()} browser-start ${browserLoadError}\n`);}catch{}
-    });
+    if(!isRemoteControl){
+      const initialBrowser=ensureBrowserView();
+      browserUserVisible=true;
+      window.setBrowserView(initialBrowser);
+      browserAttached=true;
+      initialBrowser.setBounds(browserBounds());
+      initialBrowser.setAutoResize({width:true,height:true});
+      if(!initialBrowser.webContents.getURL()) await initialBrowser.webContents.loadURL(browserPaneUrl).catch(error=>{
+        browserLoadError=String(error?.message||error).slice(0,180);
+        try{fs.appendFileSync(path.join(app.getPath('userData'),'desktop.log'),`${new Date().toISOString()} browser-start ${browserLoadError}\n`);}catch{}
+      });
+    }
     if(process.argv.includes('--smoke-test')) {
       const result = await window.webContents.executeJavaScript(`(async()=>{const leads=await window.sales.call('leads');const templates=await window.sales.call('responseLibrary');const libraryButton=document.querySelector('[data-view="library"]');libraryButton.click();await new Promise(resolve=>setTimeout(resolve,300));const operatorButton=document.querySelector('[data-view="operator"]');return {title:document.title,backend:true,leads:leads.length,templates:templates.length,libraryForm:!!document.querySelector('#template-form'),operatorAvailable:!!operatorButton};})()`);
       fs.writeFileSync(path.join(app.getPath('userData'),'smoke-test.json'),JSON.stringify(result));

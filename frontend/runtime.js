@@ -58,6 +58,7 @@ function bindBrowserControls(){
  const toolbar=el('#browser-toolbar');
  const updateBrowserToggle=()=>{if(!browserButton)return;browserButton.textContent=browserVisible?'▣ Ocultar navegador':'🌐 Mostrar navegador';browserButton.setAttribute('aria-pressed',String(browserVisible));};
  updateBrowserToggle();
+ window.sales.remoteMode?.().then(remote=>{if(remote){browserVisible=false;toolbar.hidden=true;updateBrowserToggle();}}).catch(()=>null);
  // O BrowserView é uma camada nativa acima do painel. Este alternador mantém
  // o navegador como ferramenta principal, mas libera o CRM e o importador de
  // DMs sem o operador precisar fechar o aplicativo.
