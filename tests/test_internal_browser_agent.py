@@ -5,6 +5,9 @@ from scripts.vps import internal_browser_agent
 
 
 class InternalBrowserAgentMetadataTests(unittest.TestCase):
+    def setUp(self):
+        internal_browser_agent._RECENT_UNREAD_TARGETS.clear()
+
     @patch("scripts.vps.internal_browser_agent._page")
     def test_inbox_targets_prioritize_blue_unread_metadata(self, page):
         page.return_value = [
@@ -17,6 +20,14 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
         self.assertEqual("https://www.instagram.com/direct/t/new/", targets[0]["href"])
         self.assertTrue(targets[0]["unread"])
         self.assertTrue(targets[0]["bold"])
+
+    def test_recently_checked_blue_row_is_not_reopened_until_it_changes(self):
+        target = {"href": "https://www.instagram.com/direct/t/new/", "unread": True}
+        self.assertEqual([target], internal_browser_agent._actionable_unread([target]))
+        internal_browser_agent._RECENT_UNREAD_TARGETS[
+            internal_browser_agent._unread_target_key(target)
+        ] = internal_browser_agent.time.monotonic() + 300
+        self.assertEqual([], internal_browser_agent._actionable_unread([target]))
 
     @patch("scripts.vps.internal_browser_agent._wait")
     @patch("scripts.vps.internal_browser_agent._page")
@@ -86,6 +97,7 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
 
         self.assertEqual("message", result["browser"])
         self.assertEqual(1, result["inbox_unread"])
+        self.assertEqual(1, result["inbox_actionable_unread"])
         open_target.assert_called_once_with(unread)
         process_thread.assert_called_once_with("unread-row-metadata")
 

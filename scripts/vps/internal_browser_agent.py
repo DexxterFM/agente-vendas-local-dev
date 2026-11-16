@@ -23,6 +23,7 @@ from scripts.vps import internal_browser as browser
 INBOX_URL = "https://www.instagram.com/direct/inbox/"
 HOME_URL = "https://www.instagram.com/"
 WEEKLY_SWEEP = timedelta(days=7)
+_RECENT_UNREAD_TARGETS: dict[str, float] = {}
 
 
 def _now() -> datetime:
@@ -31,6 +32,21 @@ def _now() -> datetime:
 
 def _wait(seconds: float) -> None:
     time.sleep(max(0.0, seconds))
+
+
+def _unread_target_key(target: dict[str, Any]) -> str:
+    return str(target.get("href") or target.get("label") or "")[:500]
+
+
+def _actionable_unread(targets: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    now = time.monotonic()
+    expired = [key for key, until in _RECENT_UNREAD_TARGETS.items() if until <= now]
+    for key in expired:
+        _RECENT_UNREAD_TARGETS.pop(key, None)
+    return [
+        target for target in targets
+        if target.get("unread") and _RECENT_UNREAD_TARGETS.get(_unread_target_key(target), 0) <= now
+    ]
 
 
 def _page(expression: str) -> Any:
@@ -390,16 +406,22 @@ def cycle() -> dict[str, Any]:
         "frontend_unread_rows": int(last_event.get("unread_rows") or 0),
     }
     if aggregate["message_pending"]:
-        browser.action({"kind": "navigate", "url": INBOX_URL})
-        _wait(1.4)
+        if urlparse(url).path.rstrip("/") != "/direct/inbox":
+            browser.action({"kind": "navigate", "url": INBOX_URL})
+            _wait(1.4)
         targets = _inbox_targets()
         unread = [target for target in targets if target.get("unread")]
+        actionable = _actionable_unread(targets)
         aggregate["inbox_unread"] = len(unread)
+        aggregate["inbox_actionable_unread"] = len(actionable)
         # Nunca escolhe a primeira conversa por posição. A linha precisa ter
         # o estado visual de não lida exposto pelo próprio navegador interno.
-        if unread and _open_target(unread[0]):
-            return {"active": True, "browser": "message", **aggregate, **_process_thread("unread-row-metadata")}
-        return {"active": True, "browser": "inbox-no-unread", **aggregate}
+        if actionable and _open_target(actionable[0]):
+            processed = _process_thread("unread-row-metadata")
+            cooldown = 300 if processed.get("reason") == "no-pending-incoming" else 60
+            _RECENT_UNREAD_TARGETS[_unread_target_key(actionable[0])] = time.monotonic() + cooldown
+            return {"active": True, "browser": "message", **aggregate, **processed}
+        return {"active": True, "browser": "inbox-no-new-unread", **aggregate}
     notification_result = {}
     if aggregate["notification_pending"]:
         notification_result = _capture_notification_actions()
