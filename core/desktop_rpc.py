@@ -133,6 +133,23 @@ def execute(command, args):
                 'meta_sync_enabled': bool(args.get('meta_sync_enabled')),
                 'postflow_sync_enabled': bool(args.get('postflow_sync_enabled')),
             }
+            # O worker do navegador pode produzir identificadores de conversa
+            # internamente. Para o painel, persista somente telemetria
+            # agregada: nunca thread, usuário, conteúdo ou URL da sessão.
+            raw_browser = args.get('browser') if isinstance(args.get('browser'), dict) else {}
+            browser_state = str(raw_browser.get('browser','unknown'))[:40]
+            if browser_state not in {'paused','offline','waiting-login','thread','message','sweep','ready'}:
+                browser_state = 'unknown'
+            try:
+                browser_threads = max(0, min(1000, int(raw_browser.get('threads', 0) or 0)))
+            except (TypeError, ValueError):
+                browser_threads = 0
+            cycle['browser'] = {
+                'state': browser_state,
+                'processed': bool(raw_browser.get('processed')),
+                'replied': bool(raw_browser.get('replied')),
+                'threads': browser_threads,
+            }
             heartbeat=datetime.now(timezone.utc).replace(microsecond=0).isoformat()
             memory.set_setting('sales.agent.worker.heartbeat_at',heartbeat)
             memory.set_setting('sales.agent.worker.cycle',json.dumps(cycle,separators=(',',':')))
