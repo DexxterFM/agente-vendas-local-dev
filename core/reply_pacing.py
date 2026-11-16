@@ -21,7 +21,8 @@ class ReplyPacing:
         # Count the deliberate pause from queuing, even when generation was fast.
         due_at=self.clock()+seconds
         action_id=self.memory.create_pending_action('instagram_dm',{'lead_id':lead_id,'text':text,'not_before':due_at})
-        if self.memory.get_setting('sales.agent.active','false') == 'true':
+        if (self.memory.get_setting('sales.agent.active','false') == 'true'
+                and self.memory.get_setting('sales.agent.automatic_replies','false') == 'true'):
             self.memory.decide_pending_action(action_id, True, 'Agente de vendas ativo')
         with self.db:self.db.execute('INSERT INTO reply_schedule VALUES(?,?,?,?,?,NULL)',(action_id,lead_id,due_at,self.digest(lead_id),'waiting'))
         return {'id':action_id,'minimum_seconds':seconds,'not_before':due_at}

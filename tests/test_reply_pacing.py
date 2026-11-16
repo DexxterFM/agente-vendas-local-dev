@@ -32,5 +32,11 @@ class ReplyPacingTests(unittest.TestCase):
         learning=SalesLearning(self.memory)
         self.assertEqual(learning.seed_research()['added'],6)
         self.assertEqual(learning.seed_research()['added'],0)
+    def test_active_automatic_mode_approves_reply_without_manual_step(self):
+        self.memory.set_setting('sales.agent.active','true')
+        self.memory.set_setting('sales.agent.automatic_replies','true')
+        item=self.queue.queue(self.lead,'Resposta automática')
+        status=self.memory.db.execute('select status from pending_actions where id=?',(item['id'],)).fetchone()[0]
+        self.assertEqual(status,'approved')
 
 if __name__=='__main__':unittest.main()

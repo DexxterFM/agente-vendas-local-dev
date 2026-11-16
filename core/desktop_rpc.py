@@ -110,6 +110,7 @@ def execute(command, args):
                 worker_cycle={}
             return {
                 'active': memory.get_setting('sales.agent.active','false') == 'true',
+                'automatic_replies': memory.get_setting('sales.agent.automatic_replies','false') == 'true',
                 'prospecting_active': memory.get_setting('sales.agent.prospecting_active','false') == 'true',
                 'worker_heartbeat_at': heartbeat,
                 'worker_cycle': worker_cycle,
@@ -117,7 +118,24 @@ def execute(command, args):
         if command == 'setAgentActive':
             active=bool(args.get('active'))
             memory.set_setting('sales.agent.active','true' if active else 'false')
-            return {'active':active}
+            if active:
+                memory.set_setting('sales.agent.automatic_replies','true')
+                memory.set_setting('sales.agent.dialogue_flows_approved','true')
+            return {'active':active,'automatic_replies':memory.get_setting('sales.agent.automatic_replies','false') == 'true'}
+        if command == 'setAutomaticReplies':
+            enabled=bool(args.get('enabled'))
+            memory.set_setting('sales.agent.automatic_replies','true' if enabled else 'false')
+            memory.set_setting('sales.agent.dialogue_flows_approved','true' if enabled else 'false')
+            approved=0
+            if enabled:
+                approved=memory.db.execute(
+                    "update pending_actions set status='approved',decided_at=?,decision_note=? "
+                    "where action='instagram_dm' and status='pending'",
+                    (datetime.now(timezone.utc).isoformat(),'Fluxos de diálogo aprovados para resposta automática'),
+                ).rowcount
+                memory.db.commit()
+            memory.audit('sales.automatic_replies','agent','enabled' if enabled else 'disabled',f'approved_waiting={approved}')
+            return {'automatic_replies':enabled,'approved_waiting':approved}
         if command == 'setProspectingActive':
             active=bool(args.get('active'))
             memory.set_setting('sales.agent.prospecting_active','true' if active else 'false')
@@ -128,6 +146,7 @@ def execute(command, args):
             # que a automação continua viva entre aberturas do aplicativo.
             cycle={
                 'active': bool(args.get('active')),
+                'automatic_replies': bool(args.get('automatic_replies')),
                 'queued': max(0, int(args.get('queued',0) or 0)),
                 'synced': max(0, int(args.get('synced',0) or 0)),
                 'meta_sync_enabled': bool(args.get('meta_sync_enabled')),
@@ -138,7 +157,7 @@ def execute(command, args):
             # agregada: nunca thread, usuário, conteúdo ou URL da sessão.
             raw_browser = args.get('browser') if isinstance(args.get('browser'), dict) else {}
             browser_state = str(raw_browser.get('browser','unknown'))[:40]
-            if browser_state not in {'paused','offline','waiting-login','thread','message','sweep','ready'}:
+            if browser_state not in {'paused','offline','waiting-login','recovering-page','thread','message','notification','inbox-no-new-unread','sweep','ready'}:
                 browser_state = 'unknown'
             try:
                 browser_threads = max(0, min(1000, int(raw_browser.get('threads', 0) or 0)))
@@ -354,6 +373,8 @@ def execute(command, args):
         if command == 'browserScreenCycle':
             if memory.get_setting('sales.agent.active','false') != 'true':
                 return {'active':False,'new_message':False}
+            if memory.get_setting('sales.agent.automatic_replies','false') != 'true':
+                return {'active':True,'new_message':False,'reason':'automatic-replies-disabled'}
             text=str(args.get('message','')).strip()
             url=str(args.get('url','')).strip()
             thread=str(args.get('thread_id','')).strip()
@@ -498,7 +519,7 @@ def execute(command, args):
             memory.set_setting('sales.agent.browser_screen_hash','')
             return {'reset':True}
         if command == 'agentCycle':
-            if memory.get_setting('sales.agent.active','false') != 'true': return {'active':False,'queued':0,'synced':0}
+            if memory.get_setting('sales.agent.active','false') != 'true': return {'active':False,'automatic_replies':False,'queued':0,'synced':0}
             synced=0
             now=datetime.now().timestamp()
             # A conta Meta é uma integração opcional. Quando o fluxo está
@@ -538,7 +559,7 @@ def execute(command, args):
                 draft=execute('draft',{'id':lead_id})
                 execute('queue',{'id':lead_id,'text':draft})
                 memory.set_setting(key,digest); queued+=1
-            return {'active':True,'queued':queued,'synced':synced,'meta_sync_enabled':meta_sync_enabled,'last_sync_error':memory.get_setting('sales.agent.last_sync_error',''),'sync_retry_at':memory.get_setting('sales.agent.sync_retry_at','0'),'sync_backoff_seconds':memory.get_setting('sales.agent.sync_backoff_seconds','0')}
+            return {'active':True,'automatic_replies':memory.get_setting('sales.agent.automatic_replies','false') == 'true','queued':queued,'synced':synced,'meta_sync_enabled':meta_sync_enabled,'last_sync_error':memory.get_setting('sales.agent.last_sync_error',''),'sync_retry_at':memory.get_setting('sales.agent.sync_retry_at','0'),'sync_backoff_seconds':memory.get_setting('sales.agent.sync_backoff_seconds','0')}
         if command=='replyDelay':
             if 'seconds' in args:memory.set_setting('reply.minimum_seconds',str(max(3,min(30,int(args['seconds'])))))
             return {'seconds':int(memory.get_setting('reply.minimum_seconds','7'))}

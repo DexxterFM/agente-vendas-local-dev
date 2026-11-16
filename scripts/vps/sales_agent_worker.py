@@ -75,6 +75,7 @@ def main() -> None:
                 execute("dispatchDue", {})
             execute("workerHeartbeat", {
                 "active": result.get("active", False),
+                "automatic_replies": result.get("automatic_replies", False),
                 "queued": result.get("queued", 0),
                 "synced": result.get("synced", 0),
                 "meta_sync_enabled": result.get("meta_sync_enabled", False),

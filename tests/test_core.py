@@ -39,7 +39,7 @@ class CoreTests(unittest.TestCase):
             status = execute("agentStatus", {})
             self.assertEqual(status["worker_heartbeat_at"], result["heartbeat_at"])
             self.assertEqual(status["worker_cycle"], {
-                "active": True, "queued": 2, "synced": 3,
+                "active": True, "automatic_replies": False, "queued": 2, "synced": 3,
                 "meta_sync_enabled": False, "postflow_sync_enabled": True,
                 "browser": {
                     "state": "unknown", "processed": False,

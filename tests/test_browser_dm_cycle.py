@@ -13,6 +13,28 @@ from core.memory import Memory
 
 class BrowserDmCycleTests(unittest.TestCase):
 
+    def test_agent_activation_enables_all_approved_dialogue_flows(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}
+        ):
+            activated = execute("setAgentActive", {"active": True})
+            status = execute("agentStatus", {})
+            self.assertTrue(activated["automatic_replies"])
+            self.assertTrue(status["active"])
+            self.assertTrue(status["automatic_replies"])
+
+    def test_automatic_reply_authorization_approves_waiting_dm_actions(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}
+        ):
+            lead_id = execute("create", {"name": "Clínica", "contact": "clinica.teste"})
+            queued = execute("queue", {"id": lead_id, "text": "Resposta validada"})
+            result = execute("setAutomaticReplies", {"enabled": True})
+            campaigns = execute("records", {"type": "campaigns"})
+            row = next(item for item in campaigns if item["id"] == queued["id"])
+            self.assertEqual(1, result["approved_waiting"])
+            self.assertEqual("approved", row["status"])
+
     def test_browser_history_import_classifies_lead_and_can_backfill(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(
             os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}
