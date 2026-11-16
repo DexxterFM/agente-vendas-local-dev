@@ -314,12 +314,14 @@ def _send_bubble(text: str, expected_url: str) -> dict[str, Any]:
     _wait(.15 + random.random() * .25)
     existing = _page("(()=>{const e=document.activeElement;return String(e?.value||e?.innerText||e?.textContent||'').trim()})()")
     if existing:
-        browser.action({"kind": "key", "key": "SelectAll"})
-        browser.action({"kind": "key", "key": "Backspace"})
-        _wait(.2)
-        remaining = _page("(()=>{const e=document.activeElement;return String(e?.value||e?.innerText||e?.textContent||'').trim()})()")
-        if remaining:
-            raise browser.InternalBrowserError("Rascunho anterior não pôde ser limpo")
+        selected = _page(r'''(()=>{
+          const e=document.activeElement,selection=window.getSelection();
+          if(!e||!selection||!e.matches('[contenteditable="true"],[role="textbox"]'))return 0;
+          const range=document.createRange();range.selectNodeContents(e);selection.removeAllRanges();selection.addRange(range);
+          return String(selection.toString()||'').length;
+        })()''')
+        if not selected:
+            raise browser.InternalBrowserError("Rascunho anterior não pôde ser selecionado")
     browser.action({"kind": "type", "text": text})
     entered = _page("(()=>{const e=document.activeElement;return (e?.value||e?.innerText||e?.textContent||'').trim()})()")
     if str(entered or "").strip() != text:
