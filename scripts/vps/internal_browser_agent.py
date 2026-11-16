@@ -133,11 +133,30 @@ def _open_inbox() -> bool:
 
 
 def _open_notifications() -> bool:
-    return _click_surface(
+    if _click_surface(
         "/notifications/",
         ("notificações", "notifications", "atividade", "activity"),
         require_path=False,
-    )
+    ):
+        return True
+    # O menu lateral expõe o coração como SVG com aria-label, sem href nem
+    # texto. Nesse layout só o clique nativo no ponto do controle abre a
+    # central; o ciclo não pode considerar a bolinha lida sem visitar essa
+    # superfície.
+    point = _page(r'''(()=>{
+      const node=[...document.querySelectorAll('[aria-label]')].find(e=>/^(?:notifications|notificações)$/i.test(String(e.getAttribute('aria-label')||'')));
+      if(!node)return null;
+      const hit=node.closest('a,button,[role="link"],[role="button"]')||node, r=hit.getBoundingClientRect();
+      return r.width>0&&r.height>0?{x:r.left+r.width/2,y:r.top+r.height/2}:null;
+    })()''')
+    if not isinstance(point, dict):
+        return False
+    try:
+        browser.action({"kind": "click", "x": float(point["x"]), "y": float(point["y"])})
+    except (KeyError, TypeError, ValueError, browser.InternalBrowserError):
+        return False
+    _wait(.9)
+    return True
 
 
 def _open_home() -> bool:
