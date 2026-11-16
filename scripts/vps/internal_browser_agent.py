@@ -302,12 +302,13 @@ def _composer_center() -> dict[str, float] | None:
 
 
 def _message_count(text: str) -> int:
-    value = _page(f'''(()=>{{
-      const target={text!r}.replace(/\\s+/g,' ').trim();
+    value = _page(fr'''(()=>{{
+      const canonical=v=>String(v||'').replace(/[\u{{1F000}}-\u{{1FAFF}}\u2600-\u27BF]/gu,'').replace(/\\s+/g,' ').trim();
+      const target=canonical({text!r});
       const visible=e=>{{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'}};
       const nodes=[...document.querySelectorAll('[role="row"],[role="listitem"],[role="article"],[role="message"],[dir="auto"]')].filter(visible);
       return nodes.filter(e=>{{
-        const own=String(e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim();
+        const own=canonical(e.innerText||e.textContent||'');
         if(own!==target)return false;
         const r=e.getBoundingClientRect();
         return r.left>450&&r.bottom<(innerHeight||900)-40;

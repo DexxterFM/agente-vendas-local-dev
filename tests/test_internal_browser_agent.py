@@ -59,6 +59,7 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
         expression = page.call_args.args[0]
         self.assertIn('[dir="auto"]', expression)
         self.assertIn("r.left>450", expression)
+        self.assertIn("canonical", expression)
 
     @patch("scripts.vps.internal_browser_agent._page")
     def test_inbox_targets_prioritize_blue_unread_metadata(self, page):
