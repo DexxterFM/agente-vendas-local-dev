@@ -688,7 +688,10 @@ def cycle() -> dict[str, Any]:
     # A URL é verificada antes da heurística de DOM. Durante login, páginas
     # de identidade podem não ter campos de credencial durante uma transição;
     # nessa situação o agente deve ficar rigorosamente passivo.
-    if page_watchdog.get("stalled"):
+    # A caixa de entrada pode exibir o skeleton por alguns instantes enquanto
+    # a lista é atualizada. Não bloqueie o ciclo de DM nesse estado: a leitura
+    # dos marcadores e das linhas continua sendo feita no mesmo documento.
+    if page_watchdog.get("stalled") and not str(snap.get("url") or "").startswith("https://www.instagram.com/direct"):
         return {"active": True, "browser": "recovering-page", "page_watchdog": page_watchdog}
     if _login_or_identity_step(str(snap.get("url") or "")) or not snap.get("authenticated"):
         return {"active": True, "browser": "waiting-login"}
