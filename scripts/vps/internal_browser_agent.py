@@ -229,7 +229,11 @@ def _prospecting_cycle() -> dict[str, Any]:
         if comment:
             browser.action({"kind": "click", **comment}); browser.action({"kind": "type", "text": "Muito bonito o trabalho de vocês! 😊"}); browser.action({"kind": "key", "key": "Enter"}); _wait(1.0)
         browser.action({"kind": "navigate", "url": f"https://www.instagram.com/{username}/"}); _wait(1.2)
-        message = _prospecting_point(r'''(()=>{const e=[...document.querySelectorAll('button,[role="button"],a')].find(x=>/^(?:mensagem|message|enviar mensagem|send message)$/i.test((x.innerText||x.getAttribute('aria-label')||'').trim()));if(!e)return null;const r=e.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()''')
+        message = None
+        for _ in range(8):
+            message = _prospecting_point(r'''(()=>{const e=[...document.querySelectorAll('button,[role="button"],a')].find(x=>/(?:^|\s)(?:mensagem|message|enviar mensagem|send message)(?:\s|$)/i.test((x.innerText||x.getAttribute('aria-label')||x.getAttribute('title')||'').replace(/\s+/g,' ').trim()));if(!e)return null;const r=e.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()''')
+            if message: break
+            _wait(.5)
         if not message: raise RuntimeError("Botão de mensagem não encontrado")
         browser.action({"kind": "click", **message}); _wait(1.2)
         composer = _prospecting_point(r'''(()=>{const e=[...document.querySelectorAll('textarea,input,[contenteditable="true"],[role="textbox"]')].find(x=>/mensagem|message|responder|reply/i.test((x.placeholder||'')+' '+(x.getAttribute('aria-label')||'')));if(!e)return null;const r=e.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()''')
