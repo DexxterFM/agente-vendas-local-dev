@@ -305,21 +305,16 @@ def _message_count(text: str) -> int:
     return int(value or 0) if isinstance(value, (int, float)) else 0
 
 
-def _send_button_center() -> dict[str, float] | None:
+def _click_send_button() -> bool:
     value = _page(r'''(()=>{
       const norm=v=>String(v||'').replace(/\s+/g,' ').trim().toLowerCase();
       const nodes=[...document.querySelectorAll('button,[role="button"]')].filter(e=>{
         const r=e.getBoundingClientRect(),label=norm([e.getAttribute('aria-label'),e.innerText].filter(Boolean).join(' '));
         return r.width>0&&r.height>0&&r.top>(innerHeight||900)*.55&&/^(?:send|enviar)$/.test(label);
       });
-      if(!nodes[0])return null;const r=nodes[0].getBoundingClientRect();return{x:r.left+r.width/2,y:r.top+r.height/2};
+      if(!nodes[0])return false;nodes[0].click();return true;
     })()''')
-    if not isinstance(value, dict):
-        return None
-    try:
-        return {"x": float(value["x"]), "y": float(value["y"])}
-    except (KeyError, TypeError, ValueError):
-        return None
+    return bool(value)
 
 
 def _send_bubble(text: str, expected_url: str) -> dict[str, Any]:
@@ -345,10 +340,7 @@ def _send_bubble(text: str, expected_url: str) -> dict[str, Any]:
         raise browser.InternalBrowserError("Texto não foi inserido no campo da conversa")
     if str(_page("location.href") or "") != expected_url:
         raise browser.InternalBrowserError("Conversa mudou antes do envio")
-    send_point = _send_button_center()
-    if send_point:
-        browser.action({"kind": "click", **send_point})
-    else:
+    if not _click_send_button():
         browser.action({"kind": "key", "key": "Enter"})
     for _ in range(12):
         _wait(.5)
