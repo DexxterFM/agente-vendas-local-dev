@@ -149,6 +149,18 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
         action.assert_not_called()
 
     @patch("scripts.vps.internal_browser_agent._wait")
+    @patch("scripts.vps.internal_browser_agent._page")
+    @patch("scripts.vps.internal_browser_agent.browser.action")
+    def test_open_target_navigates_to_known_thread_when_virtualized_row_ignores_click(self, action, page, _wait):
+        page.side_effect = [False, "https://www.instagram.com/direct/t/456/"]
+        target = {"href": "https://www.instagram.com/direct/t/456/", "label": "Conversa"}
+
+        opened = internal_browser_agent._open_target(target)
+
+        self.assertTrue(opened)
+        action.assert_called_once_with({"kind": "navigate", "url": target["href"]})
+
+    @patch("scripts.vps.internal_browser_agent._wait")
     @patch("scripts.vps.internal_browser_agent.browser.action")
     @patch("scripts.vps.internal_browser_agent._click_surface", return_value=False)
     @patch("scripts.vps.internal_browser_agent._page")

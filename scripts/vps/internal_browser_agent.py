@@ -295,13 +295,21 @@ def _open_target(target: dict[str, str]) -> bool:
       if(!node)return false;
       (node.closest('a[href],button,[role="button"],[role="link"]')||node).click();return true;
     }})()''')
-    if not clicked:
+    if clicked:
+        for _ in range(16):
+            _wait(.45)
+            current = _page("location.href")
+            path = urlparse(str(current or "")).path.strip("/").split("/")
+            if len(path) == 3 and path[:2] == ["direct", "t"]:
+                return True
+    # Linhas virtualizadas podem manter um nó visível, mas descartar o clique
+    # sintético. A URL veio da própria linha; navegar internamente para ela
+    # conserva a sessão e abre exatamente a conversa selecionada.
+    if not href:
         return False
+    browser.action({"kind": "navigate", "url": href})
     for _ in range(16):
         _wait(.45)
-        path = urlparse(str(browser.status().get("url") or "")).path.strip("/").split("/")
-        # status intentionally does not include url; evaluate below remains
-        # local to the service and cannot leak to the panel.
         current = _page("location.href")
         path = urlparse(str(current or "")).path.strip("/").split("/")
         if len(path) == 3 and path[:2] == ["direct", "t"]:
