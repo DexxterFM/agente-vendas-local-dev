@@ -166,6 +166,82 @@ def _open_home() -> bool:
     return _click_surface("/", ("página inicial", "home"))
 
 
+def _prospecting_point(expression: str) -> dict[str, float] | None:
+    value = _page(expression)
+    if not isinstance(value, dict):
+        return None
+    try:
+        return {"x": float(value["x"]), "y": float(value["y"])}
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _prospecting_cycle() -> dict[str, Any]:
+    """Executa uma rodada espaçada de prospecção pela sessão persistente."""
+    status = execute("agentStatus", {})
+    if not status.get("active") or not status.get("prospecting_active"):
+        return {"prospecting": False}
+    current = urlparse(str(_page("location.href") or ""))
+    if current.path.rstrip("/") not in {"", "/"}:
+        return {"prospecting": True, "browser": "prospecting-waiting-home"}
+    pacing = execute("prospectingPacing", {"mode": "status"})
+    if not pacing.get("ready"):
+        return {"prospecting": True, "browser": "prospecting-paced", "wait_seconds": pacing.get("wait_seconds", 0)}
+    profiles = _page(r'''(()=>{
+      const reserved=new Set(['accounts','direct','explore','reels','stories','about','developer','legal','privacy','web']);
+      const out=[],seen=new Set();
+      for(const link of document.querySelectorAll('a[href]')){
+        let path='';try{path=new URL(link.href,location.href).pathname.split('/').filter(Boolean)[0]||''}catch{}
+        if(!/^[a-z0-9._]{1,30}$/i.test(path)||reserved.has(path.toLowerCase())||seen.has(path.toLowerCase()))continue;
+        const rect=link.getBoundingClientRect();if(!rect.width||!rect.height||rect.top>innerHeight*1.4)continue;
+        let scope=link;for(let i=0;i<5&&scope.parentElement;i++,scope=scope.parentElement){if((scope.innerText||'').length>1800)break}
+        const text=(scope.innerText||'').replace(/\s+/g,' ').trim().slice(0,4000);
+        const following=/\b(?:seguindo|following)\b/i.test(text);
+        seen.add(path.toLowerCase());out.push({username:path.toLowerCase(),text,following});
+      }
+      return out.slice(0,30);
+    })()''')
+    if not isinstance(profiles, list) or not profiles:
+        _page("window.scrollBy({top:Math.max(560,innerHeight*.82),behavior:'smooth'});true")
+        _wait(.9)
+        return {"prospecting": True, "browser": "prospecting-scrolled", "discovered": 0}
+    discovered = execute("campaignDiscover", {"profiles": profiles})
+    claim = execute("campaignClaim", {})
+    if not claim.get("claimed"):
+        return {"prospecting": True, "browser": "prospecting-no-candidate", "discovered": len(discovered.get("created", []))}
+    payload = claim.get("payload") or {}
+    username = str(payload.get("username") or "").strip().lower()
+    action_id = int(claim.get("id") or 0)
+    reserved = execute("prospectingPacing", {"mode": "reserve", "kind": "instagram_campaign", "target": username})
+    if not reserved.get("reserved"):
+        execute("campaignConfirm", {"id": action_id, "state": "pending", "note": "Aguardando a próxima janela"})
+        return {"prospecting": True, "browser": "prospecting-paced", "wait_seconds": reserved.get("wait_seconds", 0)}
+    try:
+        browser.action({"kind": "navigate", "url": f"https://www.instagram.com/{username}/"})
+        _wait(1.8)
+        follow = _prospecting_point(r'''(()=>{const e=[...document.querySelectorAll('button,[role="button"]')].find(x=>/^(seguir|follow)$/i.test((x.innerText||x.getAttribute('aria-label')||'').trim()));if(!e)return null;const r=e.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()''')
+        if follow: browser.action({"kind": "click", **follow}); _wait(.8)
+        post = _prospecting_point(r'''(()=>{const e=[...document.querySelectorAll('a[href]')].find(x=>{try{return /\/(?:p|reel)\//.test(new URL(x.href,location.href).pathname)}catch{return false}});if(!e)return null;const r=e.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()''')
+        if post: browser.action({"kind": "click", **post}); _wait(1.3)
+        like = _prospecting_point(r'''(()=>{const e=[...document.querySelectorAll('button,[role="button"],[aria-label]')].find(x=>/^(?:curtir|like)$/i.test((x.getAttribute('aria-label')||x.innerText||'').trim()));if(!e)return null;const r=e.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()''')
+        if like: browser.action({"kind": "click", **like}); _wait(.8)
+        comment = _prospecting_point(r'''(()=>{const e=[...document.querySelectorAll('textarea,input,[contenteditable="true"],[role="textbox"]')].find(x=>/coment|comment|adicionar/i.test((x.placeholder||'')+' '+(x.getAttribute('aria-label')||'')));if(!e)return null;const r=e.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()''')
+        if comment:
+            browser.action({"kind": "click", **comment}); browser.action({"kind": "type", "text": "Muito bonito o trabalho de vocês! 😊"}); browser.action({"kind": "key", "key": "Enter"}); _wait(1.0)
+        browser.action({"kind": "navigate", "url": f"https://www.instagram.com/{username}/"}); _wait(1.2)
+        message = _prospecting_point(r'''(()=>{const e=[...document.querySelectorAll('button,[role="button"],a')].find(x=>/^(?:mensagem|message|enviar mensagem|send message)$/i.test((x.innerText||x.getAttribute('aria-label')||'').trim()));if(!e)return null;const r=e.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()''')
+        if not message: raise RuntimeError("Botão de mensagem não encontrado")
+        browser.action({"kind": "click", **message}); _wait(1.2)
+        composer = _prospecting_point(r'''(()=>{const e=[...document.querySelectorAll('textarea,input,[contenteditable="true"],[role="textbox"]')].find(x=>/mensagem|message|responder|reply/i.test((x.placeholder||'')+' '+(x.getAttribute('aria-label')||'')));if(!e)return null;const r=e.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()''')
+        if not composer: raise RuntimeError("Campo de mensagem não encontrado")
+        browser.action({"kind": "click", **composer}); browser.action({"kind": "type", "text": str(payload.get('intro') or 'Olá! Muito legal o trabalho de vocês ❤️')}); browser.action({"kind": "key", "key": "Enter"})
+        execute("campaignConfirm", {"id": action_id, "state": "sent", "note": "Interações confirmadas pela sessão interna"})
+        return {"prospecting": True, "browser": "prospecting-sent", "username": username, "action_id": action_id}
+    except Exception as exc:
+        execute("campaignConfirm", {"id": action_id, "state": "needs_check", "note": str(exc)[:500]})
+        return {"prospecting": True, "browser": "prospecting-error", "error": str(exc)[:160]}
+
+
 def _login_or_identity_step(url: str) -> bool:
     """Impede qualquer navegação enquanto a sessão ainda é autenticada.
 
@@ -731,6 +807,12 @@ def cycle() -> dict[str, Any]:
         "frontend_events": len(event_rows),
         "frontend_unread_rows": int(last_event.get("unread_rows") or 0),
     }
+    if (urlparse(url).path.rstrip("/") in {"", "/"}
+            and bool(execute("agentStatus", {}).get("prospecting_active"))
+            and not aggregate["message_pending"] and not aggregate["notification_pending"]):
+        prospecting_result = _prospecting_cycle()
+        if prospecting_result.get("browser") not in {None, "prospecting-paced", "prospecting-no-candidate", "prospecting-scrolled", "prospecting-waiting-home"}:
+            return {"active": True, **aggregate, **prospecting_result}
     # A central de notificações tem prioridade quando os dois indicadores
     # vermelhos aparecem juntos. Antes, o retorno antecipado do ramo de DMs
     # impedia esta rotina de ser alcançada indefinidamente.

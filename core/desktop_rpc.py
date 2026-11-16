@@ -157,7 +157,7 @@ def execute(command, args):
             # agregada: nunca thread, usuário, conteúdo ou URL da sessão.
             raw_browser = args.get('browser') if isinstance(args.get('browser'), dict) else {}
             browser_state = str(raw_browser.get('browser','unknown'))[:40]
-            if browser_state not in {'paused','offline','waiting-login','recovering-page','thread','message','notification','inbox-no-new-unread','sweep','ready'}:
+            if browser_state not in {'paused','offline','waiting-login','recovering-page','thread','message','notification','inbox-no-new-unread','sweep','ready','prospecting-sent','prospecting-error'}:
                 browser_state = 'unknown'
             try:
                 browser_threads = max(0, min(1000, int(raw_browser.get('threads', 0) or 0)))
