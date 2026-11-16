@@ -606,6 +606,9 @@ def execute(command, args):
         if command == 'internalBrowserSnapshot':
             from scripts.vps.internal_browser import snapshot
             return snapshot()
+        if command == 'internalBrowserVisualState':
+            from scripts.vps.internal_browser import visual_state
+            return visual_state()
         if command == 'internalBrowserMetadata':
             from scripts.vps.internal_browser import metadata
             return metadata()

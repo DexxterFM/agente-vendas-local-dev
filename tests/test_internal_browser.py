@@ -83,6 +83,23 @@ class InternalBrowserTests(unittest.TestCase):
         self.assertNotIn("text", result)
 
     @patch("scripts.vps.internal_browser.evaluate")
+    def test_visual_state_exposes_readiness_without_page_content(self, evaluate):
+        evaluate.return_value = {
+            "ready": False,
+            "path": "/direct/inbox/",
+            "authenticated_surface": True,
+            "direct": True,
+            "document_ready": True,
+            "private_text": "não pode sair",
+        }
+
+        result = internal_browser.visual_state()
+
+        self.assertFalse(result["ready"])
+        self.assertTrue(result["authenticated_surface"])
+        self.assertNotIn("private_text", result)
+
+    @patch("scripts.vps.internal_browser.evaluate")
     def test_metadata_returns_only_aggregate_indicators(self, evaluate):
         evaluate.return_value = {
             "path": "/", "message_controls": 3, "notification_controls": 1,
@@ -127,19 +144,19 @@ class InternalBrowserTests(unittest.TestCase):
         self.assertTrue(internal_browser.frontend_event_pending())
         self.assertIn("__salesAgentFrontEventsV1", evaluate.call_args.args[0])
 
-    @patch("scripts.vps.internal_browser.evaluate")
-    def test_stalled_page_watchdog_returns_only_recovery_state(self, evaluate):
-        evaluate.return_value = {
-            "stalled": True, "armed": True, "throttled": False,
-            "armed_seconds": 3, "page_text": "não deve sair",
+    @patch("scripts.vps.internal_browser.visual_state")
+    def test_stalled_page_watchdog_pauses_without_reloading(self, visual_state):
+        visual_state.return_value = {
+            "ready": False, "authenticated_surface": True, "direct": True,
         }
 
         result = internal_browser.stalled_page_watchdog()
 
         self.assertEqual(
-            {"stalled": True, "armed": True, "throttled": False, "armed_seconds": 3},
+            {"stalled": True, "armed": False, "throttled": False, "armed_seconds": 0},
             result,
         )
+        visual_state.assert_called_once_with()
 
     @patch("scripts.vps.internal_browser._with_page")
     def test_action_rejects_external_navigation_without_touching_page(self, page):

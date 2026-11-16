@@ -259,6 +259,40 @@ def snapshot() -> dict[str, Any]:
     return {key: value.get(key) for key in ("url", "authenticated", "hasMessages", "hasNotifications")}
 
 
+def visual_state() -> dict[str, Any]:
+    """Indica se o quadro atual está pronto para substituir o último quadro bom."""
+    value = evaluate(r'''(()=>{
+      const path=location.pathname.toLowerCase();
+      const norm=value=>String(value||'').replace(/\s+/g,' ').trim();
+      const visible=e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0};
+      const controls=[...document.querySelectorAll('a,button,[role="button"],[role="link"]')].filter(visible);
+      const label=e=>norm([e.innerText,e.getAttribute('aria-label'),e.getAttribute('title'),e.getAttribute('href')].filter(Boolean).join(' '));
+      const shell=controls.some(e=>/mensagens|messages|direct|notifica|notifications|página inicial|home/i.test(label(e)));
+      const fields=[...document.querySelectorAll('input,textarea,[contenteditable="true"],[role="textbox"]')].filter(visible);
+      const composer=fields.some(e=>/mensagem|message|responder|reply/i.test([e.placeholder,e.getAttribute('aria-label')].filter(Boolean).join(' ')))
+        ||(path.startsWith('/direct/t/')&&fields.some(e=>e.matches('[contenteditable="true"],[role="textbox"]')&&!/pesquis|search/i.test(e.placeholder||'')));
+      const search=fields.some(e=>/pesquis|search/i.test([e.placeholder,e.getAttribute('aria-label')].filter(Boolean).join(' ')));
+      const meaningfulArticle=[...document.querySelectorAll('[role="message"],[role="article"]')].filter(visible).some(e=>norm(e.innerText).length>0);
+      const meaningfulRow=[...document.querySelectorAll('button,[role="button"],[role="row"],[role="listitem"]')].filter(visible).some(e=>{const r=e.getBoundingClientRect();return r.left<(innerWidth||1280)*.45&&r.height>=35&&r.height<=180&&norm(e.innerText).length>5});
+      const bodyText=norm(document.body?.innerText);
+      const emptyState=/no messages|nenhuma mensagem|send a message|enviar (?:uma )?mensagem|your messages|suas mensagens/i.test(bodyText);
+      let ready=document.readyState==='complete'&&shell;
+      if(path.startsWith('/direct/t/'))ready=ready&&composer&&(meaningfulArticle||emptyState);
+      else if(path.startsWith('/direct'))ready=ready&&search&&(meaningfulRow||emptyState);
+      else ready=ready&&bodyText.length>80;
+      return {ready,path,authenticated_surface:shell,direct:path.startsWith('/direct'),document_ready:document.readyState==='complete'};
+    })()''')
+    if not isinstance(value, dict):
+        raise InternalBrowserError("Estado visual do navegador interno inválido")
+    return {
+        "ready": bool(value.get("ready")),
+        "path": str(value.get("path") or "")[:240],
+        "authenticated_surface": bool(value.get("authenticated_surface")),
+        "direct": bool(value.get("direct")),
+        "document_ready": bool(value.get("document_ready")),
+    }
+
+
 def metadata() -> dict[str, Any]:
     """Retorna somente indicadores agregados da interface autenticada."""
     expression = r'''(()=>{
@@ -421,64 +455,14 @@ def frontend_event_pending() -> bool:
 
 
 def stalled_page_watchdog() -> dict[str, Any]:
-    """Arma recuperação suave quando o front fica preso no splash.
-
-    O temporizador roda dentro da própria página. Rotas de login, desafios e
-    qualquer tela com campos de credencial nunca são recarregadas por ele.
-    """
-    value = evaluate(r'''(()=>{
-      const KEY='__salesAgentStallWatchdogV1',STORE='salesAgentStallRecoveriesV1';
-      const label=e=>[e.innerText,e.getAttribute('aria-label'),e.getAttribute('title'),e.getAttribute('href')].filter(Boolean).join(' ');
-      const health=()=>{
-        const path=location.pathname.toLowerCase();
-        const fields=[...document.querySelectorAll('input,textarea,[contenteditable="true"]')];
-        const fieldText=fields.map(e=>[e.name,e.type,e.placeholder,e.getAttribute('aria-label')].filter(Boolean).join(' ').toLowerCase());
-        const credential=fieldText.some(v=>/password|senha|username|login|c[oó]digo|security|seguran[cç]a/.test(v));
-        const identity=/^\/(?:accounts\/|auth_platform\/|challenge|checkpoint|two_factor|login|oidc)/.test(path);
-        const controls=[...document.querySelectorAll('a,button,[role="button"],[role="link"]')];
-        const shell=controls.some(e=>/mensagens|messages|direct|notifica|notifications|página inicial|home/i.test(label(e)));
-        const direct=path.startsWith('/direct');
-        const bodyText=String(document.body?.innerText||'').replace(/\s+/g,' ').trim();
-        const threadLinks=document.querySelectorAll('a[href*="/direct/t/"]').length;
-        const conversationNodes=document.querySelectorAll('[role="message"],[role="article"],[role="listitem"],[role="row"]').length;
-        const composer=fields.some(e=>/mensagem|message|responder|reply/i.test([e.placeholder,e.getAttribute('aria-label')].filter(Boolean).join(' ')));
-        const inboxControls=fields.some(e=>/pesquis|search/i.test([e.placeholder,e.getAttribute('aria-label')].filter(Boolean).join(' ')))
-          ||controls.some(e=>/^(primary|general|requests|principal|geral|solicita[cç][oõ]es)$/i.test(String(e.innerText||'').trim()));
-        const emptyState=/no messages|nenhuma mensagem|send a message|enviar (?:uma )?mensagem/i.test(bodyText);
-        const usable=threadLinks>0||conversationNodes>0||composer||inboxControls||emptyState;
-        return {stalled:direct&&document.readyState==='complete'&&!credential&&!identity&&(!shell||!usable)};
-      };
-      const stalled=health().stalled;
-      let state=window[KEY];
-      if(!state)state=window[KEY]={timer:0,armedAt:0};
-      if(!stalled){
-        if(state.timer)clearTimeout(state.timer);
-        state.timer=0;state.armedAt=0;
-        return {stalled:false,armed:false,throttled:false};
-      }
-      let history=[];
-      try{history=JSON.parse(sessionStorage.getItem(STORE)||'[]').filter(v=>Number(v)>Date.now()-300000)}catch{history=[]}
-      const throttled=history.length>=2;
-      if(!state.timer&&!throttled){
-        state.armedAt=Date.now();
-        state.timer=setTimeout(()=>{
-          state.timer=0;
-          if(health().stalled){
-            history.push(Date.now());
-            try{sessionStorage.setItem(STORE,JSON.stringify(history.slice(-2)))}catch{}
-            location.reload();
-          }
-        },12000);
-      }
-      return {stalled:true,armed:Boolean(state.timer),throttled,armed_seconds:state.armedAt?Math.max(0,Math.floor((Date.now()-state.armedAt)/1000)):0};
-    })()''')
-    if not isinstance(value, dict):
-        raise InternalBrowserError("Watchdog do navegador interno inválido")
+    """Pausa o agente numa transição sem recarregar ou substituir a sessão."""
+    value = visual_state()
+    stalled = bool(value["authenticated_surface"] and value["direct"] and not value["ready"])
     return {
-        "stalled": bool(value.get("stalled")),
-        "armed": bool(value.get("armed")),
-        "throttled": bool(value.get("throttled")),
-        "armed_seconds": max(0, min(300, int(value.get("armed_seconds") or 0))),
+        "stalled": stalled,
+        "armed": False,
+        "throttled": False,
+        "armed_seconds": 0,
     }
 
 
