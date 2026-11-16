@@ -116,17 +116,26 @@ def _inbox_targets() -> list[dict[str, str]]:
       const output=[], seen=new Set();
       for(const node of [...document.querySelectorAll('a[href*="/direct/t/"],button,[role="button"]')]){
         if(!visible(node))continue;
-        const label=norm([node.getAttribute('aria-label'),node.innerText].filter(Boolean).join(' '));
-        const link=node.matches('a[href]')?node:(node.querySelector('a[href*="/direct/t/"]')||null);
+        let scope=node, parent=node.parentElement;
+        for(let depth=0;depth<7&&parent;depth++,parent=parent.parentElement){
+          const r=parent.getBoundingClientRect();
+          if(r.height>170)break;
+          if(r.height>=42&&r.width>=scope.getBoundingClientRect().width)scope=parent;
+        }
+        const label=norm([scope.getAttribute('aria-label'),scope.innerText].filter(Boolean).join(' '));
+        const link=node.matches('a[href*="/direct/t/"]')?node:(scope.querySelector('a[href*="/direct/t/"]')||null);
         const href=link?link.href:'';
         if(!href&&!ignored.test(label)&&!(label.length>8&&time.test(label)))continue;
         if(!href&&ignored.test(label))continue;
         const key=href||label;
         if(key&& !seen.has(key)){
           seen.add(key);
-          const elements=[node,...node.querySelectorAll('*')].filter(visible);
+          const elements=[scope,...scope.querySelectorAll('*')].filter(visible);
           const bold=elements.some(e=>Number.parseInt(getComputedStyle(e).fontWeight,10)>=600&&norm(e.textContent).length>1);
-          const blue=elements.some(e=>{const r=e.getBoundingClientRect();return r.width>=3&&r.height>=3&&r.width<=20&&r.height<=20&&isBlue(e)});
+          const blue=elements.some(e=>{
+            const r=e.getBoundingClientRect(), accessibility=norm([e.getAttribute('aria-label'),e.getAttribute('title')].join(' '));
+            return /^(?:unread|não lida|nova mensagem)$/i.test(accessibility)||(r.width>=2&&r.height>=2&&r.width<=24&&r.height<=24&&isBlue(e));
+          });
           output.push({href,label:label.slice(0,360),unread:Boolean(blue),bold:Boolean(bold),blue:Boolean(blue)});
         }
       }
