@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 from scripts.vps import internal_browser_agent
 
@@ -8,6 +8,40 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
     def setUp(self):
         internal_browser_agent._RECENT_UNREAD_TARGETS.clear()
         internal_browser_agent._LAST_NOTIFICATION_SCAN = 0.0
+
+    @patch("scripts.vps.internal_browser_agent._wait")
+    @patch("scripts.vps.internal_browser_agent._page", return_value="")
+    @patch("scripts.vps.internal_browser_agent.browser.action")
+    def test_clear_composer_uses_native_select_all_and_backspace(self, action, _page, _wait):
+        internal_browser_agent._clear_composer()
+
+        self.assertEqual([
+            call({"kind": "key", "key": "SelectAll"}),
+            call({"kind": "key", "key": "Backspace"}),
+        ], action.call_args_list)
+
+    @patch("scripts.vps.internal_browser_agent._wait")
+    @patch("scripts.vps.internal_browser_agent._send_button_center", return_value={"x": 1100.0, "y": 835.0})
+    @patch("scripts.vps.internal_browser_agent._clear_composer")
+    @patch("scripts.vps.internal_browser_agent._message_count", side_effect=[0, 1])
+    @patch("scripts.vps.internal_browser_agent._page")
+    @patch("scripts.vps.internal_browser_agent._composer_center", return_value={"x": 700.0, "y": 835.0})
+    @patch("scripts.vps.internal_browser_agent.browser.action")
+    def test_send_bubble_clears_stale_draft_and_clicks_send_with_native_mouse(
+        self, action, _composer, page, _count, clear, _send, _wait
+    ):
+        expected = "https://www.instagram.com/direct/t/123/"
+        page.side_effect = ["rascunho anterior", "novo link", expected, expected]
+
+        result = internal_browser_agent._send_bubble("novo link", expected)
+
+        self.assertTrue(result["sent"])
+        clear.assert_called_once_with()
+        self.assertEqual([
+            call({"kind": "click", "x": 700.0, "y": 835.0}),
+            call({"kind": "type", "text": "novo link"}),
+            call({"kind": "click", "x": 1100.0, "y": 835.0}),
+        ], action.call_args_list)
 
     @patch("scripts.vps.internal_browser_agent._page")
     def test_inbox_targets_prioritize_blue_unread_metadata(self, page):

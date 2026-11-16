@@ -305,16 +305,50 @@ def _message_count(text: str) -> int:
     return int(value or 0) if isinstance(value, (int, float)) else 0
 
 
-def _click_send_button() -> bool:
+def _send_button_center() -> dict[str, float] | None:
+    """Localiza o controle de envio ao lado do compositor da DM.
+
+    O botão atual é exposto apenas como um ícone em algumas versões da tela.
+    Por isso, além do rótulo acessível, usamos a relação geométrica com o
+    compositor. O clique propriamente dito continua sendo um evento nativo de
+    mouse, e não ``element.click()``, que a interface pode ignorar.
+    """
     value = _page(r'''(()=>{
+      const visible=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};
       const norm=v=>String(v||'').replace(/\s+/g,' ').trim().toLowerCase();
-      const nodes=[...document.querySelectorAll('button,[role="button"]')].filter(e=>{
-        const r=e.getBoundingClientRect(),label=norm([e.getAttribute('aria-label'),e.innerText].filter(Boolean).join(' '));
-        return r.width>0&&r.height>0&&r.top>(innerHeight||900)*.55&&/^(?:send|enviar)$/.test(label);
-      });
-      if(!nodes[0])return false;nodes[0].click();return true;
+      const fields=[...document.querySelectorAll('textarea,input,[contenteditable="true"],[role="textbox"]')].filter(visible);
+      const composer=fields.find(e=>/mensagem|message|responder|reply/i.test([e.placeholder,e.getAttribute('aria-label')].filter(Boolean).join(' ')))
+        ||fields.find(e=>e.matches('[contenteditable="true"],[role="textbox"]')&&!/pesquis|search/i.test([e.placeholder,e.getAttribute('aria-label')].filter(Boolean).join(' ')));
+      if(!composer)return null;
+      const c=composer.getBoundingClientRect();
+      const candidates=[...document.querySelectorAll('button,[role="button"]')].filter(visible).map(e=>{
+        const r=e.getBoundingClientRect();
+        const label=norm([e.getAttribute('aria-label'),e.getAttribute('title'),e.innerText].filter(Boolean).join(' '));
+        const sameBand=r.bottom>=c.top-8&&r.top<=c.bottom+8;
+        const onRight=r.left>=c.left+c.width*.68&&r.right<=Math.max(innerWidth,c.right+96);
+        const named=/^(?:send|enviar)(?: message| mensagem)?$/.test(label);
+        return {r,label,named,sameBand,onRight};
+      }).filter(v=>v.sameBand&&(v.named||v.onRight));
+      candidates.sort((a,b)=>Number(b.named)-Number(a.named)||b.r.right-a.r.right);
+      const hit=candidates[0];
+      return hit?{x:hit.r.left+hit.r.width/2,y:hit.r.top+hit.r.height/2,label:hit.label}:null;
     })()''')
-    return bool(value)
+    if not isinstance(value, dict):
+        return None
+    try:
+        return {"x": float(value["x"]), "y": float(value["y"])}
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _clear_composer() -> None:
+    """Remove de forma nativa qualquer rascunho deixado por uma tentativa."""
+    browser.action({"kind": "key", "key": "SelectAll"})
+    browser.action({"kind": "key", "key": "Backspace"})
+    _wait(.1)
+    remaining = _page("(()=>{const e=document.activeElement;return String(e?.value||e?.innerText||e?.textContent||'').trim()})()")
+    if str(remaining or "").strip():
+        raise browser.InternalBrowserError("Rascunho anterior não pôde ser limpo")
 
 
 def _send_bubble(text: str, expected_url: str) -> dict[str, Any]:
@@ -326,21 +360,17 @@ def _send_bubble(text: str, expected_url: str) -> dict[str, Any]:
     _wait(.15 + random.random() * .25)
     existing = _page("(()=>{const e=document.activeElement;return String(e?.value||e?.innerText||e?.textContent||'').trim()})()")
     if existing:
-        selected = _page(r'''(()=>{
-          const e=document.activeElement,selection=window.getSelection();
-          if(!e||!selection||!e.matches('[contenteditable="true"],[role="textbox"]'))return 0;
-          const range=document.createRange();range.selectNodeContents(e);selection.removeAllRanges();selection.addRange(range);
-          return String(selection.toString()||'').length;
-        })()''')
-        if not selected:
-            raise browser.InternalBrowserError("Rascunho anterior não pôde ser selecionado")
+        _clear_composer()
     browser.action({"kind": "type", "text": text})
     entered = _page("(()=>{const e=document.activeElement;return (e?.value||e?.innerText||e?.textContent||'').trim()})()")
     if str(entered or "").strip() != text:
         raise browser.InternalBrowserError("Texto não foi inserido no campo da conversa")
     if str(_page("location.href") or "") != expected_url:
         raise browser.InternalBrowserError("Conversa mudou antes do envio")
-    if not _click_send_button():
+    send_point = _send_button_center()
+    if send_point:
+        browser.action({"kind": "click", **send_point})
+    else:
         browser.action({"kind": "key", "key": "Enter"})
     for _ in range(12):
         _wait(.5)
