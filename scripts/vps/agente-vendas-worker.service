@@ -8,6 +8,7 @@ Type=simple
 User=agentevendas
 WorkingDirectory=/opt/agente-vendas-local
 EnvironmentFile=/etc/agente-vendas-local/agent.env
+EnvironmentFile=-/var/lib/avanthcode-agent/config/sales-agent-meta.env
 # Reaproveita apenas no processo do agente as credenciais Meta já usadas pelo
 # conector Instagram do PostFlow. O arquivo é lido pelo systemd e não entra no
 # repositório nem é copiado para a pasta da aplicação.

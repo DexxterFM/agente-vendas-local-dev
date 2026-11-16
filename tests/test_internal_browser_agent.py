@@ -14,6 +14,7 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
     @patch("scripts.vps.internal_browser_agent._page", return_value="")
     @patch("scripts.vps.internal_browser_agent.browser.action")
     def test_clear_composer_uses_native_select_all_and_backspace(self, action, _page, _composer, _wait):
+        _page.side_effect = [True, ""]
         internal_browser_agent._clear_composer()
 
         self.assertEqual([
@@ -27,6 +28,7 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
     @patch("scripts.vps.internal_browser_agent._page", side_effect=["abc", "", ""])
     @patch("scripts.vps.internal_browser_agent.browser.action")
     def test_clear_composer_erases_remaining_characters_when_select_all_is_ignored(self, action, _page, _composer, _wait):
+        _page.side_effect = [True, "abc", ""]
         internal_browser_agent._clear_composer()
 
         self.assertEqual(4, action.call_args_list.count(call({"kind": "key", "key": "Backspace"})))
@@ -52,13 +54,14 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
         self, action, _composer, page, _count, clear, _send, _wait
     ):
         expected = "https://www.instagram.com/direct/t/123/"
-        page.side_effect = ["rascunho anterior", "novo link", expected, "", expected]
+        page.side_effect = [expected, True, "rascunho anterior", True, "novo link", expected, "", expected]
 
         result = internal_browser_agent._send_bubble("novo link", expected)
 
         self.assertTrue(result["sent"])
         clear.assert_called_once_with()
         self.assertEqual([
+            call({"kind": "click", "x": 700.0, "y": 835.0}),
             call({"kind": "click", "x": 700.0, "y": 835.0}),
             call({"kind": "type", "text": "novo link"}),
             call({"kind": "click", "x": 1100.0, "y": 835.0}),
@@ -74,7 +77,7 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
         self, action, _composer, page, _count, _send, _wait
     ):
         expected = "https://www.instagram.com/direct/t/123/"
-        page.side_effect = ["", "nova mensagem", expected, "nova mensagem", expected]
+        page.side_effect = [expected, True, "", True, "nova mensagem", expected, "nova mensagem", expected]
 
         result = internal_browser_agent._send_bubble("nova mensagem", expected)
 

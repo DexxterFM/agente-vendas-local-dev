@@ -1,0 +1,7 @@
+[Unit]
+Description=Agente de Vendas - recuperacao segura do navegador interno
+After=agente-vendas-diagnostics.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/agente-vendas-local/app/scripts/vps/browser_recovery_watchdog.sh

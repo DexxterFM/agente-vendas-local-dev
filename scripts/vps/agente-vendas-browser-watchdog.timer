@@ -1,0 +1,10 @@
+[Unit]
+Description=Verifica falhas consecutivas do navegador interno
+
+[Timer]
+OnBootSec=30
+OnUnitActiveSec=30
+Unit=agente-vendas-browser-watchdog.service
+
+[Install]
+WantedBy=timers.target

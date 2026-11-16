@@ -139,13 +139,22 @@ class DevTools:
 
     def call(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         call_id = next(self.ids)
-        self.socket.send(json.dumps({"id": call_id, "method": method, "params": params or {}}, separators=(",", ":")))
+        try:
+            self.socket.send(json.dumps({"id": call_id, "method": method, "params": params or {}}, separators=(",", ":")))
+        except Exception as exc:
+            raise InternalBrowserError("Canal do navegador indisponível") from exc
         deadline = time.monotonic() + 12
         while time.monotonic() < deadline:
             try:
                 payload = json.loads(self.socket.recv())
             except (json.JSONDecodeError, TypeError):
                 continue
+            except Exception as exc:
+                # websocket-client expõe WebSocketTimeoutException, que não
+                # herda InternalBrowserError. Normalizá-lo aqui impede que o
+                # worker caia e seja reiniciado em loop durante uma abertura
+                # de perfil ou uma transição de documento.
+                raise InternalBrowserError("Navegador interno não respondeu") from exc
             if payload.get("id") != call_id:
                 continue
             if "error" in payload:
@@ -196,6 +205,13 @@ def _target() -> dict[str, Any]:
     pages = _http("/json/list")
     if not isinstance(pages, list):
         raise InternalBrowserError("Lista de páginas inválida")
+    # O painel e o worker são processos distintos. Fixe o mesmo target por
+    # identidade durável; a ordem de /json/list muda ao ativar outras abas.
+    pin = __import__('pathlib').Path(os.environ.get('SALES_AGENT_DATA_DIR', '/var/lib/agente-vendas-local')) / 'internal-browser-target.id'
+    try:
+        pinned = pin.read_text().strip()
+    except OSError:
+        pinned = ''
     windows = [item for item in pages if isinstance(item, dict) and item.get("type") == "page" and _is_access_window(item)]
     # Prioriza a janela de recuperação aberta pelo operador. A página
     # principal permanece disponível e volta a ser selecionada quando a
@@ -204,6 +220,11 @@ def _target() -> dict[str, Any]:
     # recente é a etapa que o operador acabou de acionar e deve ser exibida
     # pelo painel, em vez da página inicial que ficou atrás dela.
     page = next((item for item in reversed(windows) if _is_recovery_window(item)), None)
+    # Somente uma etapa explícita de recuperação pode interromper a página
+    # persistente. Fora disso, o alvo fixado evita que uma aba recém-aberta
+    # redimensione ou substitua a sessão exibida.
+    if page is None:
+        page = next((item for item in windows if item.get('id') == pinned), None)
     if page is None:
         primary = [item for item in windows if urllib.parse.urlparse(str(item.get("url") or "")).hostname in _PRIMARY_HOSTS]
         # Nunca deixa uma aba antiga de login encobrir a aba principal que já
@@ -213,6 +234,11 @@ def _target() -> dict[str, Any]:
         if page is None:
             page = next((item for item in reversed(primary)), None)
     if page:
+        try:
+            pin.parent.mkdir(parents=True, exist_ok=True)
+            pin.write_text(str(page.get('id') or ''))
+        except OSError:
+            pass
         return page
     created = _http("/json/new?" + urllib.parse.quote("https://www.instagram.com/", safe="/:?=&"), method="PUT")
     if not isinstance(created, dict):
@@ -279,7 +305,10 @@ def visual_state() -> dict[str, Any]:
       let ready=document.readyState==='complete'&&shell;
       if(path.startsWith('/direct/t/'))ready=ready&&composer&&(meaningfulArticle||emptyState);
       else if(path.startsWith('/direct'))ready=ready&&search&&(meaningfulRow||emptyState);
-      else ready=ready&&bodyText.length>80;
+      // Um perfil autenticado pode carregar a grade gradualmente e ainda
+      // não possuir 80 caracteres visíveis. A presença da própria shell
+      // autenticada com documento completo é o sinal estável nesse caso.
+      else ready=ready;
       return {ready,path,authenticated_surface:shell,direct:path.startsWith('/direct'),document_ready:document.readyState==='complete'};
     })()''')
     if not isinstance(value, dict):
@@ -474,7 +503,14 @@ def frontend_events(clear: bool = True) -> dict[str, Any]:
 
 def frontend_event_pending() -> bool:
     """Consulta barata usada para acordar o worker antes do próximo ciclo."""
-    value = evaluate("(()=>{const s=window.__salesAgentFrontEventsV1;return !s||!s.observer||s.events.length>0})()")
+    # Deve consultar a mesma geração instalada por ``frontend_events``.
+    # A referência V1 foi deixada por uma versão anterior e fazia o worker
+    # concluir que havia evento novo a cada dois segundos, mesmo com a página
+    # parada. Esse loop competia pelo DevTools e derrubava o diagnóstico.
+    # A ausência do observador ocorre logo após uma navegação ou recuperação;
+    # não é um evento. Retornar verdadeiro nesse caso recriava o ciclo a cada
+    # dois segundos, impedindo a página de estabilizar.
+    value = evaluate("(()=>{const s=window.__salesAgentFrontEventsV3;return Boolean(s&&s.observer&&s.events&&s.events.length>0)})()")
     return bool(value)
 
 

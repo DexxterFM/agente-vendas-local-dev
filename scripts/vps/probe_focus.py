@@ -1,0 +1,3 @@
+import json
+from scripts.vps import internal_browser as b
+print(json.dumps(b.evaluate('''(()=>({width:innerWidth,height:innerHeight,focus:{tag:document.activeElement?.tagName,role:document.activeElement?.getAttribute('role'),editable:document.activeElement?.isContentEditable},fields:[...document.querySelectorAll('textarea,input,[contenteditable="true"],[role="textbox"]')].map(e=>{const r=e.getBoundingClientRect();return {tag:e.tagName,role:e.getAttribute('role'),label:e.getAttribute('aria-label'),editable:e.isContentEditable,length:(e.value||e.innerText||'').length,x:r.x,y:r.y,w:r.width,h:r.height}})}))()'''),ensure_ascii=False))

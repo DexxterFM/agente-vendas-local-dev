@@ -142,7 +142,8 @@ class InternalBrowserTests(unittest.TestCase):
     @patch("scripts.vps.internal_browser.evaluate", return_value=True)
     def test_frontend_event_pending_uses_lightweight_queue_check(self, evaluate):
         self.assertTrue(internal_browser.frontend_event_pending())
-        self.assertIn("__salesAgentFrontEventsV1", evaluate.call_args.args[0])
+        self.assertIn("__salesAgentFrontEventsV3", evaluate.call_args.args[0])
+        self.assertIn("Boolean(s&&s.observer", evaluate.call_args.args[0])
 
     @patch("scripts.vps.internal_browser.visual_state")
     def test_stalled_page_watchdog_pauses_without_reloading(self, visual_state):

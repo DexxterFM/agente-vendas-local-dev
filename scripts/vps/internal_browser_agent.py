@@ -235,14 +235,22 @@ def _prospecting_cycle() -> dict[str, Any]:
             if message: break
             _wait(.5)
         if not message: raise RuntimeError("Botão de mensagem não encontrado")
-        browser.action({"kind": "click", **message}); _wait(1.2)
-        composer = _prospecting_point(r'''(()=>{const e=[...document.querySelectorAll('textarea,input,[contenteditable="true"],[role="textbox"]')].find(x=>/mensagem|message|responder|reply/i.test((x.placeholder||'')+' '+(x.getAttribute('aria-label')||'')));if(!e)return null;const r=e.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()''')
-        if not composer: raise RuntimeError("Campo de mensagem não encontrado")
-        browser.action({"kind": "click", **composer}); browser.action({"kind": "type", "text": str(payload.get('intro') or 'Olá! Muito legal o trabalho de vocês ❤️')}); browser.action({"kind": "key", "key": "Enter"})
+        browser.action({"kind": "click", **message})
+        thread = {}
+        for _ in range(40):
+            _wait(.5)
+            thread = _thread_snapshot()
+            if thread.get('thread_id') and thread.get('url') and _composer_center():
+                break
+        else:
+            raise RuntimeError("Conversa ainda carregando; envio não executado")
+        _send_bubble(str(payload.get('intro') or 'Olá! Muito legal o trabalho de vocês ❤️'), thread['url'])
         execute("campaignConfirm", {"id": action_id, "state": "sent", "note": "Interações confirmadas pela sessão interna"})
+        _open_home()
         return {"prospecting": True, "browser": "prospecting-sent", "username": username, "action_id": action_id}
     except Exception as exc:
         execute("campaignConfirm", {"id": action_id, "state": "needs_check", "note": str(exc)[:500]})
+        _open_home()
         return {"prospecting": True, "browser": "prospecting-error", "error": str(exc)[:160]}
 
 
@@ -504,6 +512,23 @@ def _send_button_center() -> dict[str, float] | None:
         return None
 
 
+def _focus_composer() -> None:
+    """Só permite edição após o DOM confirmar o foco em campo editável da DM."""
+    for _ in range(24):
+        point = _composer_center()
+        if point:
+            browser.action({"kind": "click", **point})
+            focused = _page(r'''(()=>{const e=document.activeElement;if(!e||e===document.body)return false;
+              const label=[e.getAttribute('placeholder'),e.getAttribute('aria-label'),e.type].join(' ');
+              return !/search|pesquis|password|senha/i.test(label)&&
+                (e.isContentEditable||e.tagName==='TEXTAREA')&&e.getBoundingClientRect().width>0;
+            })()''')
+            if focused:
+                return
+        _wait(.35)
+    raise browser.InternalBrowserError("Campo de DM ainda indisponível; envio adiado sem editar a página")
+
+
 def _clear_composer() -> None:
     """Remove de forma nativa qualquer rascunho deixado por uma tentativa."""
     # Uma tentativa anterior pode deixar o compositor com o foco visual, mas
@@ -511,9 +536,7 @@ def _clear_composer() -> None:
     # foco pelo mouse antes de cada tentativa; nunca acrescente uma resposta
     # ao texto que ficou no campo.
     for attempt in range(3):
-        point = _composer_center()
-        if point:
-            browser.action({"kind": "click", **point})
+        _focus_composer()
         browser.action({"kind": "key", "key": "SelectAll"})
         browser.action({"kind": "key", "key": "Backspace"})
         _wait(.18 + attempt * .12)
@@ -549,15 +572,15 @@ def _composer_safe_text(text: str) -> str:
 
 def _send_bubble(text: str, expected_url: str) -> dict[str, Any]:
     composer_text = _composer_safe_text(text)
-    point = _composer_center()
-    if not point:
-        raise browser.InternalBrowserError("Campo de mensagem não encontrado na conversa aberta")
+    if str(_page("location.href") or "") != expected_url:
+        raise browser.InternalBrowserError("Conversa mudou antes da preparação do envio")
+    _focus_composer()
     before = _message_count(composer_text)
-    browser.action({"kind": "click", **point})
     _wait(.15 + random.random() * .25)
     existing = _page("(()=>{const e=document.activeElement;return String(e?.value||e?.innerText||e?.textContent||'').trim()})()")
     if existing:
         _clear_composer()
+    _focus_composer()
     browser.action({"kind": "type", "text": composer_text})
     entered = _page("(()=>{const e=document.activeElement;return (e?.value||e?.innerText||e?.textContent||'').trim()})()")
     if str(entered or "").strip() != composer_text:
