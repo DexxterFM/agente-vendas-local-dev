@@ -53,6 +53,13 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
             call({"kind": "click", "x": 1100.0, "y": 835.0}),
         ], action.call_args_list)
 
+    @patch("scripts.vps.internal_browser_agent._page", return_value=1)
+    def test_message_count_includes_visible_dir_auto_bubbles(self, page):
+        self.assertEqual(1, internal_browser_agent._message_count("mensagem enviada"))
+        expression = page.call_args.args[0]
+        self.assertIn('[dir="auto"]', expression)
+        self.assertIn("r.left>450", expression)
+
     @patch("scripts.vps.internal_browser_agent._page")
     def test_inbox_targets_prioritize_blue_unread_metadata(self, page):
         page.return_value = [

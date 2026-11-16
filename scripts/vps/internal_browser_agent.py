@@ -302,7 +302,17 @@ def _composer_center() -> dict[str, float] | None:
 
 
 def _message_count(text: str) -> int:
-    value = _page(f'''(()=>{{const target={text!r};return [...document.querySelectorAll('[role="row"],[role="listitem"],[role="article"],[role="message"]')].filter(e=>(e.innerText||'').replace(/\\s+/g,' ').trim()===target).length}})()''')
+    value = _page(f'''(()=>{{
+      const target={text!r}.replace(/\\s+/g,' ').trim();
+      const visible=e=>{{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'}};
+      const nodes=[...document.querySelectorAll('[role="row"],[role="listitem"],[role="article"],[role="message"],[dir="auto"]')].filter(visible);
+      return nodes.filter(e=>{{
+        const own=String(e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim();
+        if(own!==target)return false;
+        const r=e.getBoundingClientRect();
+        return r.left>450&&r.bottom<(innerHeight||900)-40;
+      }}).length;
+    }})()''')
     return int(value or 0) if isinstance(value, (int, float)) else 0
 
 
