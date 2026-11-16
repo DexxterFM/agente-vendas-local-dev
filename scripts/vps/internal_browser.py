@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import socket
 import struct
 import time
@@ -14,6 +15,11 @@ import urllib.parse
 import urllib.request
 from itertools import count
 from typing import Any
+
+try:
+    import websocket
+except ImportError:  # a unidade da VPS instala python3-websocket-client
+    websocket = None
 
 
 DEBUG_URL = "http://127.0.0.1:9222"
@@ -71,24 +77,12 @@ def _receive(sock: socket.socket) -> bytes:
 
 class DevTools:
     def __init__(self, websocket_url: str) -> None:
-        parsed = urllib.parse.urlparse(websocket_url)
-        self.socket = socket.create_connection((parsed.hostname or "127.0.0.1", parsed.port or 80), timeout=8)
-        self.socket.settimeout(12)
-        key = base64.b64encode(b"agente-vendas-interno").decode("ascii")
-        request = (
-            f"GET {parsed.path}{'?' + parsed.query if parsed.query else ''} HTTP/1.1\r\n"
-            f"Host: {parsed.hostname}:{parsed.port or 80}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
-            f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n"
-        )
-        self.socket.sendall(request.encode("ascii"))
-        response = b""
-        while b"\r\n\r\n" not in response:
-            chunk = self.socket.recv(2048)
-            if not chunk:
-                raise InternalBrowserError("Falha ao conectar ao navegador interno")
-            response += chunk
-        if b" 101 " not in response.split(b"\r\n", 1)[0]:
-            raise InternalBrowserError("DevTools recusou a conexão interna")
+        if websocket is None:
+            raise InternalBrowserError("Canal do navegador interno não está instalado")
+        try:
+            self.socket = websocket.create_connection(websocket_url, timeout=12, origin="http://127.0.0.1:9222")
+        except Exception as exc:
+            raise InternalBrowserError("Falha ao conectar ao navegador interno") from exc
         self.ids = count(1)
 
     def close(self) -> None:
@@ -99,12 +93,12 @@ class DevTools:
 
     def call(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         call_id = next(self.ids)
-        self.socket.sendall(_masked_frame(json.dumps({"id": call_id, "method": method, "params": params or {}}, separators=(",", ":")).encode("utf-8")))
+        self.socket.send(json.dumps({"id": call_id, "method": method, "params": params or {}}, separators=(",", ":")))
         deadline = time.monotonic() + 12
         while time.monotonic() < deadline:
             try:
-                payload = json.loads(_receive(self.socket).decode("utf-8"))
-            except json.JSONDecodeError:
+                payload = json.loads(self.socket.recv())
+            except (json.JSONDecodeError, TypeError):
                 continue
             if payload.get("id") != call_id:
                 continue

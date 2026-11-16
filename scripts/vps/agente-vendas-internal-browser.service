@@ -8,7 +8,7 @@ Type=simple
 User=agentevendas
 Group=agentevendas
 Environment=HOME=/var/lib/agente-vendas-local
-ExecStart=/usr/bin/chromium-headless --headless=new --no-sandbox --disable-dev-shm-usage --disable-gpu --remote-debugging-address=127.0.0.1 --remote-debugging-port=9222 --user-data-dir=/var/lib/agente-vendas-local/internal-browser-profile --window-size=1280,900 https://www.instagram.com/
+ExecStart=/usr/lib64/chromium-browser/headless_shell --no-sandbox --disable-dev-shm-usage --disable-gpu --remote-debugging-address=127.0.0.1 --remote-debugging-port=9222 --user-data-dir=/var/lib/agente-vendas-local/internal-browser-profile --window-size=1280,900 https://www.instagram.com/
 Restart=always
 RestartSec=5
 NoNewPrivileges=true
