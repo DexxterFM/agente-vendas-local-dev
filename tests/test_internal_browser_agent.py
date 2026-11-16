@@ -23,12 +23,14 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
         self.assertTrue(targets[0]["bold"])
 
     def test_recently_checked_blue_row_is_not_reopened_until_it_changes(self):
-        target = {"href": "https://www.instagram.com/direct/t/new/", "unread": True}
+        target = {"key": "denis.machado", "href": "", "label": "Denis Machado Boa tarde 5 min", "unread": True}
         self.assertEqual([target], internal_browser_agent._actionable_unread([target]))
         internal_browser_agent._RECENT_UNREAD_TARGETS[
             internal_browser_agent._unread_target_key(target)
         ] = internal_browser_agent.time.monotonic() + 300
         self.assertEqual([], internal_browser_agent._actionable_unread([target]))
+        changed_time = {**target, "label": "Denis Machado Boa tarde 6 min"}
+        self.assertEqual([], internal_browser_agent._actionable_unread([changed_time]))
 
     @patch("scripts.vps.internal_browser_agent._wait")
     @patch("scripts.vps.internal_browser_agent._page")

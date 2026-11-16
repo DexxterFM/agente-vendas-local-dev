@@ -37,7 +37,7 @@ def _wait(seconds: float) -> None:
 
 
 def _unread_target_key(target: dict[str, Any]) -> str:
-    return str(target.get("href") or target.get("label") or "")[:500]
+    return str(target.get("key") or target.get("href") or target.get("label") or "")[:500]
 
 
 def _actionable_unread(targets: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -164,7 +164,11 @@ def _inbox_targets() -> list[dict[str, str]]:
             const r=e.getBoundingClientRect(), accessibility=norm([e.getAttribute('aria-label'),e.getAttribute('title')].join(' '));
             return /^(?:unread|não lida|nova mensagem)$/i.test(accessibility)||(r.width>=2&&r.height>=2&&r.width<=24&&r.height<=24&&isBlue(e));
           });
-          output.push({href,label:label.slice(0,360),unread:Boolean(blue),bold:Boolean(bold),blue:Boolean(blue)});
+          const reserved=new Set(['accounts','direct','explore','reels','stories','about','developer','legal','privacy','web']);
+          const profile=[...scope.querySelectorAll('a[href]')].map(anchor=>new URL(anchor.href,location.href).pathname.split('/').filter(Boolean))
+            .find(parts=>parts.length===1&&/^[a-z0-9._]{1,30}$/i.test(parts[0])&&!reserved.has(parts[0].toLowerCase()));
+          const stableKey=href||(profile?profile[0].toLowerCase():label.replace(time,'').slice(0,160));
+          output.push({key:stableKey,href,label:label.slice(0,360),unread:Boolean(blue),bold:Boolean(bold),blue:Boolean(blue)});
         }
       }
       return output.slice(0,70);
@@ -172,6 +176,7 @@ def _inbox_targets() -> list[dict[str, str]]:
     targets = [
         {
             "href": str(item.get("href") or ""),
+            "key": str(item.get("key") or "")[:500],
             "label": str(item.get("label") or ""),
             "unread": bool(item.get("unread")),
             "bold": bool(item.get("bold")),
