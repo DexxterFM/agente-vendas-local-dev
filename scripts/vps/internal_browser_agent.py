@@ -702,8 +702,7 @@ def cycle() -> dict[str, Any]:
     # faça uma varredura periódica fora de uma conversa aberta para não perder
     # o evento apenas porque ele já foi marcado como visualizado.
     if (_notification_scan_due() and "/direct/t/" not in url
-            and not aggregate["message_pending"]
-            and aggregate["notification_controls"] > 0):
+            and (aggregate["notification_pending"] or not aggregate["message_pending"])):
         notification_result = _capture_notification_actions()
         _mark_notification_scan()
         return {"active": True, "browser": "notification", **aggregate, **notification_result}
