@@ -528,7 +528,24 @@ def action(payload: dict[str, Any]) -> dict[str, Any]:
             # A pequena variação reproduz o ritmo já validado no desktop.
             import random
             for character in text:
-                page.call("Input.dispatchKeyEvent", {"type": "char", "text": character})
+                virtual_key = ord(character.upper()) if len(character) == 1 and character.isascii() else 0
+                event = {
+                    "key": character,
+                    "text": character,
+                    "unmodifiedText": character,
+                    "windowsVirtualKeyCode": virtual_key,
+                    "nativeVirtualKeyCode": virtual_key,
+                }
+                # O editor contenteditable da DM ignora eventos isolados do
+                # tipo "char". O par keyDown/keyUp, com o texto associado ao
+                # keyDown, segue a mesma rota de entrada do teclado físico.
+                page.call("Input.dispatchKeyEvent", {"type": "keyDown", **event})
+                page.call("Input.dispatchKeyEvent", {
+                    "type": "keyUp",
+                    "key": character,
+                    "windowsVirtualKeyCode": virtual_key,
+                    "nativeVirtualKeyCode": virtual_key,
+                })
                 time.sleep((18 + random.randint(0, 42)) / 1000)
         elif kind == "key":
             key = str(payload.get("key") or "")
