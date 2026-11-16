@@ -46,8 +46,20 @@ class CoreTests(unittest.TestCase):
                     "replied": False, "threads": 0,
                     "message_pending": False, "notification_pending": False,
                     "message_controls": 0, "notification_controls": 0,
+                    "notification_candidates": 0, "notification_queued": 0,
                 },
             })
+
+    def test_browser_notification_candidate_is_queued_once(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}
+        ):
+            first = execute("browserNotificationCandidate", {"username": "clinica.teste", "kind": "new_follower"})
+            repeated = execute("browserNotificationCandidate", {"username": "clinica.teste", "kind": "new_follower"})
+            self.assertTrue(first["queued"])
+            self.assertFalse(repeated["queued"])
+            rows = execute("records", {"type": "campaigns"})
+            self.assertEqual("instagram_new_follower_review", rows[0]["action"])
 
     def test_vps_can_prefer_rotatable_environment_meta_credentials(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {

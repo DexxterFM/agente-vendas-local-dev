@@ -243,6 +243,42 @@ def _mark_sweep() -> None:
         memory.set_setting("sales.agent.vps_browser.last_sweep", _now().isoformat())
 
 
+def _notification_candidates() -> list[str]:
+    """Lê somente perfis associados explicitamente a novo seguidor."""
+    browser.action({"kind": "navigate", "url": "https://www.instagram.com/notifications/"})
+    _wait(2.2)
+    value = _page(r'''(()=>{
+      const reserved=new Set(['accounts','direct','explore','reels','stories','about','developer','legal','privacy','web']);
+      const follower=/(?:começou|passou|acabou)(?:\s+de)? a seguir(?: você)?|(?:segue|seguiu|está seguindo)(?: você)?|started following you|follows you/i;
+      const output=[];
+      for(const marker of [...document.querySelectorAll('span,div,p')]){
+        const text=String(marker.innerText||'').replace(/\s+/g,' ').trim();
+        if(!text||text.length>360||!follower.test(text))continue;
+        let row=marker;
+        for(let depth=0;row&&depth<9;depth++,row=row.parentElement){
+          const match=[...row.querySelectorAll('a[href]')].map(anchor=>new URL(anchor.href,location.href).pathname.split('/').filter(Boolean))
+            .find(parts=>parts.length===1&&/^[a-z0-9._]{1,30}$/i.test(parts[0])&&!reserved.has(parts[0].toLowerCase()));
+          if(match){output.push(match[0].toLowerCase());break;}
+        }
+      }
+      return [...new Set(output)].slice(0,20);
+    })()''')
+    usernames = [str(item).lower() for item in (value if isinstance(value, list) else [])]
+    return list(dict.fromkeys(item for item in usernames if item and len(item) <= 30))
+
+
+def _capture_notification_actions() -> dict[str, int]:
+    candidates = _notification_candidates()
+    queued = 0
+    for username in candidates:
+        result = execute("browserNotificationCandidate", {"username": username, "kind": "new_follower"})
+        if result.get("queued"):
+            queued += 1
+    browser.action({"kind": "navigate", "url": HOME_URL})
+    _wait(1.0)
+    return {"notification_candidates": len(candidates), "notification_queued": queued}
+
+
 def sweep(source: str = "scheduled") -> dict[str, Any]:
     browser.action({"kind": "navigate", "url": INBOX_URL})
     _wait(1.5)
@@ -300,6 +336,9 @@ def cycle() -> dict[str, Any]:
         targets = _inbox_targets()
         if targets and _open_target(targets[0]):
             return {"active": True, "browser": "message", **aggregate, **_process_thread("message-indicator")}
+    notification_result = {}
+    if aggregate["notification_pending"]:
+        notification_result = _capture_notification_actions()
     if _sweep_due():
-        return {"active": True, "browser": "sweep", **aggregate, **sweep("weekly")}
-    return {"active": True, "browser": "ready", **aggregate}
+        return {"active": True, "browser": "sweep", **aggregate, **notification_result, **sweep("weekly")}
+    return {"active": True, "browser": "ready", **aggregate, **notification_result}

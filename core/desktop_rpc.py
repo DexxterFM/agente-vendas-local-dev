@@ -153,6 +153,8 @@ def execute(command, args):
                 'notification_pending': bool(raw_browser.get('notification_pending')),
                 'message_controls': max(0,min(20,int(raw_browser.get('message_controls',0) or 0))),
                 'notification_controls': max(0,min(20,int(raw_browser.get('notification_controls',0) or 0))),
+                'notification_candidates': max(0,min(100,int(raw_browser.get('notification_candidates',0) or 0))),
+                'notification_queued': max(0,min(100,int(raw_browser.get('notification_queued',0) or 0))),
             }
             heartbeat=datetime.now(timezone.utc).replace(microsecond=0).isoformat()
             memory.set_setting('sales.agent.worker.heartbeat_at',heartbeat)
@@ -192,6 +194,23 @@ def execute(command, args):
             memory.set_setting(key,'claimed')
             memory.set_setting(key+'.profile',json.dumps({'profile':profile,**segment},ensure_ascii=False))
             return {'active':True,'new_follower':True,'username':username,'text':segment['text'],'segment':segment['segment'],'reason':segment['reason'],'key':key}
+        if command == 'browserNotificationCandidate':
+            import re
+            username=str(args.get('username','')).strip().lstrip('@').lower()
+            kind=str(args.get('kind','')).strip().lower()
+            if kind!='new_follower' or not re.fullmatch(r'[a-z0-9._]{1,30}',username):
+                raise ValueError('Notificação comercial inválida')
+            key='sales.agent.notification_candidate:'+username
+            if memory.get_setting(key,'') in ('queued','done'):
+                return {'queued':False,'duplicate':True}
+            action_id=memory.create_pending_action(
+                'instagram_new_follower_review',
+                {'username':username,'kind':'new_follower'},
+                'Novo seguidor detectado pelos metadados do navegador interno.'
+            )
+            memory.set_setting(key,'queued')
+            memory.audit('instagram.notification_detected','@'+username,'ok','kind=new_follower; queued_for_review=true')
+            return {'queued':True,'id':action_id}
         if command == 'followerConfirm':
             import re
             username=str(args.get('username','')).strip().lstrip('@').lower()

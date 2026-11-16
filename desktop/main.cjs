@@ -120,7 +120,7 @@ function metaVaultEnv(){
   return {...process.env};
 }
 const backendAllowed=['leads','create','messages','message','draft','queue','pause','followup','knowledge','saveKnowledge','responseLibrary','saveResponseTemplate','saveTrialOffer','browserImportThread','classifyImportedHistory','campaignDiscover','campaignClaim','campaignConfirm','followupRecords','completeFollowup','status','records','syncHistory','syncPostflow','analytics','saveDocument','ragContext','comparison','competitorCatalog','competitorMatch','competitorSeed','research','personality','probabilities','trial','outcome','installation','approveReply','dispatchDue','agentCycle','agentStatus','setAgentActive','setProspectingActive','prospectingPacing','followerCycle','followerConfirm','followerReset','startServices','browserScreenCycle','browserScreenConfirm','browserScreenReset','replyDelay','postflowStatus','postflowIngestionStatus','metaStatus','metaOAuthUrl','metaOAuthExchange','browserHealth','browserTools','browserSnapshot','browserAct','browserInstagramInbox','browserRead','internalBrowserStatus','internalBrowserSnapshot','internalBrowserScreenshot','internalBrowserAction'];
-backendAllowed.push('internalBrowserImportSession','internalBrowserMetadata');
+backendAllowed.push('internalBrowserImportSession','internalBrowserMetadata','browserNotificationCandidate');
 function ensureBackend(){
   if(backendChild&&!backendChild.killed)return backendChild;
   const root=path.join(__dirname,'..');
