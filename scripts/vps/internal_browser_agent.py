@@ -588,6 +588,19 @@ def _notification_candidates() -> list[dict[str, Any]]:
           }
         }
       }
+      // Quando a central já foi visualizada, o texto do evento pode sair do
+      // DOM, mas o botão azul permanece. Nesse caso, use o próprio botão como
+      // âncora e suba até a linha que contém o perfil.
+      for(const button of [...document.querySelectorAll('button,[role="button"]')]){
+        const label=String(button.getAttribute('aria-label')||button.innerText||'');
+        if(!/seguir(?:\s+de)?\s+volta|follow\s+back/i.test(label))continue;
+        let row=button, profile=null;
+        for(let depth=0;row&&depth<9;depth++,row=row.parentElement){
+          profile=[...row.querySelectorAll('a[href]')].map(a=>{try{return {a,parts:new URL(a.href,location.href).pathname.split('/').filter(Boolean)}}catch{return null}}).find(v=>v&&v.parts.length===1&&/^[a-z0-9._]{1,30}$/i.test(v.parts[0]));
+          if(profile)break;
+        }
+        if(profile){const r=button.getBoundingClientRect();output.push({username:profile.parts[0].toLowerCase(),profile_href:profile.a.href,profile_text:String(row.innerText||'').replace(/\s+/g,' ').trim().slice(0,1200),x:r.left+r.width/2,y:r.top+r.height/2});}
+      }
       return [...new Set(output)].slice(0,20);
     })()''')
     result=[]; seen=set()
