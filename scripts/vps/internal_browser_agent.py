@@ -74,7 +74,11 @@ def _thread_snapshot() -> dict[str, Any]:
         if(!text||text.length>3500)continue;
         const rect=node.getBoundingClientRect();
         if(!rect.width||!rect.height)continue;
-        const direction=rect.left+rect.width/2>width*.52?'outgoing':'incoming';
+        const painted=[node,...node.querySelectorAll('div,span')].map(element=>getComputedStyle(element).backgroundColor)
+          .map(color=>String(color||'').match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i)).filter(Boolean)
+          .map(match=>[Number(match[1]),Number(match[2]),Number(match[3])]);
+        const coloredBubble=painted.some(rgb=>Math.max(...rgb)-Math.min(...rgb)>55&&Math.max(...rgb)>125);
+        const direction=coloredBubble||(rect.left>width*.5&&rect.right>width*.84)?'outgoing':'incoming';
         const signature=direction+'\0'+text, ordinal=(seen.get(signature)||0)+1;
         seen.set(signature,ordinal);
         messages.push({text,direction,ordinal});
