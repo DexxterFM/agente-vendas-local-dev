@@ -31,6 +31,50 @@ class InternalBrowserError(RuntimeError):
     pass
 
 
+def import_session_cookies(raw_cookies: Any) -> dict[str, int]:
+    """Importa uma sessão do navegador do operador sem registrar valores."""
+    if not isinstance(raw_cookies, list) or not raw_cookies:
+        raise ValueError("Pacote de sessão inválido")
+    allowed_domains = ("instagram.com", "facebook.com")
+    same_site = {"no_restriction": "None", "unspecified": None, "lax": "Lax", "strict": "Strict", "none": "None"}
+    imported: list[dict[str, Any]] = []
+    now = time.time()
+    for raw in raw_cookies:
+        if not isinstance(raw, dict):
+            continue
+        name, value = str(raw.get("name") or ""), str(raw.get("value") or "")
+        domain = str(raw.get("domain") or "").strip().lower()
+        clean_domain = domain.lstrip(".")
+        if not name or not value or len(name) > 180 or len(value) > 8192:
+            continue
+        if not any(clean_domain == item or clean_domain.endswith("." + item) for item in allowed_domains):
+            continue
+        cookie: dict[str, Any] = {
+            "name": name,
+            "value": value,
+            "domain": domain,
+            "path": str(raw.get("path") or "/")[:512],
+            "secure": bool(raw.get("secure", True)),
+            "httpOnly": bool(raw.get("httpOnly", False)),
+        }
+        mode = same_site.get(str(raw.get("sameSite") or "").lower())
+        if mode:
+            cookie["sameSite"] = mode
+        expires = raw.get("expirationDate")
+        if isinstance(expires, (int, float)) and expires > now:
+            cookie["expires"] = float(expires)
+        imported.append(cookie)
+    if not imported:
+        raise ValueError("Nenhum dado de sessão autorizado para importar")
+
+    def run(page: DevTools):
+        page.call("Network.enable")
+        page.call("Network.setCookies", {"cookies": imported})
+        return {"imported": len(imported)}
+
+    return _with_page(run)
+
+
 def _http(path: str, method: str = "GET") -> Any:
     request = urllib.request.Request(DEBUG_URL + path, method=method)
     try:

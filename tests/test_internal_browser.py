@@ -112,6 +112,26 @@ class InternalBrowserTests(unittest.TestCase):
         self.assertIn(("Page.navigateToHistoryEntry", {"entryId": 21}), calls)
 
     @patch("scripts.vps.internal_browser._with_page")
+    def test_import_session_limits_cookies_to_authorized_domains(self, with_page):
+        calls = []
+
+        class Page:
+            def call(self, method, payload=None):
+                calls.append((method, payload))
+                return {}
+
+        with_page.side_effect = lambda callback: callback(Page())
+        result = internal_browser.import_session_cookies([
+            {"name": "sessionid", "value": "masked", "domain": ".instagram.com", "path": "/", "secure": True},
+            {"name": "other", "value": "ignored", "domain": ".example.com", "path": "/"},
+        ])
+
+        self.assertEqual({"imported": 1}, result)
+        sent = next(payload for method, payload in calls if method == "Network.setCookies")
+        self.assertEqual(1, len(sent["cookies"]))
+        self.assertEqual(".instagram.com", sent["cookies"][0]["domain"])
+
+    @patch("scripts.vps.internal_browser._with_page")
     def test_screenshot_reports_actual_image_dimensions(self, with_page):
         header = b"\x89PNG\r\n\x1a\n" + b"\x00" * 8 + struct.pack(">II", 1279, 756)
 

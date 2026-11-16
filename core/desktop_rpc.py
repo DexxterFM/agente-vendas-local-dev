@@ -549,6 +549,9 @@ def execute(command, args):
         if command == 'internalBrowserAction':
             from scripts.vps.internal_browser import action
             return action(args)
+        if command == 'internalBrowserImportSession':
+            from scripts.vps.internal_browser import import_session_cookies
+            return import_session_cookies(args.get('cookies'))
         if command == 'importMetaEnvironment':
             account=(os.getenv('IG_BUSINESS_ACCOUNT_ID','') or os.getenv('INSTAGRAM_BUSINESS_ACCOUNT_ID','')).strip()
             token=(os.getenv('INSTAGRAM_ACCESS_TOKEN','') or os.getenv('PAGE_ACCESS_TOKEN','')).strip()

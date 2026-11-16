@@ -1,4 +1,4 @@
-const {app, BrowserWindow, dialog, ipcMain, shell} = require('electron');
+const {app, BrowserWindow, dialog, ipcMain, shell, session} = require('electron');
 const http = require('node:http');
 const {spawn} = require('node:child_process');
 const path = require('node:path');
@@ -38,6 +38,20 @@ function remoteControlConfig(){
 }
 const remoteControl=remoteControlConfig();
 const isRemoteControl=Boolean(remoteControl);
+const sessionExportArg=process.argv.find(value=>String(value).startsWith('--export-vps-session='));
+const sessionExportPath=sessionExportArg?path.resolve(String(sessionExportArg).slice('--export-vps-session='.length)):'';
+function isSessionHost(domain){const host=String(domain||'').replace(/^\./,'').toLowerCase();return host==='instagram.com'||host.endsWith('.instagram.com')||host==='facebook.com'||host.endsWith('.facebook.com');}
+async function exportPersistentBrowserSession(destination){
+  if(!destination)throw new Error('Destino de exportação não informado.');
+  const cookies=(await session.fromPartition('persist:sales-agent-browser').cookies.get({})).filter(cookie=>isSessionHost(cookie.domain));
+  if(!cookies.some(cookie=>String(cookie.name)==='sessionid'&&String(cookie.domain).includes('instagram.com')))throw new Error('A sessão do Instagram ainda não está disponível para migração.');
+  const payload={version:1,created_at:new Date().toISOString(),cookies};
+  fs.mkdirSync(path.dirname(destination),{recursive:true});
+  const temporary=destination+'.tmp';
+  fs.writeFileSync(temporary,JSON.stringify(payload),{mode:0o600});
+  fs.renameSync(temporary,destination);
+  return {cookies:cookies.length};
+}
 function startRemoteTunnel(){
   if(!remoteControl||(remoteTunnelChild&&!remoteTunnelChild.killed))return;
   const executable=process.env.WINDIR?path.join(process.env.WINDIR,'System32','OpenSSH','ssh.exe'):'ssh';
@@ -106,6 +120,7 @@ function metaVaultEnv(){
   return {...process.env};
 }
 const backendAllowed=['leads','create','messages','message','draft','queue','pause','followup','knowledge','saveKnowledge','responseLibrary','saveResponseTemplate','saveTrialOffer','browserImportThread','classifyImportedHistory','campaignDiscover','campaignClaim','campaignConfirm','followupRecords','completeFollowup','status','records','syncHistory','syncPostflow','analytics','saveDocument','ragContext','comparison','competitorCatalog','competitorMatch','competitorSeed','research','personality','probabilities','trial','outcome','installation','approveReply','dispatchDue','agentCycle','agentStatus','setAgentActive','setProspectingActive','prospectingPacing','followerCycle','followerConfirm','followerReset','startServices','browserScreenCycle','browserScreenConfirm','browserScreenReset','replyDelay','postflowStatus','postflowIngestionStatus','metaStatus','metaOAuthUrl','metaOAuthExchange','browserHealth','browserTools','browserSnapshot','browserAct','browserInstagramInbox','browserRead','internalBrowserStatus','internalBrowserSnapshot','internalBrowserScreenshot','internalBrowserAction'];
+backendAllowed.push('internalBrowserImportSession');
 function ensureBackend(){
   if(backendChild&&!backendChild.killed)return backendChild;
   const root=path.join(__dirname,'..');
@@ -1173,6 +1188,9 @@ else {
     window.focus();
   });
   app.whenReady().then(async () => {
+    if(sessionExportPath){
+      try{await exportPersistentBrowserSession(sessionExportPath);app.quit();return;}catch(error){record(error);app.quit();return;}
+    }
     startMetaCallbackServer();
     // A edição de controle remoto precisa manter seu próprio túnel durante
     // toda a vida do aplicativo. Não espere o primeiro clique/consulta para
