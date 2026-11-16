@@ -271,9 +271,10 @@ def _inbox_targets() -> list[dict[str, Any]]:
           const scopeRect=scope.getBoundingClientRect();
            const blue=elements.some(e=>{
             const r=e.getBoundingClientRect(), accessibility=norm([e.getAttribute('aria-label'),e.getAttribute('title')].join(' '));
-            const rightDot=r.width>=3&&r.height>=3&&r.width<=14&&r.height<=14&&Math.abs(r.width-r.height)<=3&&r.left>=scopeRect.right-48;
+            const rightDot=r.width>=3&&r.height>=3&&r.width<=16&&r.height<=16&&Math.abs(r.width-r.height)<=4&&r.left>=scopeRect.left;
              const tag=e.tagName.toLowerCase(), background=rgb(getComputedStyle(e).backgroundColor);
-             const emptyBlueDot=(tag==='div'||tag==='span')&&!norm(e.textContent)&&background&&background[2]>=140&&background[2]-background[0]>=35&&background[2]-background[1]>=10;
+             const rounded=getComputedStyle(e).borderRadius;
+             const emptyBlueDot=(tag==='div'||tag==='span')&&!norm(e.textContent)&&rounded&&background&&background[2]>=140&&background[2]-background[0]>=25&&background[2]-background[1]>=5;
              return /^(?:unread|não lida|nova mensagem)$/i.test(accessibility)||(rightDot&&emptyBlueDot);
           });
           const reserved=new Set(['accounts','direct','explore','reels','stories','about','developer','legal','privacy','web']);
