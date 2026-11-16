@@ -351,8 +351,13 @@ def cycle() -> dict[str, Any]:
     if _login_or_identity_step(str(snap.get("url") or "")) or not snap.get("authenticated"):
         return {"active": True, "browser": "waiting-login"}
     url = str(snap.get("url") or "")
+    open_thread_result: dict[str, Any] | None = None
     if "/direct/t/" in url:
-        return {"active": True, "browser": "thread", **_process_thread("open-thread")}
+        open_thread_result = _process_thread("open-thread")
+        # Uma conversa aberta não pode impedir a descoberta das demais DMs.
+        # Só permanecemos nela quando houve uma ação real neste ciclo.
+        if open_thread_result.get("replied") or open_thread_result.get("reaction_pending"):
+            return {"active": True, "browser": "thread", **open_thread_result}
     indicators = browser.metadata()
     aggregate = {
         "message_pending": bool(indicators.get("message_pending")),
@@ -376,4 +381,6 @@ def cycle() -> dict[str, Any]:
         notification_result = _capture_notification_actions()
     if _sweep_due():
         return {"active": True, "browser": "sweep", **aggregate, **notification_result, **sweep("weekly")}
+    if open_thread_result is not None:
+        return {"active": True, "browser": "thread", **aggregate, **notification_result, **open_thread_result}
     return {"active": True, "browser": "ready", **aggregate, **notification_result}
