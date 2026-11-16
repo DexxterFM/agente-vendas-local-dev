@@ -132,8 +132,16 @@ def _is_recovery_window(item: dict[str, Any]) -> bool:
     path = parsed.path.casefold()
     return any(marker in path for marker in (
         "/login", "/recover", "/identify", "/checkpoint",
-        "/two_step_verification", "/confirmemail",
+        "/two_step_verification", "/two_factor/", "/confirmemail",
     ))
+
+
+def _is_instagram_login_window(item: dict[str, Any]) -> bool:
+    parsed = urllib.parse.urlparse(str(item.get("url") or ""))
+    if parsed.hostname not in _PRIMARY_HOSTS:
+        return False
+    path = parsed.path.casefold()
+    return path.startswith(("/accounts/login", "/accounts/signup", "/challenge", "/checkpoint", "/two_factor", "/login"))
 
 
 def _target() -> dict[str, Any]:
@@ -149,7 +157,13 @@ def _target() -> dict[str, Any]:
     # pelo painel, em vez da página inicial que ficou atrás dela.
     page = next((item for item in reversed(windows) if _is_recovery_window(item)), None)
     if page is None:
-        page = next((item for item in windows if urllib.parse.urlparse(str(item.get("url") or "")).hostname in _PRIMARY_HOSTS), None)
+        primary = [item for item in windows if urllib.parse.urlparse(str(item.get("url") or "")).hostname in _PRIMARY_HOSTS]
+        # Nunca deixa uma aba antiga de login encobrir a aba principal que já
+        # foi aberta pelo operador. A página normal tem prioridade e a aba de
+        # login só é usada quando ela é a única janela disponível.
+        page = next((item for item in reversed(primary) if not _is_instagram_login_window(item)), None)
+        if page is None:
+            page = next((item for item in reversed(primary)), None)
     if page:
         return page
     created = _http("/json/new?" + urllib.parse.quote("https://www.instagram.com/", safe="/:?=&"), method="PUT")

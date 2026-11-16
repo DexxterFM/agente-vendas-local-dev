@@ -30,6 +30,17 @@ class InternalBrowserTests(unittest.TestCase):
 
         self.assertEqual("two-step", page["id"])
 
+    @patch("scripts.vps.internal_browser._http")
+    def test_target_keeps_main_page_ahead_of_stale_login_tab(self, request):
+        request.return_value = [
+            {"id": "old-login", "type": "page", "url": "https://www.instagram.com/accounts/login/"},
+            {"id": "home", "type": "page", "url": "https://www.instagram.com/"},
+        ]
+
+        page = internal_browser._target()
+
+        self.assertEqual("home", page["id"])
+
     @patch("scripts.vps.internal_browser.evaluate")
     def test_snapshot_preserves_unauthenticated_state(self, evaluate):
         evaluate.return_value = {
