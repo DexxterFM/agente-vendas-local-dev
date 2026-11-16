@@ -42,6 +42,16 @@ function renderEmptyConversation(){
  el('.contact-meta').textContent='Aguardando sincronização';
 }
 
+async function vpsInternalBrowserView(){
+ const content=activatePanel('Navegador interno do agente','Sessão persistente do agente na VPS. A entrada é feita uma única vez e permanece no servidor.');
+ content.innerHTML=`<section class="data-card" style="max-width:1280px"><div class="module-heading"><div><p class="eyebrow">SESSÃO REMOTA PERSISTENTE</p><h3 id="vps-browser-status">Conectando…</h3></div><div class="editor-actions"><button class="ghost-button" id="vps-browser-reload">↻ Atualizar</button><button class="ghost-button" id="vps-browser-enter">↵ Enter</button></div></div><div style="display:grid;grid-template-columns:minmax(0,1fr) 250px;gap:14px"><div style="background:#07111f;border:1px solid #203a56;border-radius:12px;overflow:auto;min-height:520px"><img id="vps-browser-screen" alt="Tela do navegador interno remoto" style="display:block;width:100%;min-width:760px;cursor:crosshair" /></div><form id="vps-browser-input" class="dialog-form" style="margin:0"><label>Texto para o campo selecionado<textarea name="text" rows="5" placeholder="Clique em um campo na tela e digite aqui."></textarea><small>O texto é encaminhado somente para a sessão interna do agente.</small></label><button class="primary-button" type="submit">Digitar</button><button class="ghost-button" type="button" id="vps-browser-tab">Tab</button><p style="font-size:11px;color:#8fa4ba;line-height:1.45">Clique diretamente na tela para selecionar campos ou botões. Use Enter depois de preencher os dados.</p></form></div></section>`;
+ const screen=el('#vps-browser-screen');const status=el('#vps-browser-status');
+ const refresh=async()=>{const state=await call('internalBrowserStatus');status.textContent=state.running?(state.ready?'Sessão interna ativa':'Preparando sessão interna'):'Navegador interno indisponível';if(!state.running)return;const image=await call('internalBrowserScreenshot');screen.src='data:image/png;base64,'+image.png;};
+ const action=async payload=>{await call('internalBrowserAction',payload);await new Promise(resolve=>setTimeout(resolve,650));await refresh();};
+ screen.onclick=event=>{const rect=screen.getBoundingClientRect();action({kind:'click',x:Math.round((event.clientX-rect.left)*1280/rect.width),y:Math.round((event.clientY-rect.top)*900/(rect.height||1))}).catch(report);};
+ el('#vps-browser-input').onsubmit=event=>{event.preventDefault();const text=new FormData(event.target).get('text');if(!String(text||'').trim())return;action({kind:'type',text:String(text)}).then(()=>event.target.reset()).catch(report);};
+ el('#vps-browser-reload').onclick=()=>action({kind:'reload'}).catch(report);el('#vps-browser-enter').onclick=()=>action({kind:'key',key:'Enter'}).catch(report);el('#vps-browser-tab').onclick=()=>action({kind:'key',key:'Tab'}).catch(report);await refresh();
+}
 function bindBrowserControls(){
  let browserVisible=true;
  const browserButton=el('#browser-pane-btn');
@@ -52,6 +62,7 @@ function bindBrowserControls(){
  // o navegador como ferramenta principal, mas libera o CRM e o importador de
  // DMs sem o operador precisar fechar o aplicativo.
  browserButton?.addEventListener('click',async()=>{
+   try{const remote=await call('internalBrowserStatus');if(remote?.running){toolbar.hidden=true;await vpsInternalBrowserView();return;}}catch{}
    if(browserVisible){await window.sales.browserPane('hide');browserVisible=false;toolbar.hidden=true;updateBrowserToggle();report({message:'Painel comercial exibido.'});return;}
    const result=await window.sales.browserPane('open');
    if(result?.open){browserVisible=true;toolbar.hidden=false;el('#browser-address').value=result.url||el('#browser-address').value;updateBrowserToggle();report({message:'Navegador interno exibido.'});}

@@ -526,6 +526,12 @@ def execute(command, args):
         if command == 'internalBrowserSnapshot':
             from scripts.vps.internal_browser import snapshot
             return snapshot()
+        if command == 'internalBrowserScreenshot':
+            from scripts.vps.internal_browser import screenshot
+            return {'png': screenshot()}
+        if command == 'internalBrowserAction':
+            from scripts.vps.internal_browser import action
+            return action(args)
         if command == 'importMetaEnvironment':
             account=(os.getenv('IG_BUSINESS_ACCOUNT_ID','') or os.getenv('INSTAGRAM_BUSINESS_ACCOUNT_ID','')).strip()
             token=(os.getenv('INSTAGRAM_ACCESS_TOKEN','') or os.getenv('PAGE_ACCESS_TOKEN','')).strip()

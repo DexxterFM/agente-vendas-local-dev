@@ -165,3 +165,47 @@ def screenshot() -> str:
         page.call("Page.enable")
         return str(page.call("Page.captureScreenshot", {"format": "png"}).get("data") or "")
     return _with_page(run)
+
+
+def action(payload: dict[str, Any]) -> dict[str, Any]:
+    """Executa uma interação explícita na sessão interna persistente.
+
+    O painel remoto só envia coordenadas, texto digitado ou uma tecla. Não há
+    execução arbitrária de JavaScript vinda do operador.
+    """
+    if not isinstance(payload, dict):
+        raise ValueError("Interação inválida")
+    kind = str(payload.get("kind") or "").strip().lower()
+    if kind == "navigate":
+        target = urllib.parse.urlparse(str(payload.get("url") or ""))
+        if target.scheme != "https" or target.hostname not in {"instagram.com", "www.instagram.com"}:
+            raise ValueError("Destino interno não autorizado")
+
+    def run(page: DevTools):
+        if kind == "click":
+            x, y = float(payload.get("x", -1)), float(payload.get("y", -1))
+            if not (0 <= x <= 1280 and 0 <= y <= 900):
+                raise ValueError("Coordenada fora da janela interna")
+            page.call("Input.dispatchMouseEvent", {"type": "mousePressed", "x": x, "y": y, "button": "left", "clickCount": 1})
+            page.call("Input.dispatchMouseEvent", {"type": "mouseReleased", "x": x, "y": y, "button": "left", "clickCount": 1})
+        elif kind == "type":
+            text = str(payload.get("text") or "")
+            if not text or len(text) > 512:
+                raise ValueError("Texto de entrada inválido")
+            page.call("Input.insertText", {"text": text})
+        elif kind == "key":
+            key = str(payload.get("key") or "")
+            if key not in {"Enter", "Tab", "Escape"}:
+                raise ValueError("Tecla interna inválida")
+            code = {"Enter": 13, "Tab": 9, "Escape": 27}[key]
+            page.call("Input.dispatchKeyEvent", {"type": "keyDown", "key": key, "code": key, "windowsVirtualKeyCode": code})
+            page.call("Input.dispatchKeyEvent", {"type": "keyUp", "key": key, "code": key, "windowsVirtualKeyCode": code})
+        elif kind == "reload":
+            page.call("Page.reload", {"ignoreCache": False})
+        elif kind == "navigate":
+            page.call("Page.navigate", {"url": target.geturl()})
+        else:
+            raise ValueError("Ação interna inválida")
+        return {"ok": True}
+
+    return _with_page(run)

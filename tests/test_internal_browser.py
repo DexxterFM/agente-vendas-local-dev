@@ -29,3 +29,9 @@ class InternalBrowserTests(unittest.TestCase):
         self.assertEqual(result["authenticated"], True)
         self.assertTrue(result["hasMessages"])
         self.assertNotIn("text", result)
+
+    @patch("scripts.vps.internal_browser._with_page")
+    def test_action_rejects_external_navigation_without_touching_page(self, page):
+        with self.assertRaises(ValueError):
+            internal_browser.action({"kind": "navigate", "url": "https://example.com"})
+        page.assert_not_called()
