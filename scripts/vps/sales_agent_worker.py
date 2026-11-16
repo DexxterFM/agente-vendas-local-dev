@@ -21,6 +21,7 @@ if str(APP_ROOT) not in sys.path:
     sys.path.insert(0, str(APP_ROOT))
 
 from core.desktop_rpc import execute
+from scripts.vps import internal_browser
 from scripts.vps.internal_browser_agent import cycle as internal_browser_cycle
 
 RUNNING = True
@@ -89,6 +90,15 @@ def main() -> None:
             if not RUNNING:
                 break
             time.sleep(1)
+            if _ % 2:
+                continue
+            try:
+                if internal_browser.frontend_event_pending():
+                    break
+            except internal_browser.InternalBrowserError:
+                # A navegação ou uma troca de documento destrói o observador;
+                # o próximo ciclo o reinstala na página nova.
+                break
 
 
 if __name__ == "__main__":

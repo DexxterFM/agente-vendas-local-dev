@@ -299,6 +299,123 @@ def metadata() -> dict[str, Any]:
     }
 
 
+def frontend_events(clear: bool = True) -> dict[str, Any]:
+    """Instala e consome sinais estruturais emitidos pelo front autenticado.
+
+    O observador vive no contexto da página e não copia textos, nomes ou
+    conteúdo de conversas. Ele registra apenas transições de estado visual.
+    """
+    clear_js = "state.events.splice(0,state.events.length)" if clear else "state.events.slice()"
+    expression = rf'''(()=>{{
+      const KEY='__salesAgentFrontEventsV1';
+      const norm=value=>String(value||'').replace(/\s+/g,' ').trim();
+      const visible=e=>{{const r=e.getBoundingClientRect();return r.width>0&&r.height>0}};
+      const rgb=value=>{{const m=String(value||'').match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);return m?[+m[1],+m[2],+m[3]]:null}};
+      const isRed=e=>{{
+        const s=getComputedStyle(e), values=[s.backgroundColor,s.color,s.borderColor,s.fill,s.stroke];
+        return values.some(value=>{{const c=rgb(value);return c&&c[0]>=180&&c[0]>c[1]*1.35&&c[0]>c[2]*1.2}});
+      }};
+      const isBlue=e=>{{
+        const s=getComputedStyle(e), values=[s.backgroundColor,s.color,s.borderColor,s.fill,s.stroke];
+        return values.some(value=>{{const c=rgb(value);return c&&c[2]>=140&&c[2]-c[0]>=35&&c[2]-c[1]>=10}});
+      }};
+      const inspectControl=pattern=>{{
+        const controls=[...document.querySelectorAll('[aria-label]')].filter(e=>pattern.test(norm(e.getAttribute('aria-label'))));
+        let pending=false;
+        for(const control of controls){{
+          let scope=control;
+          for(let depth=0;depth<6&&scope;depth++,scope=scope.parentElement){{
+            const nodes=[scope,...scope.querySelectorAll('*')].filter(visible);
+            if(nodes.some(node=>{{const r=node.getBoundingClientRect();return r.width<=80&&r.height<=80&&isRed(node)}}))pending=true;
+            if(nodes.some(node=>/^\d{{1,3}}$/.test(norm(node.textContent))))pending=true;
+            if(scope.matches('a,button,[role="link"],[role="button"]'))break;
+          }}
+        }}
+        return {{controls:controls.length,pending}};
+      }};
+      const unreadRows=()=>{{
+        const candidates=[...document.querySelectorAll('a[href*="/direct/t/"],button,[role="button"]')].filter(visible);
+        const seen=new Set(); let count=0, confirmed=0;
+        for(const node of candidates){{
+          let scope=node,parent=node.parentElement;
+          for(let depth=0;depth<7&&parent;depth++,parent=parent.parentElement){{
+            const r=parent.getBoundingClientRect();
+            if(r.height>170)break;
+            if(r.height>=42&&r.width>=scope.getBoundingClientRect().width)scope=parent;
+          }}
+          const link=node.matches('a[href*="/direct/t/"]')?node:scope.querySelector('a[href*="/direct/t/"]');
+          const key=link?link.href:norm(scope.getAttribute('aria-label'));
+          if(!key||seen.has(key))continue;
+          seen.add(key);
+          const elements=[scope,...scope.querySelectorAll('*')].filter(visible);
+          const bold=elements.some(e=>parseInt(getComputedStyle(e).fontWeight||'0',10)>=600&&norm(e.textContent).length>1);
+          const blue=elements.some(e=>{{
+            const r=e.getBoundingClientRect(),label=norm([e.getAttribute('aria-label'),e.getAttribute('title')].join(' '));
+            return /^(?:unread|não lida|nova mensagem)$/i.test(label)||(r.width>=2&&r.height>=2&&r.width<=24&&r.height<=24&&isBlue(e));
+          }});
+          if(blue){{count++;if(bold)confirmed++;}}
+        }}
+        return {{count,confirmed}};
+      }};
+      const read=()=>{{
+        const messages=inspectControl(/^(messages|mensagens)$/i);
+        const notifications=inspectControl(/^(notifications|notificações)$/i);
+        const unread=location.pathname.startsWith('/direct')?unreadRows():{{count:0,confirmed:0}};
+        return {{path:location.pathname,message_pending:messages.pending,notification_pending:notifications.pending,unread_rows:unread.count,unread_confirmed:unread.confirmed}};
+      }};
+      let state=window[KEY];
+      if(!state||!state.observer){{
+        state={{sequence:0,events:[],signature:'',timer:0,observer:null}};
+        const sample=()=>{{
+          state.timer=0;
+          const next=read(),signature=JSON.stringify(next);
+          if(signature===state.signature)return;
+          state.signature=signature;state.sequence++;
+          state.events.push({{sequence:state.sequence,at:Date.now(),...next}});
+          if(state.events.length>40)state.events.splice(0,state.events.length-40);
+        }};
+        const schedule=()=>{{if(state.timer)return;state.timer=setTimeout(sample,350)}};
+        state.observer=new MutationObserver(schedule);
+        state.observer.observe(document.documentElement,{{subtree:true,childList:true,attributes:true,attributeFilter:['class','style','aria-label','title']}});
+        addEventListener('popstate',schedule,{{passive:true}});
+        addEventListener('hashchange',schedule,{{passive:true}});
+        document.addEventListener('visibilitychange',schedule,{{passive:true}});
+        window[KEY]=state;sample();
+      }}
+      const events={clear_js};
+      const last=events.length?events[events.length-1]:null;
+      return {{installed:true,sequence:state.sequence,event_count:events.length,last,events}};
+    }})()'''
+    value = evaluate(expression)
+    if not isinstance(value, dict):
+        raise InternalBrowserError("Fila de eventos do navegador interno inválida")
+    events = []
+    for item in value.get("events") or []:
+        if not isinstance(item, dict):
+            continue
+        events.append({
+            "sequence": max(0, int(item.get("sequence") or 0)),
+            "message_pending": bool(item.get("message_pending")),
+            "notification_pending": bool(item.get("notification_pending")),
+            "unread_rows": max(0, min(100, int(item.get("unread_rows") or 0))),
+            "unread_confirmed": max(0, min(100, int(item.get("unread_confirmed") or 0))),
+            "path": str(item.get("path") or "")[:240],
+        })
+    return {
+        "installed": bool(value.get("installed")),
+        "sequence": max(0, int(value.get("sequence") or 0)),
+        "event_count": len(events),
+        "events": events,
+        "last": events[-1] if events else None,
+    }
+
+
+def frontend_event_pending() -> bool:
+    """Consulta barata usada para acordar o worker antes do próximo ciclo."""
+    value = evaluate("(()=>{const s=window.__salesAgentFrontEventsV1;return !s||!s.observer||s.events.length>0})()")
+    return bool(value)
+
+
 def screenshot() -> dict[str, Any]:
     def run(page: DevTools):
         page.call("Page.enable")

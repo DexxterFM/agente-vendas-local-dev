@@ -360,6 +360,10 @@ def cycle() -> dict[str, Any]:
     # nessa situação o agente deve ficar rigorosamente passivo.
     if _login_or_identity_step(str(snap.get("url") or "")) or not snap.get("authenticated"):
         return {"active": True, "browser": "waiting-login"}
+    try:
+        frontend = browser.frontend_events(clear=True)
+    except browser.InternalBrowserError:
+        frontend = {"event_count": 0, "events": [], "last": None}
     url = str(snap.get("url") or "")
     open_thread_result: dict[str, Any] | None = None
     if "/direct/t/" in url:
@@ -369,11 +373,15 @@ def cycle() -> dict[str, Any]:
         if open_thread_result.get("replied") or open_thread_result.get("reaction_pending"):
             return {"active": True, "browser": "thread", **open_thread_result}
     indicators = browser.metadata()
+    event_rows = [item for item in frontend.get("events") or [] if isinstance(item, dict)]
+    last_event = frontend.get("last") if isinstance(frontend.get("last"), dict) else {}
     aggregate = {
-        "message_pending": bool(indicators.get("message_pending")),
-        "notification_pending": bool(indicators.get("notification_pending")),
+        "message_pending": bool(indicators.get("message_pending") or last_event.get("message_pending") or last_event.get("unread_rows")),
+        "notification_pending": bool(indicators.get("notification_pending") or last_event.get("notification_pending")),
         "message_controls": int(indicators.get("message_controls") or 0),
         "notification_controls": int(indicators.get("notification_controls") or 0),
+        "frontend_events": len(event_rows),
+        "frontend_unread_rows": int(last_event.get("unread_rows") or 0),
     }
     if aggregate["message_pending"]:
         browser.action({"kind": "navigate", "url": INBOX_URL})

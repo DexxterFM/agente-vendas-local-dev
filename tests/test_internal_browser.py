@@ -97,6 +97,36 @@ class InternalBrowserTests(unittest.TestCase):
         self.assertTrue(result["notification_pending"])
         self.assertNotIn("private_text", result)
 
+    @patch("scripts.vps.internal_browser.evaluate")
+    def test_frontend_events_expose_only_structural_status(self, evaluate):
+        evaluate.return_value = {
+            "installed": True,
+            "sequence": 4,
+            "event_count": 1,
+            "events": [{
+                "sequence": 4,
+                "at": 999,
+                "path": "/direct/inbox/",
+                "message_pending": True,
+                "notification_pending": False,
+                "unread_rows": 1,
+                "unread_confirmed": 1,
+                "private_text": "não deve sair",
+            }],
+        }
+
+        result = internal_browser.frontend_events()
+
+        self.assertTrue(result["installed"])
+        self.assertEqual(1, result["event_count"])
+        self.assertEqual(1, result["last"]["unread_rows"])
+        self.assertNotIn("private_text", result["last"])
+
+    @patch("scripts.vps.internal_browser.evaluate", return_value=True)
+    def test_frontend_event_pending_uses_lightweight_queue_check(self, evaluate):
+        self.assertTrue(internal_browser.frontend_event_pending())
+        self.assertIn("__salesAgentFrontEventsV1", evaluate.call_args.args[0])
+
     @patch("scripts.vps.internal_browser._with_page")
     def test_action_rejects_external_navigation_without_touching_page(self, page):
         with self.assertRaises(ValueError):
