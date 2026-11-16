@@ -23,6 +23,25 @@ class BrowserDmCycleTests(unittest.TestCase):
             self.assertTrue(status["active"])
             self.assertTrue(status["automatic_replies"])
 
+    def test_payment_concern_is_portuguese_and_reassures_without_auto_charge(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}
+        ):
+            lead_id = execute("create", {"name": "Clínica", "contact": "clinica.teste"})
+            answer = execute("draft", {
+                "id": lead_id,
+                "browser_history": [
+                    {"role": "assistant", "text": "Você ganhou 3 meses grátis."},
+                    {"role": "user", "text": "Mas depois não passa automático para o pago?"},
+                ],
+            })
+            parts = answer.split(BROWSER_BUBBLE_SEPARATOR)
+            self.assertEqual(2, len(parts))
+            self.assertIn("não gera cobrança automática", parts[0])
+            self.assertIn("empresa é familiar", parts[1])
+            self.assertIn("pai atípico", parts[1])
+            self.assertNotRegex(answer, r"(?i)okay|we've|next step|lead")
+
     def test_automatic_reply_authorization_approves_waiting_dm_actions(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(
             os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}

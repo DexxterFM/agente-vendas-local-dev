@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import copy
 from urllib.parse import urlparse
 
 
@@ -27,6 +28,17 @@ DEFAULT_TRIAL_OFFER = {
         "Os três meses começam após a ativação acompanhada. "
         "O link da campanha deve ser usado em até 2 dias."
     ),
+    "billing_policy": {
+        "automatic_charge": False,
+        "warning_days": 10,
+        "data_grace_days": 15,
+        "summary": (
+            "O teste não vira assinatura paga automaticamente. Dez dias antes do fim, "
+            "enviamos um aviso e oferecemos a continuidade. Ao terminar, o acesso é bloqueado, "
+            "os dados são disponibilizados em exportação bruta criptografada e há 15 dias para "
+            "confirmar o pagamento antes da exclusão segura na nuvem."
+        ),
+    },
 }
 
 
@@ -36,10 +48,17 @@ def get_trial_offer(memory) -> dict:
         try:
             value = json.loads(raw)
             if isinstance(value, dict) and value.get("clinic") and value.get("professional"):
+                # Migração idempotente: ofertas antigas recebem a política
+                # transparente sem alterar os links já configurados.
+                if "billing_policy" not in value:
+                    value["billing_policy"] = DEFAULT_TRIAL_OFFER["billing_policy"]
+                    memory.set_setting("sales.trial.offer", json.dumps(value, ensure_ascii=False))
                 return value
         except (TypeError, ValueError):
             pass
-    value = DEFAULT_TRIAL_OFFER.copy()
+    # Evita que um operador/teste altere os dicionários aninhados do padrão
+    # enquanto valida uma URL inválida.
+    value = copy.deepcopy(DEFAULT_TRIAL_OFFER)
     memory.set_setting("sales.trial.offer", json.dumps(value, ensure_ascii=False))
     return value
 
@@ -55,6 +74,18 @@ def save_trial_offer(memory, offer: dict) -> dict:
         "company_url": str(offer.get("company_url", current["company_url"]))[:1200].strip(),
         "months_free": 3,
         "activation": str(offer.get("activation", current["activation"]))[:800].strip(),
+        "billing_policy": {
+            **current.get("billing_policy", DEFAULT_TRIAL_OFFER["billing_policy"]),
+            "automatic_charge": False,
+            "warning_days": 10,
+            "data_grace_days": 15,
+            "summary": str(
+                (offer.get("billing_policy") or {}).get(
+                    "summary",
+                    current.get("billing_policy", DEFAULT_TRIAL_OFFER["billing_policy"])["summary"],
+                )
+            )[:1200].strip(),
+        },
         "clinic": {**current["clinic"], **(offer.get("clinic") if isinstance(offer.get("clinic"), dict) else {})},
         "professional": {**current["professional"], **(offer.get("professional") if isinstance(offer.get("professional"), dict) else {})},
     }

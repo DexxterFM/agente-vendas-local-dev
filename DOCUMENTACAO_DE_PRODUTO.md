@@ -7,6 +7,13 @@
 3. Em **Navegador interno**, entre na conta Instagram autorizada.
 4. Em **Integração Instagram/Meta**, conclua a autorização Meta quando usar a API.
 5. Em **Oferta 3 meses**, confira e salve os links oficiais de Clínica/equipe e Profissional individual.
+
+## Política transparente do teste
+
+- O período gratuito **não se converte automaticamente em plano pago** e não há cobrança automática.
+- Dez dias antes do encerramento, o agente envia um aviso e oferece a continuidade; só há continuidade após confirmação explícita e pagamento confirmado.
+- No fim do teste, o acesso fica indisponível. Os dados são preparados em exportação bruta criptografada para recuperação.
+- A conta permanece em retenção por 15 dias para que o cliente confirme o pagamento. Depois desse prazo, os dados na nuvem são excluídos com segurança.
 6. Revise a **Biblioteca de respostas** e só então ative o agente.
 
 ## Configuração técnica
