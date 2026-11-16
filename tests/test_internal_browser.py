@@ -35,6 +35,7 @@ class InternalBrowserTests(unittest.TestCase):
         request.return_value = [
             {"id": "old-login", "type": "page", "url": "https://www.instagram.com/accounts/login/"},
             {"id": "home", "type": "page", "url": "https://www.instagram.com/"},
+            {"id": "signup", "type": "page", "url": "https://www.instagram.com/accounts/emailsignup/"},
         ]
 
         page = internal_browser._target()
