@@ -10,12 +10,14 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
         internal_browser_agent._LAST_NOTIFICATION_SCAN = 0.0
 
     @patch("scripts.vps.internal_browser_agent._wait")
+    @patch("scripts.vps.internal_browser_agent._composer_center", return_value={"x": 700.0, "y": 835.0})
     @patch("scripts.vps.internal_browser_agent._page", return_value="")
     @patch("scripts.vps.internal_browser_agent.browser.action")
-    def test_clear_composer_uses_native_select_all_and_backspace(self, action, _page, _wait):
+    def test_clear_composer_uses_native_select_all_and_backspace(self, action, _page, _composer, _wait):
         internal_browser_agent._clear_composer()
 
         self.assertEqual([
+            call({"kind": "click", "x": 700.0, "y": 835.0}),
             call({"kind": "key", "key": "SelectAll"}),
             call({"kind": "key", "key": "Backspace"}),
         ], action.call_args_list)

@@ -402,12 +402,29 @@ def _send_button_center() -> dict[str, float] | None:
 
 def _clear_composer() -> None:
     """Remove de forma nativa qualquer rascunho deixado por uma tentativa."""
-    browser.action({"kind": "key", "key": "SelectAll"})
-    browser.action({"kind": "key", "key": "Backspace"})
-    _wait(.1)
-    remaining = _page("(()=>{const e=document.activeElement;return String(e?.value||e?.innerText||e?.textContent||'').trim()})()")
-    if str(remaining or "").strip():
-        raise browser.InternalBrowserError("Rascunho anterior não pôde ser limpo")
+    # Uma tentativa anterior pode deixar o compositor com o foco visual, mas
+    # sem foco de teclado depois de uma transição da interface. Reconfirme o
+    # foco pelo mouse antes de cada tentativa; nunca acrescente uma resposta
+    # ao texto que ficou no campo.
+    for attempt in range(3):
+        point = _composer_center()
+        if point:
+            browser.action({"kind": "click", **point})
+        browser.action({"kind": "key", "key": "SelectAll"})
+        browser.action({"kind": "key", "key": "Backspace"})
+        _wait(.18 + attempt * .12)
+        remaining = _page("(()=>{const e=document.activeElement;return String(e?.value||e?.innerText||e?.textContent||'').trim()})()")
+        if not str(remaining or "").strip():
+            return
+        # Alguns editores trocam Backspace por uma operação de navegação após
+        # reidratação. Delete preserva o mesmo gesto de teclado e fecha esse
+        # segundo caminho antes de repetir o foco.
+        browser.action({"kind": "key", "key": "Delete"})
+        _wait(.14 + attempt * .1)
+        remaining = _page("(()=>{const e=document.activeElement;return String(e?.value||e?.innerText||e?.textContent||'').trim()})()")
+        if not str(remaining or "").strip():
+            return
+    raise browser.InternalBrowserError("Rascunho anterior não pôde ser limpo")
 
 
 def _composer_safe_text(text: str) -> str:
