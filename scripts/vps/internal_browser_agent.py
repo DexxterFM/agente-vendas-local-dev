@@ -556,7 +556,7 @@ def _mark_sweep() -> None:
         memory.set_setting("sales.agent.vps_browser.last_sweep", _now().isoformat())
 
 
-def _notification_candidates() -> list[str]:
+def _notification_candidates() -> list[dict[str, Any]]:
     """Lê somente perfis associados explicitamente a novo seguidor."""
     if not _open_notifications():
         return []
@@ -565,7 +565,7 @@ def _notification_candidates() -> list[str]:
       const reserved=new Set(['accounts','direct','explore','reels','stories','about','developer','legal','privacy','web']);
       const follower=/(?:começou|passou|acabou)(?:\s+de)? a seguir(?: você|te)?|(?:segue|seguiu|está seguindo)(?: você|te)?|started following you|follows you/i;
       const followBack=/(?:seguir(?:\s+de)?\s+volta|follow\s+back|seguir você|follow you)/i;
-      const output=[];
+        const output=[];
       for(const marker of [...document.querySelectorAll('span,div,p')]){
         const text=String(marker.innerText||'').replace(/\s+/g,' ').trim();
         const rowButtons=[...marker.querySelectorAll('button,[role="button"]')].map(button=>String(button.getAttribute('aria-label')||button.innerText||'')).join(' ');
@@ -574,24 +574,53 @@ def _notification_candidates() -> list[str]:
         for(let depth=0;row&&depth<9;depth++,row=row.parentElement){
           const match=[...row.querySelectorAll('a[href]')].map(anchor=>new URL(anchor.href,location.href).pathname.split('/').filter(Boolean))
             .find(parts=>parts.length===1&&/^[a-z0-9._]{1,30}$/i.test(parts[0])&&!reserved.has(parts[0].toLowerCase()));
-          if(match){output.push(match[0].toLowerCase());break;}
+          if(match){
+            const controls=[...row.querySelectorAll('button,[role="button"]')].filter(e=>{const t=String(e.getAttribute('aria-label')||e.innerText||'');return /seguir(?:\s+de)?\s+volta|follow\s+back/i.test(t)});
+            const control=controls[0]||null, rect=control?control.getBoundingClientRect():null;
+            const profile=[...row.querySelectorAll('a[href]')].find(a=>{try{return new URL(a.href,location.href).pathname.split('/').filter(Boolean).length===1}catch{return false}});
+            output.push({username:match[0].toLowerCase(),profile_href:profile?profile.href:'',profile_text:text.slice(0,1200),x:rect?rect.left+rect.width/2:null,y:rect?rect.top+rect.height/2:null});break;
+          }
         }
       }
       return [...new Set(output)].slice(0,20);
     })()''')
-    usernames = [str(item).lower() for item in (value if isinstance(value, list) else [])]
-    return list(dict.fromkeys(item for item in usernames if item and len(item) <= 30))
+    result=[]; seen=set()
+    for item in (value if isinstance(value,list) else []):
+        if isinstance(item,str): item={'username':item}
+        if not isinstance(item,dict): continue
+        username=str(item.get('username') or '').lower()
+        if not username or len(username)>30 or username in seen: continue
+        seen.add(username); result.append({'username':username,'profile_href':str(item.get('profile_href') or ''),'profile_text':str(item.get('profile_text') or '')[:1200],'x':item.get('x'),'y':item.get('y')})
+    return result
 
 
 def _capture_notification_actions() -> dict[str, int]:
     candidates = _notification_candidates()
     queued = 0
-    for username in candidates:
+    followed = 0
+    welcomed = 0
+    for candidate in candidates:
+        username=str(candidate.get('username') or '')
         result = execute("browserNotificationCandidate", {"username": username, "kind": "new_follower"})
         if result.get("queued"):
             queued += 1
+            x,y=candidate.get('x'),candidate.get('y')
+            if isinstance(x,(int,float)) and isinstance(y,(int,float)):
+                browser.action({'kind':'click','x':float(x),'y':float(y)}); _wait(.7); followed += 1
+            plan=execute('followerCycle', {'username':username,'profile':{'text':candidate.get('profile_text','')}})
+            href=str(candidate.get('profile_href') or '')
+            if plan.get('new_follower') and href and _login_or_identity_step(href) is False:
+                browser.action({'kind':'navigate','url':href}); _wait(1.0)
+                point=_page(r'''(()=>{const n=[...document.querySelectorAll('button,[role="button"]')].find(e=>/^(?:mensagem|message)$/i.test(String(e.getAttribute('aria-label')||e.innerText||'').trim()));if(!n)return null;const r=n.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()''')
+                if isinstance(point,dict):
+                    browser.action({'kind':'click','x':float(point['x']),'y':float(point['y'])}); _wait(1.2)
+                snap=_thread_snapshot()
+                if snap.get('thread_id') and snap.get('url'):
+                    for bubble in str(plan.get('text') or '').split('\n[[AGENT_BUBBLE]]\n'):
+                        if bubble.strip(): _send_bubble(bubble.strip(),snap['url'])
+                    execute('followerConfirm',{'username':username,'text':str(plan.get('text') or '')}); welcomed += 1
     _open_home()
-    return {"notification_candidates": len(candidates), "notification_queued": queued}
+    return {"notification_candidates": len(candidates), "notification_queued": queued, "notification_followed": followed, "notification_welcomed": welcomed}
 
 
 def sweep(source: str = "scheduled") -> dict[str, Any]:
