@@ -424,16 +424,27 @@ def stalled_page_watchdog() -> dict[str, Any]:
     """
     value = evaluate(r'''(()=>{
       const KEY='__salesAgentStallWatchdogV1',STORE='salesAgentStallRecoveriesV1';
-      const path=location.pathname.toLowerCase();
-      const fields=[...document.querySelectorAll('input,textarea,[contenteditable="true"]')];
-      const fieldText=fields.map(e=>[e.name,e.type,e.placeholder,e.getAttribute('aria-label')].filter(Boolean).join(' ').toLowerCase());
-      const credential=fieldText.some(v=>/password|senha|username|login|c[oó]digo|security|seguran[cç]a/.test(v));
-      const identity=/^\/(?:accounts\/|auth_platform\/|challenge|checkpoint|two_factor|login|oidc)/.test(path);
-      const controls=[...document.querySelectorAll('a,button,[role="button"],[role="link"]')];
       const label=e=>[e.innerText,e.getAttribute('aria-label'),e.getAttribute('title'),e.getAttribute('href')].filter(Boolean).join(' ');
-      const shell=controls.some(e=>/mensagens|messages|direct|notifica|notifications|página inicial|home/i.test(label(e)));
-      const direct=path.startsWith('/direct');
-      const stalled=direct&&document.readyState==='complete'&&!credential&&!identity&&!shell;
+      const health=()=>{
+        const path=location.pathname.toLowerCase();
+        const fields=[...document.querySelectorAll('input,textarea,[contenteditable="true"]')];
+        const fieldText=fields.map(e=>[e.name,e.type,e.placeholder,e.getAttribute('aria-label')].filter(Boolean).join(' ').toLowerCase());
+        const credential=fieldText.some(v=>/password|senha|username|login|c[oó]digo|security|seguran[cç]a/.test(v));
+        const identity=/^\/(?:accounts\/|auth_platform\/|challenge|checkpoint|two_factor|login|oidc)/.test(path);
+        const controls=[...document.querySelectorAll('a,button,[role="button"],[role="link"]')];
+        const shell=controls.some(e=>/mensagens|messages|direct|notifica|notifications|página inicial|home/i.test(label(e)));
+        const direct=path.startsWith('/direct');
+        const bodyText=String(document.body?.innerText||'').replace(/\s+/g,' ').trim();
+        const threadLinks=document.querySelectorAll('a[href*="/direct/t/"]').length;
+        const conversationNodes=document.querySelectorAll('[role="message"],[role="article"],[role="listitem"],[role="row"]').length;
+        const composer=fields.some(e=>/mensagem|message|responder|reply/i.test([e.placeholder,e.getAttribute('aria-label')].filter(Boolean).join(' ')));
+        const inboxControls=fields.some(e=>/pesquis|search/i.test([e.placeholder,e.getAttribute('aria-label')].filter(Boolean).join(' ')))
+          ||controls.some(e=>/^(primary|general|requests|principal|geral|solicita[cç][oõ]es)$/i.test(String(e.innerText||'').trim()));
+        const emptyState=/no messages|nenhuma mensagem|send a message|enviar (?:uma )?mensagem/i.test(bodyText);
+        const usable=threadLinks>0||conversationNodes>0||composer||inboxControls||emptyState;
+        return {stalled:direct&&document.readyState==='complete'&&!credential&&!identity&&(!shell||!usable)};
+      };
+      const stalled=health().stalled;
       let state=window[KEY];
       if(!state)state=window[KEY]={timer:0,armedAt:0};
       if(!stalled){
@@ -448,13 +459,7 @@ def stalled_page_watchdog() -> dict[str, Any]:
         state.armedAt=Date.now();
         state.timer=setTimeout(()=>{
           state.timer=0;
-          const currentPath=location.pathname.toLowerCase();
-          const currentFields=[...document.querySelectorAll('input,textarea,[contenteditable="true"]')]
-            .map(e=>[e.name,e.type,e.placeholder,e.getAttribute('aria-label')].filter(Boolean).join(' ').toLowerCase());
-          const currentCredential=currentFields.some(v=>/password|senha|username|login|c[oó]digo|security|seguran[cç]a/.test(v));
-          const currentControls=[...document.querySelectorAll('a,button,[role="button"],[role="link"]')];
-          const currentShell=currentControls.some(e=>/mensagens|messages|direct|notifica|notifications|página inicial|home/i.test(label(e)));
-          if(currentPath.startsWith('/direct')&&!currentCredential&&!currentShell&&document.readyState==='complete'){
+          if(health().stalled){
             history.push(Date.now());
             try{sessionStorage.setItem(STORE,JSON.stringify(history.slice(-2)))}catch{}
             location.reload();
