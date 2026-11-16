@@ -61,3 +61,21 @@ class InternalBrowserTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             internal_browser.action({"kind": "navigate", "url": "https://example.com"})
         page.assert_not_called()
+
+    @patch("scripts.vps.internal_browser._with_page")
+    def test_action_forwards_normal_editing_keys(self, with_page):
+        calls = []
+
+        class Page:
+            def call(self, method, payload):
+                calls.append((method, payload))
+                return {}
+
+        with_page.side_effect = lambda callback: callback(Page())
+
+        result = internal_browser.action({"kind": "key", "key": "Backspace"})
+
+        self.assertEqual({"ok": True}, result)
+        self.assertEqual("Input.dispatchKeyEvent", calls[0][0])
+        self.assertEqual("Backspace", calls[0][1]["key"])
+        self.assertEqual(8, calls[0][1]["windowsVirtualKeyCode"])

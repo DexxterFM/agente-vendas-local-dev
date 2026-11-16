@@ -233,9 +233,20 @@ def action(payload: dict[str, Any]) -> dict[str, Any]:
                 time.sleep((18 + random.randint(0, 42)) / 1000)
         elif kind == "key":
             key = str(payload.get("key") or "")
-            if key not in {"Enter", "Tab", "Escape"}:
+            key_codes = {
+                "Enter": 13,
+                "Tab": 9,
+                "Escape": 27,
+                "Backspace": 8,
+                "Delete": 46,
+                "ArrowLeft": 37,
+                "ArrowUp": 38,
+                "ArrowRight": 39,
+                "ArrowDown": 40,
+            }
+            if key not in key_codes:
                 raise ValueError("Tecla interna inválida")
-            code = {"Enter": 13, "Tab": 9, "Escape": 27}[key]
+            code = key_codes[key]
             page.call("Input.dispatchKeyEvent", {"type": "keyDown", "key": key, "code": key, "windowsVirtualKeyCode": code})
             page.call("Input.dispatchKeyEvent", {"type": "keyUp", "key": key, "code": key, "windowsVirtualKeyCode": code})
         elif kind == "reload":
