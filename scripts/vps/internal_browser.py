@@ -416,6 +416,63 @@ def frontend_event_pending() -> bool:
     return bool(value)
 
 
+def stalled_page_watchdog() -> dict[str, Any]:
+    """Arma recuperação suave quando o front fica preso no splash.
+
+    O temporizador roda dentro da própria página. Rotas de login, desafios e
+    qualquer tela com campos de credencial nunca são recarregadas por ele.
+    """
+    value = evaluate(r'''(()=>{
+      const KEY='__salesAgentStallWatchdogV1',STORE='salesAgentStallRecoveriesV1';
+      const path=location.pathname.toLowerCase();
+      const fields=[...document.querySelectorAll('input,textarea,[contenteditable="true"]')];
+      const fieldText=fields.map(e=>[e.name,e.type,e.placeholder,e.getAttribute('aria-label')].filter(Boolean).join(' ').toLowerCase());
+      const credential=fieldText.some(v=>/password|senha|username|login|c[oó]digo|security|seguran[cç]a/.test(v));
+      const identity=/^\/(?:accounts\/|auth_platform\/|challenge|checkpoint|two_factor|login|oidc)/.test(path);
+      const controls=[...document.querySelectorAll('a,button,[role="button"],[role="link"]')];
+      const label=e=>[e.innerText,e.getAttribute('aria-label'),e.getAttribute('title'),e.getAttribute('href')].filter(Boolean).join(' ');
+      const shell=controls.some(e=>/mensagens|messages|direct|notifica|notifications|página inicial|home/i.test(label(e)));
+      const direct=path.startsWith('/direct');
+      const stalled=direct&&document.readyState==='complete'&&!credential&&!identity&&!shell;
+      let state=window[KEY];
+      if(!state)state=window[KEY]={timer:0,armedAt:0};
+      if(!stalled){
+        if(state.timer)clearTimeout(state.timer);
+        state.timer=0;state.armedAt=0;
+        return {stalled:false,armed:false,throttled:false};
+      }
+      let history=[];
+      try{history=JSON.parse(sessionStorage.getItem(STORE)||'[]').filter(v=>Number(v)>Date.now()-300000)}catch{history=[]}
+      const throttled=history.length>=2;
+      if(!state.timer&&!throttled){
+        state.armedAt=Date.now();
+        state.timer=setTimeout(()=>{
+          state.timer=0;
+          const currentPath=location.pathname.toLowerCase();
+          const currentFields=[...document.querySelectorAll('input,textarea,[contenteditable="true"]')]
+            .map(e=>[e.name,e.type,e.placeholder,e.getAttribute('aria-label')].filter(Boolean).join(' ').toLowerCase());
+          const currentCredential=currentFields.some(v=>/password|senha|username|login|c[oó]digo|security|seguran[cç]a/.test(v));
+          const currentControls=[...document.querySelectorAll('a,button,[role="button"],[role="link"]')];
+          const currentShell=currentControls.some(e=>/mensagens|messages|direct|notifica|notifications|página inicial|home/i.test(label(e)));
+          if(currentPath.startsWith('/direct')&&!currentCredential&&!currentShell&&document.readyState==='complete'){
+            history.push(Date.now());
+            try{sessionStorage.setItem(STORE,JSON.stringify(history.slice(-2)))}catch{}
+            location.reload();
+          }
+        },12000);
+      }
+      return {stalled:true,armed:Boolean(state.timer),throttled,armed_seconds:state.armedAt?Math.max(0,Math.floor((Date.now()-state.armedAt)/1000)):0};
+    })()''')
+    if not isinstance(value, dict):
+        raise InternalBrowserError("Watchdog do navegador interno inválido")
+    return {
+        "stalled": bool(value.get("stalled")),
+        "armed": bool(value.get("armed")),
+        "throttled": bool(value.get("throttled")),
+        "armed_seconds": max(0, min(300, int(value.get("armed_seconds") or 0))),
+    }
+
+
 def screenshot() -> dict[str, Any]:
     def run(page: DevTools):
         page.call("Page.enable")

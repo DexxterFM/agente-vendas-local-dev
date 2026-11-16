@@ -355,9 +355,15 @@ def cycle() -> dict[str, Any]:
     if not status.get("running") or not status.get("ready"):
         return {"active": True, "browser": "offline"}
     snap = browser.snapshot()
+    try:
+        page_watchdog = browser.stalled_page_watchdog()
+    except browser.InternalBrowserError:
+        page_watchdog = {"stalled": False, "armed": False, "throttled": False}
     # A URL é verificada antes da heurística de DOM. Durante login, páginas
     # de identidade podem não ter campos de credencial durante uma transição;
     # nessa situação o agente deve ficar rigorosamente passivo.
+    if page_watchdog.get("stalled"):
+        return {"active": True, "browser": "recovering-page", "page_watchdog": page_watchdog}
     if _login_or_identity_step(str(snap.get("url") or "")) or not snap.get("authenticated"):
         return {"active": True, "browser": "waiting-login"}
     try:

@@ -127,6 +127,20 @@ class InternalBrowserTests(unittest.TestCase):
         self.assertTrue(internal_browser.frontend_event_pending())
         self.assertIn("__salesAgentFrontEventsV1", evaluate.call_args.args[0])
 
+    @patch("scripts.vps.internal_browser.evaluate")
+    def test_stalled_page_watchdog_returns_only_recovery_state(self, evaluate):
+        evaluate.return_value = {
+            "stalled": True, "armed": True, "throttled": False,
+            "armed_seconds": 3, "page_text": "não deve sair",
+        }
+
+        result = internal_browser.stalled_page_watchdog()
+
+        self.assertEqual(
+            {"stalled": True, "armed": True, "throttled": False, "armed_seconds": 3},
+            result,
+        )
+
     @patch("scripts.vps.internal_browser._with_page")
     def test_action_rejects_external_navigation_without_touching_page(self, page):
         with self.assertRaises(ValueError):
