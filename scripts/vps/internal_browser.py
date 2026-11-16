@@ -349,9 +349,11 @@ def frontend_events(clear: bool = True) -> dict[str, Any]:
           seen.add(key);
           const elements=[scope,...scope.querySelectorAll('*')].filter(visible);
           const bold=elements.some(e=>parseInt(getComputedStyle(e).fontWeight||'0',10)>=600&&norm(e.textContent).length>1);
+          const scopeRect=scope.getBoundingClientRect();
           const blue=elements.some(e=>{{
             const r=e.getBoundingClientRect(),label=norm([e.getAttribute('aria-label'),e.getAttribute('title')].join(' '));
-            return /^(?:unread|não lida|nova mensagem)$/i.test(label)||(r.width>=2&&r.height>=2&&r.width<=24&&r.height<=24&&isBlue(e));
+            const rightDot=r.width>=3&&r.height>=3&&r.width<=14&&r.height<=14&&Math.abs(r.width-r.height)<=3&&r.left>=scopeRect.right-48;
+            return /^(?:unread|não lida|nova mensagem)$/i.test(label)||(rightDot&&isBlue(e));
           }});
           if(blue){{count++;if(bold)confirmed++;}}
         }}

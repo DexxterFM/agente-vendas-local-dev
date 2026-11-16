@@ -34,14 +34,28 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
 
     @patch("scripts.vps.internal_browser_agent._wait")
     @patch("scripts.vps.internal_browser_agent._page")
-    @patch("scripts.vps.internal_browser_agent.browser.action")
-    def test_notification_candidates_are_normalized_and_deduplicated(self, action, page, _wait):
+    @patch("scripts.vps.internal_browser_agent._open_notifications", return_value=True)
+    def test_notification_candidates_are_normalized_and_deduplicated(self, open_notifications, page, _wait):
         page.return_value = ["Clinica.Teste", "clinica.teste", "fono_legal"]
 
         result = internal_browser_agent._notification_candidates()
 
         self.assertEqual(["clinica.teste", "fono_legal"], result)
-        action.assert_called_once_with({"kind": "navigate", "url": "https://www.instagram.com/notifications/"})
+        open_notifications.assert_called_once_with()
+
+    @patch("scripts.vps.internal_browser_agent._wait")
+    @patch("scripts.vps.internal_browser_agent._page")
+    @patch("scripts.vps.internal_browser_agent.browser.action")
+    def test_open_target_clicks_existing_spa_anchor_without_page_navigate(self, action, page, _wait):
+        page.side_effect = [True, "https://www.instagram.com/direct/t/123/"]
+
+        opened = internal_browser_agent._open_target({
+            "href": "https://www.instagram.com/direct/t/123/",
+            "label": "Denis Machado Boa tarde",
+        })
+
+        self.assertTrue(opened)
+        action.assert_not_called()
 
     @patch("scripts.vps.internal_browser_agent._sweep_due", return_value=False)
     @patch("scripts.vps.internal_browser_agent._capture_notification_actions")
@@ -100,6 +114,7 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
     @patch("scripts.vps.internal_browser_agent._sweep_due", return_value=False)
     @patch("scripts.vps.internal_browser_agent._process_thread", return_value={"processed": True, "replied": True})
     @patch("scripts.vps.internal_browser_agent._open_target", return_value=True)
+    @patch("scripts.vps.internal_browser_agent._open_inbox", return_value=True)
     @patch("scripts.vps.internal_browser_agent._inbox_targets")
     @patch("scripts.vps.internal_browser_agent._wait")
     @patch("scripts.vps.internal_browser_agent.browser.action")
@@ -109,7 +124,7 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
     @patch("scripts.vps.internal_browser_agent.execute")
     def test_cycle_opens_blue_unread_row_instead_of_first_visible_conversation(
         self, execute, status, snapshot, metadata, action, _wait, inbox_targets,
-        open_target, process_thread, _sweep_due
+        open_inbox, open_target, process_thread, _sweep_due
     ):
         execute.return_value = {"active": True}
         status.return_value = {"running": True, "ready": True}
@@ -128,10 +143,12 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
         self.assertEqual(1, result["inbox_actionable_unread"])
         open_target.assert_called_once_with(unread)
         process_thread.assert_called_once_with("unread-row-metadata")
+        open_inbox.assert_called_once_with()
 
     @patch("scripts.vps.internal_browser_agent._sweep_due", return_value=False)
     @patch("scripts.vps.internal_browser_agent._process_thread")
     @patch("scripts.vps.internal_browser_agent._open_target", return_value=True)
+    @patch("scripts.vps.internal_browser_agent._open_inbox", return_value=True)
     @patch("scripts.vps.internal_browser_agent._inbox_targets")
     @patch("scripts.vps.internal_browser_agent._wait")
     @patch("scripts.vps.internal_browser_agent.browser.action")
@@ -141,7 +158,7 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
     @patch("scripts.vps.internal_browser_agent.execute")
     def test_open_thread_does_not_block_another_blue_unread_conversation(
         self, execute, status, snapshot, metadata, action, _wait, inbox_targets,
-        open_target, process_thread, _sweep_due
+        open_inbox, open_target, process_thread, _sweep_due
     ):
         execute.return_value = {"active": True}
         status.return_value = {"running": True, "ready": True}
@@ -168,6 +185,7 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
             process_thread.call_args_list,
         )
         open_target.assert_called_once_with(unread)
+        open_inbox.assert_called_once_with()
 
 
 if __name__ == "__main__":

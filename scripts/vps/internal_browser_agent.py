@@ -64,6 +64,62 @@ def _page(expression: str) -> Any:
     return browser.evaluate(expression)
 
 
+def _click_surface(pathname: str, labels: tuple[str, ...], *, require_path: bool = True) -> bool:
+    """Abre uma área pelo próprio DOM, preservando o documento SPA ativo."""
+    clicked = _page(fr'''(()=>{{
+      const expectedPath={pathname!r}.replace(/\/$/,'')||'/';
+      const labels={list(labels)!r}.map(value=>String(value).toLowerCase());
+      const visible=node=>{{const r=node.getBoundingClientRect();const s=getComputedStyle(node);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'}};
+      const norm=value=>String(value||'').replace(/\s+/g,' ').trim().toLowerCase();
+      const nodes=[...document.querySelectorAll('a[href],button,[role="button"],[role="link"]')].filter(visible);
+      let node=nodes.find(item=>{{
+        if(!item.href)return false;
+        try{{const path=new URL(item.href,location.href).pathname.replace(/\/$/,'')||'/';return path===expectedPath}}catch{{return false}}
+      }});
+      if(!node)node=nodes.find(item=>{{
+        const text=norm([item.getAttribute('aria-label'),item.getAttribute('title'),item.innerText].filter(Boolean).join(' '));
+        return labels.some(label=>text===label||text.startsWith(label+' '));
+      }});
+      if(!node)return false;
+      (node.closest('a[href],button,[role="button"],[role="link"]')||node).click();
+      return true;
+    }})()''')
+    if not clicked:
+        return False
+    if not require_path:
+        _wait(.8)
+        return True
+    expected = pathname.rstrip("/") or "/"
+    for _ in range(24):
+        _wait(.25)
+        current = urlparse(str(_page("location.href") or "")).path.rstrip("/") or "/"
+        if current == expected:
+            return True
+    return False
+
+
+def _open_inbox() -> bool:
+    current = urlparse(str(_page("location.href") or "")).path.rstrip("/") or "/"
+    if current == "/direct/inbox":
+        return True
+    return _click_surface("/direct/inbox/", ("mensagens", "messages", "direct"))
+
+
+def _open_notifications() -> bool:
+    return _click_surface(
+        "/notifications/",
+        ("notificações", "notifications", "atividade", "activity"),
+        require_path=False,
+    )
+
+
+def _open_home() -> bool:
+    current = urlparse(str(_page("location.href") or "")).path.rstrip("/") or "/"
+    if current == "/":
+        return True
+    return _click_surface("/", ("página inicial", "home"))
+
+
 def _login_or_identity_step(url: str) -> bool:
     """Impede qualquer navegação enquanto a sessão ainda é autenticada.
 
@@ -160,9 +216,11 @@ def _inbox_targets() -> list[dict[str, str]]:
           seen.add(key);
           const elements=[scope,...scope.querySelectorAll('*')].filter(visible);
           const bold=elements.some(e=>Number.parseInt(getComputedStyle(e).fontWeight,10)>=600&&norm(e.textContent).length>1);
+          const scopeRect=scope.getBoundingClientRect();
           const blue=elements.some(e=>{
             const r=e.getBoundingClientRect(), accessibility=norm([e.getAttribute('aria-label'),e.getAttribute('title')].join(' '));
-            return /^(?:unread|não lida|nova mensagem)$/i.test(accessibility)||(r.width>=2&&r.height>=2&&r.width<=24&&r.height<=24&&isBlue(e));
+            const rightDot=r.width>=3&&r.height>=3&&r.width<=14&&r.height<=14&&Math.abs(r.width-r.height)<=3&&r.left>=scopeRect.right-48;
+            return /^(?:unread|não lida|nova mensagem)$/i.test(accessibility)||(rightDot&&isBlue(e));
           });
           const reserved=new Set(['accounts','direct','explore','reels','stories','about','developer','legal','privacy','web']);
           const profile=[...scope.querySelectorAll('a[href]')].map(anchor=>new URL(anchor.href,location.href).pathname.split('/').filter(Boolean))
@@ -191,17 +249,20 @@ def _inbox_targets() -> list[dict[str, str]]:
 
 def _open_target(target: dict[str, str]) -> bool:
     href = target.get("href") or ""
-    if href:
-        browser.action({"kind": "navigate", "url": href})
-    else:
-        label = repr(str(target.get("label") or ""))
-        clicked = _page(f'''(()=>{{
-          const expected={label}; const norm=v=>String(v||'').replace(/\\s+/g,' ').trim();
-          const node=[...document.querySelectorAll('button,[role="button"]')].find(e=>norm([e.getAttribute('aria-label'),e.innerText].filter(Boolean).join(' '))===expected);
-          if(!node)return false;node.click();return true;
-        }})()''')
-        if not clicked:
-            return False
+    target_path = urlparse(href).path if href else ""
+    label = str(target.get("label") or "")
+    clicked = _page(fr'''(()=>{{
+      const expectedPath={target_path!r}; const expectedLabel={label!r};
+      const visible=e=>{{const r=e.getBoundingClientRect();return r.width>0&&r.height>0}};
+      const norm=v=>String(v||'').replace(/\s+/g,' ').trim();
+      const nodes=[...document.querySelectorAll('a[href*="/direct/t/"],button,[role="button"],[role="link"]')].filter(visible);
+      let node=expectedPath?nodes.find(e=>{{try{{return new URL(e.href||'',location.href).pathname===expectedPath}}catch{{return false}}}}):null;
+      if(!node&&expectedLabel)node=nodes.find(e=>norm([e.getAttribute('aria-label'),e.innerText].filter(Boolean).join(' '))===expectedLabel);
+      if(!node)return false;
+      (node.closest('a[href],button,[role="button"],[role="link"]')||node).click();return true;
+    }})()''')
+    if not clicked:
+        return False
     for _ in range(16):
         _wait(.45)
         path = urlparse(str(browser.status().get("url") or "")).path.strip("/").split("/")
@@ -317,8 +378,9 @@ def _mark_sweep() -> None:
 
 def _notification_candidates() -> list[str]:
     """Lê somente perfis associados explicitamente a novo seguidor."""
-    browser.action({"kind": "navigate", "url": "https://www.instagram.com/notifications/"})
-    _wait(2.2)
+    if not _open_notifications():
+        return []
+    _wait(1.4)
     value = _page(r'''(()=>{
       const reserved=new Set(['accounts','direct','explore','reels','stories','about','developer','legal','privacy','web']);
       const follower=/(?:começou|passou|acabou)(?:\s+de)? a seguir(?: você)?|(?:segue|seguiu|está seguindo)(?: você)?|started following you|follows you/i;
@@ -346,14 +408,14 @@ def _capture_notification_actions() -> dict[str, int]:
         result = execute("browserNotificationCandidate", {"username": username, "kind": "new_follower"})
         if result.get("queued"):
             queued += 1
-    browser.action({"kind": "navigate", "url": HOME_URL})
-    _wait(1.0)
+    _open_home()
     return {"notification_candidates": len(candidates), "notification_queued": queued}
 
 
 def sweep(source: str = "scheduled") -> dict[str, Any]:
-    browser.action({"kind": "navigate", "url": INBOX_URL})
-    _wait(1.5)
+    if not _open_inbox():
+        return {"source": source, "threads": 0, "opened": 0, "imported": 0, "replied": 0, "skipped": 1, "reason": "inbox-control-unavailable"}
+    _wait(.8)
     targets = _inbox_targets()
     result = {"source": source, "threads": len(targets), "opened": 0, "imported": 0, "replied": 0, "skipped": 0}
     for target in targets:
@@ -371,11 +433,11 @@ def sweep(source: str = "scheduled") -> dict[str, Any]:
         except Exception:
             result["skipped"] += 1
         finally:
-            browser.action({"kind": "navigate", "url": INBOX_URL})
-            _wait(.65)
+            _open_inbox()
+            _wait(.4)
     execute("classifyImportedHistory", {})
     _mark_sweep()
-    browser.action({"kind": "navigate", "url": HOME_URL})
+    _open_home()
     return result
 
 
@@ -430,8 +492,9 @@ def cycle() -> dict[str, Any]:
         return {"active": True, "browser": "notification", **aggregate, **notification_result}
     if aggregate["message_pending"]:
         if urlparse(url).path.rstrip("/") != "/direct/inbox":
-            browser.action({"kind": "navigate", "url": INBOX_URL})
-            _wait(1.4)
+            if not _open_inbox():
+                return {"active": True, "browser": "inbox-control-unavailable", **aggregate}
+            _wait(.7)
         targets = _inbox_targets()
         unread = [target for target in targets if target.get("unread")]
         actionable = _actionable_unread(targets)
