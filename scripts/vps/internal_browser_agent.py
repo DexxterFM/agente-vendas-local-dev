@@ -461,6 +461,13 @@ def _send_bubble(text: str, expected_url: str) -> dict[str, Any]:
     send_point = _send_button_center()
     if send_point:
         browser.action({"kind": "click", **send_point})
+        # A interface pode aceitar o clique visual mas perder o primeiro
+        # evento durante a reidratação. Se o próprio compositor ainda contém
+        # exatamente o texto digitado, Enter é a segunda rota nativa de envio.
+        _wait(.28)
+        still_draft = _page("(()=>{const e=document.activeElement;return (e?.value||e?.innerText||e?.textContent||'').trim()})()")
+        if str(still_draft or "").strip() == composer_text:
+            browser.action({"kind": "key", "key": "Enter"})
     else:
         browser.action({"kind": "key", "key": "Enter"})
     for _ in range(12):

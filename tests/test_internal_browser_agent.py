@@ -43,7 +43,7 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
         self, action, _composer, page, _count, clear, _send, _wait
     ):
         expected = "https://www.instagram.com/direct/t/123/"
-        page.side_effect = ["rascunho anterior", "novo link", expected, expected]
+        page.side_effect = ["rascunho anterior", "novo link", expected, "", expected]
 
         result = internal_browser_agent._send_bubble("novo link", expected)
 
@@ -54,6 +54,23 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
             call({"kind": "type", "text": "novo link"}),
             call({"kind": "click", "x": 1100.0, "y": 835.0}),
         ], action.call_args_list)
+
+    @patch("scripts.vps.internal_browser_agent._wait")
+    @patch("scripts.vps.internal_browser_agent._send_button_center", return_value={"x": 1100.0, "y": 835.0})
+    @patch("scripts.vps.internal_browser_agent._message_count", side_effect=[0, 1])
+    @patch("scripts.vps.internal_browser_agent._page")
+    @patch("scripts.vps.internal_browser_agent._composer_center", return_value={"x": 700.0, "y": 835.0})
+    @patch("scripts.vps.internal_browser_agent.browser.action")
+    def test_send_bubble_uses_enter_if_button_click_keeps_the_draft(
+        self, action, _composer, page, _count, _send, _wait
+    ):
+        expected = "https://www.instagram.com/direct/t/123/"
+        page.side_effect = ["", "nova mensagem", expected, "nova mensagem", expected]
+
+        result = internal_browser_agent._send_bubble("nova mensagem", expected)
+
+        self.assertTrue(result["sent"])
+        self.assertIn(call({"kind": "key", "key": "Enter"}), action.call_args_list)
 
     @patch("scripts.vps.internal_browser_agent._page", return_value=1)
     def test_message_count_includes_visible_dir_auto_bubbles(self, page):
