@@ -167,7 +167,7 @@ class InternalBrowserTests(unittest.TestCase):
 
     @patch("scripts.vps.internal_browser.time.sleep")
     @patch("scripts.vps.internal_browser._with_page")
-    def test_action_types_each_character_as_virtual_key_pair(self, with_page, _sleep):
+    def test_action_types_each_character_through_native_text_input(self, with_page, _sleep):
         calls = []
 
         class Page:
@@ -180,9 +180,9 @@ class InternalBrowserTests(unittest.TestCase):
         result = internal_browser.action({"kind": "type", "text": "Ab"})
 
         self.assertEqual({"ok": True}, result)
-        self.assertEqual(["keyDown", "keyUp", "keyDown", "keyUp"], [payload["type"] for _, payload in calls])
+        self.assertEqual(["Input.insertText", "Input.insertText"], [method for method, _ in calls])
         self.assertEqual("A", calls[0][1]["text"])
-        self.assertEqual("b", calls[2][1]["text"])
+        self.assertEqual("b", calls[1][1]["text"])
 
     @patch("scripts.vps.internal_browser._with_page")
     def test_action_navigates_back_through_internal_history(self, with_page):
