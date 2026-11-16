@@ -263,6 +263,19 @@ def action(payload: dict[str, Any]) -> dict[str, Any]:
             code = key_codes[key]
             page.call("Input.dispatchKeyEvent", {"type": "keyDown", "key": key, "code": key, "windowsVirtualKeyCode": code})
             page.call("Input.dispatchKeyEvent", {"type": "keyUp", "key": key, "code": key, "windowsVirtualKeyCode": code})
+        elif kind in {"back", "forward"}:
+            history = page.call("Page.getNavigationHistory")
+            entries = history.get("entries") if isinstance(history, dict) else []
+            current = int(history.get("currentIndex", -1)) if isinstance(history, dict) else -1
+            destination = current - 1 if kind == "back" else current + 1
+            if not isinstance(entries, list) or not (0 <= destination < len(entries)):
+                return {"ok": True, "moved": False}
+            entry = entries[destination] if isinstance(entries[destination], dict) else {}
+            entry_id = entry.get("id")
+            if not isinstance(entry_id, int):
+                return {"ok": True, "moved": False}
+            page.call("Page.navigateToHistoryEntry", {"entryId": entry_id})
+            return {"ok": True, "moved": True}
         elif kind == "reload":
             page.call("Page.reload", {"ignoreCache": False})
         elif kind == "navigate":

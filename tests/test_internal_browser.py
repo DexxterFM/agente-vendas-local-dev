@@ -84,6 +84,22 @@ class InternalBrowserTests(unittest.TestCase):
         self.assertEqual(8, calls[0][1]["windowsVirtualKeyCode"])
 
     @patch("scripts.vps.internal_browser._with_page")
+    def test_action_navigates_back_through_internal_history(self, with_page):
+        calls = []
+
+        class Page:
+            def call(self, method, payload=None):
+                calls.append((method, payload))
+                if method == "Page.getNavigationHistory":
+                    return {"currentIndex": 1, "entries": [{"id": 21}, {"id": 22}]}
+                return {}
+
+        with_page.side_effect = lambda callback: callback(Page())
+
+        self.assertEqual({"ok": True, "moved": True}, internal_browser.action({"kind": "back"}))
+        self.assertIn(("Page.navigateToHistoryEntry", {"entryId": 21}), calls)
+
+    @patch("scripts.vps.internal_browser._with_page")
     def test_screenshot_reports_actual_image_dimensions(self, with_page):
         header = b"\x89PNG\r\n\x1a\n" + b"\x00" * 8 + struct.pack(">II", 1279, 756)
 
