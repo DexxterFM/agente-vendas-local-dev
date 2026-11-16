@@ -19,6 +19,21 @@ class InternalBrowserAgentTests(unittest.TestCase):
         self.assertEqual({"active": True, "browser": "waiting-login"}, result)
         execute.assert_called_once_with("agentStatus", {})
 
+    @patch("scripts.vps.internal_browser_agent.browser.snapshot")
+    @patch("scripts.vps.internal_browser_agent.browser.status")
+    @patch("scripts.vps.internal_browser_agent.execute")
+    def test_cycle_keeps_identity_transition_untouched(self, execute, status, snapshot):
+        execute.return_value = {"active": True}
+        status.return_value = {"running": True, "ready": True}
+        # Algumas páginas intermediárias não exibem campos de senha. Mesmo
+        # assim, nunca podem liberar varredura/navegação do agente.
+        snapshot.return_value = {"authenticated": True, "url": "https://www.facebook.com/login/identify/"}
+
+        result = agent.cycle()
+
+        self.assertEqual({"active": True, "browser": "waiting-login"}, result)
+        execute.assert_called_once_with("agentStatus", {})
+
     @patch("scripts.vps.internal_browser_agent._page")
     def test_thread_snapshot_builds_stable_message_ids(self, page):
         page.return_value = {

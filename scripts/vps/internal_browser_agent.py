@@ -37,6 +37,23 @@ def _page(expression: str) -> Any:
     return browser.evaluate(expression)
 
 
+def _login_or_identity_step(url: str) -> bool:
+    """Impede qualquer navegação enquanto a sessão ainda é autenticada.
+
+    A tela pode passar por páginas intermediárias que não exibem um campo de
+    senha por alguns segundos. A ausência de um input nunca é evidência
+    suficiente para o agente assumir o controle da navegação.
+    """
+    parsed = urlparse(str(url or ""))
+    if parsed.scheme != "https" or parsed.hostname not in {"instagram.com", "www.instagram.com"}:
+        return True
+    path = parsed.path.casefold()
+    return any(marker in path for marker in (
+        "/accounts/login", "/accounts/signup", "/accounts/password",
+        "/challenge", "/checkpoint", "/two_factor", "/login", "/oidc",
+    ))
+
+
 def _thread_snapshot() -> dict[str, Any]:
     """Lê a conversa visível sem retornar texto para o painel remoto."""
     value = _page(r'''(()=>{
@@ -262,7 +279,10 @@ def cycle() -> dict[str, Any]:
     if not status.get("running") or not status.get("ready"):
         return {"active": True, "browser": "offline"}
     snap = browser.snapshot()
-    if not snap.get("authenticated"):
+    # A URL é verificada antes da heurística de DOM. Durante login, páginas
+    # de identidade podem não ter campos de credencial durante uma transição;
+    # nessa situação o agente deve ficar rigorosamente passivo.
+    if _login_or_identity_step(str(snap.get("url") or "")) or not snap.get("authenticated"):
         return {"active": True, "browser": "waiting-login"}
     url = str(snap.get("url") or "")
     if "/direct/t/" in url:
