@@ -23,11 +23,12 @@ class InternalBrowserTests(unittest.TestCase):
         request.return_value = [
             {"id": "home", "type": "page", "url": "https://www.instagram.com/"},
             {"id": "recovery", "type": "page", "url": "https://www.facebook.com/login/identify/"},
+            {"id": "two-step", "type": "page", "url": "https://www.facebook.com/two_step_verification/authentication/"},
         ]
 
         page = internal_browser._target()
 
-        self.assertEqual("recovery", page["id"])
+        self.assertEqual("two-step", page["id"])
 
     @patch("scripts.vps.internal_browser.evaluate")
     def test_snapshot_preserves_unauthenticated_state(self, evaluate):
