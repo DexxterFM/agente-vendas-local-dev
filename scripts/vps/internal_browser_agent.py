@@ -544,11 +544,13 @@ def _notification_candidates() -> list[str]:
     _wait(1.4)
     value = _page(r'''(()=>{
       const reserved=new Set(['accounts','direct','explore','reels','stories','about','developer','legal','privacy','web']);
-      const follower=/(?:começou|passou|acabou)(?:\s+de)? a seguir(?: você)?|(?:segue|seguiu|está seguindo)(?: você)?|started following you|follows you/i;
+      const follower=/(?:começou|passou|acabou)(?:\s+de)? a seguir(?: você|te)?|(?:segue|seguiu|está seguindo)(?: você|te)?|started following you|follows you/i;
+      const followBack=/(?:seguir(?:\s+de)?\s+volta|follow\s+back|seguir você|follow you)/i;
       const output=[];
       for(const marker of [...document.querySelectorAll('span,div,p')]){
         const text=String(marker.innerText||'').replace(/\s+/g,' ').trim();
-        if(!text||text.length>360||!follower.test(text))continue;
+        const rowButtons=[...marker.querySelectorAll('button,[role="button"]')].map(button=>String(button.getAttribute('aria-label')||button.innerText||'')).join(' ');
+        if(!text||text.length>360||(!follower.test(text)&&!followBack.test(rowButtons)))continue;
         let row=marker;
         for(let depth=0;row&&depth<9;depth++,row=row.parentElement){
           const match=[...row.querySelectorAll('a[href]')].map(anchor=>new URL(anchor.href,location.href).pathname.split('/').filter(Boolean))
