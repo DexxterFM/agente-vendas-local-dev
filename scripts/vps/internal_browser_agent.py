@@ -621,8 +621,9 @@ def _capture_notification_actions() -> dict[str, int]:
     for candidate in candidates:
         username=str(candidate.get('username') or '')
         result = execute("browserNotificationCandidate", {"username": username, "kind": "new_follower"})
-        if result.get("queued"):
-            queued += 1
+        if result.get("queued") or result.get("duplicate"):
+            if result.get("queued"):
+                queued += 1
             x,y=candidate.get('x'),candidate.get('y')
             if isinstance(x,(int,float)) and isinstance(y,(int,float)):
                 browser.action({'kind':'click','x':float(x),'y':float(y)}); _wait(.7); followed += 1
