@@ -192,7 +192,14 @@ def action(payload: dict[str, Any]) -> dict[str, Any]:
             text = str(payload.get("text") or "")
             if not text or len(text) > 512:
                 raise ValueError("Texto de entrada inválido")
-            page.call("Input.insertText", {"text": text})
+            # A digitação do agente passa pelo teclado virtual do navegador.
+            # Não usa área de transferência nem injeta o texto no DOM: cada
+            # caractere é entregue ao campo que o operador/agente selecionou.
+            # A pequena variação reproduz o ritmo já validado no desktop.
+            import random
+            for character in text:
+                page.call("Input.dispatchKeyEvent", {"type": "char", "text": character})
+                time.sleep((18 + random.randint(0, 42)) / 1000)
         elif kind == "key":
             key = str(payload.get("key") or "")
             if key not in {"Enter", "Tab", "Escape"}:

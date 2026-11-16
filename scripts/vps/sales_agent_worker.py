@@ -21,6 +21,7 @@ if str(APP_ROOT) not in sys.path:
     sys.path.insert(0, str(APP_ROOT))
 
 from core.desktop_rpc import execute
+from scripts.vps.internal_browser_agent import cycle as internal_browser_cycle
 
 RUNNING = True
 
@@ -64,6 +65,11 @@ def main() -> None:
                 next_postflow_sync = time.monotonic() + postflow_interval
                 print(datetime.now(timezone.utc).isoformat(), "postflow_sync", result, flush=True)
             result = execute("agentCycle", {})
+            # O navegador interno persistente é a rota principal do agente na
+            # VPS. O ciclo não toca a autenticação: só começa depois que a
+            # página autenticada foi detectada e mantém a confirmação visual
+            # de cada mensagem antes de gravá-la na memória.
+            browser_result = internal_browser_cycle()
             if auto_dispatch and result.get("active"):
                 execute("dispatchDue", {})
             execute("workerHeartbeat", {
@@ -72,8 +78,9 @@ def main() -> None:
                 "synced": result.get("synced", 0),
                 "meta_sync_enabled": result.get("meta_sync_enabled", False),
                 "postflow_sync_enabled": postflow_sync,
+                "browser": browser_result,
             })
-            print(datetime.now(timezone.utc).isoformat(), result, flush=True)
+            print(datetime.now(timezone.utc).isoformat(), {**result, "browser": browser_result}, flush=True)
         except Exception as exc:  # systemd reinicia somente se o processo cair
             print(datetime.now(timezone.utc).isoformat(), "cycle_error", str(exc), flush=True)
             if postflow_sync:
