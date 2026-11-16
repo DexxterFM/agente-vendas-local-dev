@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import random
+import re
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -351,19 +352,34 @@ def _clear_composer() -> None:
         raise browser.InternalBrowserError("Rascunho anterior não pôde ser limpo")
 
 
+def _composer_safe_text(text: str) -> str:
+    """Evita que `_` de URLs seja interpretado como itálico pelo editor.
+
+    O editor Lexical transforma sublinhados de uma URL em elementos ``em`` e
+    remove os caracteres do texto visível. ``%5F`` é equivalente em URLs,
+    continua clicável e mantém os nomes dos parâmetros depois da decodificação.
+    """
+    return re.sub(
+        r"https://[^\s]+",
+        lambda match: match.group(0).replace("_", "%5F"),
+        str(text or ""),
+    )
+
+
 def _send_bubble(text: str, expected_url: str) -> dict[str, Any]:
+    composer_text = _composer_safe_text(text)
     point = _composer_center()
     if not point:
         raise browser.InternalBrowserError("Campo de mensagem não encontrado na conversa aberta")
-    before = _message_count(text)
+    before = _message_count(composer_text)
     browser.action({"kind": "click", **point})
     _wait(.15 + random.random() * .25)
     existing = _page("(()=>{const e=document.activeElement;return String(e?.value||e?.innerText||e?.textContent||'').trim()})()")
     if existing:
         _clear_composer()
-    browser.action({"kind": "type", "text": text})
+    browser.action({"kind": "type", "text": composer_text})
     entered = _page("(()=>{const e=document.activeElement;return (e?.value||e?.innerText||e?.textContent||'').trim()})()")
-    if str(entered or "").strip() != text:
+    if str(entered or "").strip() != composer_text:
         raise browser.InternalBrowserError("Texto não foi inserido no campo da conversa")
     if str(_page("location.href") or "") != expected_url:
         raise browser.InternalBrowserError("Conversa mudou antes do envio")
@@ -376,10 +392,10 @@ def _send_bubble(text: str, expected_url: str) -> dict[str, Any]:
         _wait(.5)
         if str(_page("location.href") or "") != expected_url:
             raise browser.InternalBrowserError("Conversa mudou antes da confirmação")
-        if _message_count(text) > before:
+        if _message_count(composer_text) > before:
             return {"sent": True, "method": "mouse-virtual-keyboard-send"}
     after = _thread_snapshot().get("messages") or []
-    if after and after[-1].get("direction") == "outgoing" and after[-1].get("text") == text:
+    if after and after[-1].get("direction") == "outgoing" and after[-1].get("text") == composer_text:
         return {"sent": True, "method": "virtual-keyboard-visible-bubble"}
     raise browser.InternalBrowserError("Mensagem não apareceu na conversa para confirmação")
 

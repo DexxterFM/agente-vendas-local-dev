@@ -20,6 +20,16 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
             call({"kind": "key", "key": "Backspace"}),
         ], action.call_args_list)
 
+    def test_composer_safe_text_percent_encodes_underscores_only_inside_urls(self):
+        text = "Link: https://erpclinicatea.com/planos?utm_source=instagram&utm_campaign=convite_tres_meses. Tudo_certo"
+
+        result = internal_browser_agent._composer_safe_text(text)
+
+        self.assertEqual(
+            "Link: https://erpclinicatea.com/planos?utm%5Fsource=instagram&utm%5Fcampaign=convite%5Ftres%5Fmeses. Tudo_certo",
+            result,
+        )
+
     @patch("scripts.vps.internal_browser_agent._wait")
     @patch("scripts.vps.internal_browser_agent._send_button_center", return_value={"x": 1100.0, "y": 835.0})
     @patch("scripts.vps.internal_browser_agent._clear_composer")
