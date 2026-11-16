@@ -148,6 +148,19 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
         self.assertTrue(opened)
         action.assert_not_called()
 
+    @patch("scripts.vps.internal_browser_agent._wait")
+    @patch("scripts.vps.internal_browser_agent.browser.action")
+    @patch("scripts.vps.internal_browser_agent._click_surface", return_value=False)
+    @patch("scripts.vps.internal_browser_agent._page")
+    def test_open_inbox_navigates_when_collapsed_layout_has_no_clickable_messages_control(self, page, click_surface, action, _wait):
+        page.side_effect = ["https://www.instagram.com/", "https://www.instagram.com/direct/inbox/"]
+
+        opened = internal_browser_agent._open_inbox()
+
+        self.assertTrue(opened)
+        click_surface.assert_called_once()
+        action.assert_called_once_with({"kind": "navigate", "url": internal_browser_agent.INBOX_URL})
+
     @patch("scripts.vps.internal_browser_agent._sweep_due", return_value=False)
     @patch("scripts.vps.internal_browser_agent._capture_notification_actions")
     @patch("scripts.vps.internal_browser_agent.browser.metadata")

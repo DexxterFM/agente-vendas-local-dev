@@ -117,7 +117,18 @@ def _open_inbox() -> bool:
     current = urlparse(str(_page("location.href") or "")).path.rstrip("/") or "/"
     if current == "/direct/inbox":
         return True
-    return _click_surface("/direct/inbox/", ("mensagens", "messages", "direct"))
+    if _click_surface("/direct/inbox/", ("mensagens", "messages", "direct")):
+        return True
+    # Em alguns layouts a superfície de mensagens fica recolhida e não expõe
+    # um alvo clicável. A navegação interna mantém a mesma sessão e evita que
+    # um evento novo do celular fique sem leitura.
+    browser.action({"kind": "navigate", "url": INBOX_URL})
+    for _ in range(12):
+        _wait(.35)
+        path = urlparse(str(_page("location.href") or "")).path.rstrip("/")
+        if path == "/direct/inbox":
+            return True
+    return False
 
 
 def _open_notifications() -> bool:
