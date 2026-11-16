@@ -62,7 +62,7 @@ function bindBrowserControls(){
  // o navegador como ferramenta principal, mas libera o CRM e o importador de
  // DMs sem o operador precisar fechar o aplicativo.
  browserButton?.addEventListener('click',async()=>{
-   try{const remote=await call('internalBrowserStatus');if(remote?.running){toolbar.hidden=true;await vpsInternalBrowserView();return;}}catch{}
+   try{const remote=await call('internalBrowserStatus');if(remote?.running){await window.sales.browserPane('hide').catch(()=>null);browserVisible=false;toolbar.hidden=true;updateBrowserToggle();await vpsInternalBrowserView();return;}}catch{}
    if(browserVisible){await window.sales.browserPane('hide');browserVisible=false;toolbar.hidden=true;updateBrowserToggle();report({message:'Painel comercial exibido.'});return;}
    const result=await window.sales.browserPane('open');
    if(result?.open){browserVisible=true;toolbar.hidden=false;el('#browser-address').value=result.url||el('#browser-address').value;updateBrowserToggle();report({message:'Navegador interno exibido.'});}
