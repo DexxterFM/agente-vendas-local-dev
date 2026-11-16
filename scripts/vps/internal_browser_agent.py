@@ -416,11 +416,13 @@ def _clear_composer() -> None:
         remaining = _page("(()=>{const e=document.activeElement;return String(e?.value||e?.innerText||e?.textContent||'').trim()})()")
         if not str(remaining or "").strip():
             return
-        # Alguns editores trocam Backspace por uma operação de navegação após
-        # reidratação. Delete preserva o mesmo gesto de teclado e fecha esse
-        # segundo caminho antes de repetir o foco.
-        browser.action({"kind": "key", "key": "Delete"})
-        _wait(.14 + attempt * .1)
+        # Em certas versões da caixa de DM, Ctrl+A é recebido mas a seleção
+        # visual não é aplicada. Nesse caso, apague a extensão restante por
+        # eventos Backspace individuais — ainda é somente teclado virtual e
+        # garante que nenhuma resposta seja anexada ao rascunho anterior.
+        for _ in range(min(len(str(remaining)), 512)):
+            browser.action({"kind": "key", "key": "Backspace"})
+        _wait(.20 + attempt * .1)
         remaining = _page("(()=>{const e=document.activeElement;return String(e?.value||e?.innerText||e?.textContent||'').trim()})()")
         if not str(remaining or "").strip():
             return

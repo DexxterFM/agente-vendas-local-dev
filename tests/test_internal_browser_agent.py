@@ -22,6 +22,15 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
             call({"kind": "key", "key": "Backspace"}),
         ], action.call_args_list)
 
+    @patch("scripts.vps.internal_browser_agent._wait")
+    @patch("scripts.vps.internal_browser_agent._composer_center", return_value={"x": 700.0, "y": 835.0})
+    @patch("scripts.vps.internal_browser_agent._page", side_effect=["abc", "", ""])
+    @patch("scripts.vps.internal_browser_agent.browser.action")
+    def test_clear_composer_erases_remaining_characters_when_select_all_is_ignored(self, action, _page, _composer, _wait):
+        internal_browser_agent._clear_composer()
+
+        self.assertEqual(4, action.call_args_list.count(call({"kind": "key", "key": "Backspace"})))
+
     def test_composer_safe_text_percent_encodes_underscores_only_inside_urls(self):
         text = "Link: https://erpclinicatea.com/planos?utm_source=instagram&utm_campaign=convite_tres_meses. Tudo_certo"
 
