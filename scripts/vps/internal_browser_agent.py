@@ -261,7 +261,11 @@ def _inbox_targets() -> list[dict[str, Any]]:
         const label=norm([scope.getAttribute('aria-label'),scope.innerText].filter(Boolean).join(' '));
         const link=node.matches('a[href*="/direct/t/"]')?node:(scope.querySelector('a[href*="/direct/t/"]')||null);
         const href=link?link.href:'';
-        if(!href&&!ignored.test(label)&&!(label.length>8&&time.test(label)))continue;
+        const textualUnread=/\b(?:unread|não lida|nova mensagem)\b/i.test(label);
+        // O rótulo de uma linha não lida termina com "Unread", depois do
+        // horário. A regra anterior aceitava apenas horário no fim e
+        // descartava exatamente as conversas que precisavam de resposta.
+        if(!href&&!ignored.test(label)&&!textualUnread&&!(label.length>8&&time.test(label)))continue;
         if(!href&&ignored.test(label))continue;
         const key=href||label;
         if(key&& !seen.has(key)){
@@ -275,7 +279,7 @@ def _inbox_targets() -> list[dict[str, Any]]:
              const tag=e.tagName.toLowerCase(), background=rgb(getComputedStyle(e).backgroundColor);
              const rounded=getComputedStyle(e).borderRadius;
              const emptyBlueDot=(tag==='div'||tag==='span')&&!norm(e.textContent)&&rounded&&background&&background[2]>=140&&background[2]-background[0]>=25&&background[2]-background[1]>=5;
-             return /^(?:unread|não lida|nova mensagem)$/i.test(accessibility)||(rightDot&&emptyBlueDot);
+             return /^(?:unread|não lida|nova mensagem)$/i.test(accessibility)||textualUnread||(rightDot&&emptyBlueDot);
           });
           const reserved=new Set(['accounts','direct','explore','reels','stories','about','developer','legal','privacy','web']);
           const profile=[...scope.querySelectorAll('a[href]')].map(anchor=>new URL(anchor.href,location.href).pathname.split('/').filter(Boolean))
