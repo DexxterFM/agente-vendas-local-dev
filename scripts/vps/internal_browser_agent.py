@@ -506,6 +506,15 @@ def _send_bubble(text: str, expected_url: str) -> dict[str, Any]:
 
 def _process_thread(source: str) -> dict[str, Any]:
     snap = _thread_snapshot()
+    # A linha pode mudar para /direct/t/ antes do painel da conversa terminar
+    # de montar. Aguarde o próprio DOM fornecer thread, perfil e mensagens;
+    # sem isso uma DM recebida pelo celular era descartada como metadado vazio.
+    if not snap["thread_id"] or not snap["username"] or not snap["messages"]:
+        for _ in range(12):
+            _wait(.35)
+            snap = _thread_snapshot()
+            if snap["thread_id"] and snap["username"] and snap["messages"]:
+                break
     if not snap["thread_id"] or not snap["username"] or not snap["messages"]:
         return {"processed": False, "reason": "thread-metadata-unavailable"}
     execute("browserImportThread", snap)
