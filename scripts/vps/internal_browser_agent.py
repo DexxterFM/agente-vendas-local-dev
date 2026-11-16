@@ -752,6 +752,28 @@ def _click_live_follow_back(username: str, fallback: dict[str, Any]) -> bool:
         return False
 
 
+def _open_new_follower_thread(username: str) -> dict[str, Any]:
+    """Abre a DM do perfil usando o identificador confirmado pela notificação."""
+    browser.action({"kind": "navigate", "url": f"https://www.instagram.com/{username}/"})
+    for _ in range(14):
+        _wait(.4)
+        point = _page(r'''(()=>{const nodes=[...document.querySelectorAll('button,[role="button"],a')];
+          const node=nodes.find(e=>/^(?:mensagem|message|enviar mensagem|send message)$/i.test(String(e.getAttribute('aria-label')||e.getAttribute('title')||e.innerText||'').replace(/s+/g,' ').trim()));
+          if(!node)return null;const r=node.getBoundingClientRect();
+          return r.width>0&&r.height>0?{x:r.left+r.width/2,y:r.top+r.height/2}:null;
+        })()''')
+        if not isinstance(point, dict):
+            continue
+        browser.action({"kind": "click", "x": float(point["x"]), "y": float(point["y"])})
+        for _ in range(16):
+            _wait(.35)
+            snap = _thread_snapshot()
+            if snap.get("thread_id") and snap.get("url"):
+                return snap
+        break
+    return {}
+
+
 def _capture_notification_actions() -> dict[str, int]:
     candidates = _notification_candidates()
     queued = 0
@@ -766,17 +788,14 @@ def _capture_notification_actions() -> dict[str, int]:
             if _click_live_follow_back(username, candidate):
                 followed += 1
             plan=execute('followerCycle', {'username':username,'profile':{'text':candidate.get('profile_text','')}})
-            href=str(candidate.get('profile_href') or '')
-            if plan.get('new_follower') and href and _login_or_identity_step(href) is False:
-                browser.action({'kind':'navigate','url':href}); _wait(1.0)
-                point=_page(r'''(()=>{const n=[...document.querySelectorAll('button,[role="button"]')].find(e=>/^(?:mensagem|message)$/i.test(String(e.getAttribute('aria-label')||e.innerText||'').trim()));if(!n)return null;const r=n.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()''')
-                if isinstance(point,dict):
-                    browser.action({'kind':'click','x':float(point['x']),'y':float(point['y'])}); _wait(1.2)
-                snap=_thread_snapshot()
+            if plan.get('new_follower'):
+                snap = _open_new_follower_thread(username)
                 if snap.get('thread_id') and snap.get('url'):
                     for bubble in str(plan.get('text') or '').split('\n[[AGENT_BUBBLE]]\n'):
-                        if bubble.strip(): _send_bubble(bubble.strip(),snap['url'])
-                    execute('followerConfirm',{'username':username,'text':str(plan.get('text') or '')}); welcomed += 1
+                        if bubble.strip():
+                            _send_bubble(bubble.strip(), snap['url'])
+                    execute('followerConfirm', {'username': username, 'text': str(plan.get('text') or '')})
+                    welcomed += 1
     _open_home()
     return {"notification_candidates": len(candidates), "notification_queued": queued, "notification_followed": followed, "notification_welcomed": welcomed}
 
