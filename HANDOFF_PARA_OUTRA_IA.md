@@ -10,6 +10,13 @@ evidências. A interface é em português do Brasil e nenhuma ação externa de 
 
 ## Estado atual
 
+### Entrega VPS atualizada em 17/11/2026
+
+- Commit ativo: `3f256b1`.
+- Release ativa: `/opt/agente-vendas-local/releases/release-20261117-3f256b1`.
+- O segundo Codex pode operar pelo painel remoto usando `CONTROLE_REMOTO_CODEX2.md`.
+- O painel está disponível por túnel SSH em `http://127.0.0.1:8787/`.
+
 - Projeto local: `C:\Users\denis\Documents\opencode\sales_agent_unified`
 - Aplicação: `app.py` (entrypoint fino e exports de compatibilidade)
 - Versão: `0.3.0`
