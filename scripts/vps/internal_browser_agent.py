@@ -176,6 +176,156 @@ def _prospecting_point(expression: str) -> dict[str, float] | None:
         return None
 
 
+class _ProspectSkip(RuntimeError):
+    """Perfil sem superfície de DM; retentar não muda o resultado."""
+
+
+def _own_username() -> str:
+    """Lê o identificador da conta logada no menu lateral."""
+    value = _page(r'''(()=>{
+      for(const img of document.querySelectorAll("img[alt$='s profile picture']")){
+        const link=img.closest('a[href]');
+        if(!link)continue;
+        const rect=img.getBoundingClientRect();
+        if(!rect.width||rect.width>48||rect.left>140)continue;
+        let parts=[];try{parts=new URL(link.href,location.href).pathname.split('/').filter(Boolean)}catch{continue}
+        if(parts.length===1)return parts[0].toLowerCase();
+      }
+      return '';
+    })()''')
+    return str(value or "").strip().lower()
+
+
+def _profile_message_button() -> dict[str, float] | None:
+    """Localiza o controle de mensagem no cabeçalho do perfil."""
+    return _prospecting_point(r'''(()=>{
+      const norm=v=>String(v||'').replace(/\s+/g,' ').trim();
+      const visible=e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0};
+      const e=[...document.querySelectorAll('button,[role="button"],a')].filter(visible).find(x=>{
+        const label=norm(x.getAttribute('aria-label')||x.getAttribute('title')||x.innerText);
+        return /^(mensagem|message|enviar mensagem|send message)$/i.test(label);
+      });
+      if(!e)return null;const r=e.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2};
+    })()''')
+
+
+def _open_profile_dm(username: str) -> dict[str, Any]:
+    """Abre a DM do perfil aceitando a página de thread ou o overlay da interface.
+
+    A versão web do Instagram pode abrir o chat como um painel sobre o próprio
+    perfil, sem mudar a URL para ``/direct/t/<id>``. O fluxo antigo exigia a
+    URL de thread e descartava justamente esse formato.
+    """
+    expected = f"/{username}".rstrip("/")
+    current = urlparse(str(_page("location.href") or "")).path.rstrip("/")
+    if current != expected:
+        browser.action({"kind": "navigate", "url": f"https://www.instagram.com/{username}/"})
+        _wait(1.4)
+    _page("window.scrollTo(0,0);true")
+    point = None
+    for _ in range(24):
+        point = _profile_message_button()
+        if point:
+            break
+        _wait(.5)
+    if not point:
+        raise _ProspectSkip("Botão de mensagem não encontrado")
+    browser.action({"kind": "click", **point})
+    for _ in range(24):
+        _wait(.5)
+        url = str(_page("location.href") or "")
+        path = urlparse(url).path.rstrip("/")
+        if not _composer_center():
+            continue
+        if path.startswith("/direct/t/"):
+            parts = path.strip("/").split("/")
+            return {"mode": "thread", "url": url, "thread_id": parts[2] if len(parts) > 2 else ""}
+        if path == expected:
+            return {"mode": "overlay", "url": url, "thread_id": ""}
+    raise RuntimeError("Conversa ainda carregando; envio não executado")
+
+
+def _overlay_panel_expression(text: str) -> str:
+    """Expressão que localiza o painel do overlay e mede a bolha enviada."""
+    return fr'''(()=>{{
+      const canonical=v=>String(v||'').replace(/[\u{{1F000}}-\u{{1FAFF}}\u2600-\u27BF\uFE00-\uFE0F\u200D\u20E3]/gu,'').replace(/\s+/g,' ').trim();
+      const target=canonical({text!r});
+      const visible=e=>{{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'}};
+      const fields=[...document.querySelectorAll('textarea,[contenteditable="true"],[role="textbox"]')].filter(visible);
+      const composer=fields.find(e=>/mensagem|message|responder|reply/i.test([e.placeholder,e.getAttribute('aria-label')].filter(Boolean).join(' ')))
+        ||fields.find(e=>e.matches('[contenteditable="true"],[role="textbox"]')&&!/pesquis|search/i.test(e.placeholder||''));
+      if(!composer)return {{found:false,count:0,panel_text:false}};
+      let panel=composer;
+      for(let d=0;d<12&&panel;d++,panel=panel.parentElement){{
+        const r=panel.getBoundingClientRect();
+        if(r.width>=340&&r.width<=440&&r.height>=300)break;
+      }}
+      if(!panel)return {{found:false,count:0,panel_text:false}};
+      const nodes=[...panel.querySelectorAll('[role="row"],[role="listitem"],[role="article"],[role="message"],[dir="auto"]')].filter(visible);
+      const count=nodes.filter(e=>e!==composer&&!composer.contains(e)&&!e.contains(composer)&&canonical(e.innerText||e.textContent||'')===target).length;
+      const panel_text=canonical(panel.innerText).includes(target);
+      return {{found:true,count,panel_text}};
+    }})()'''
+
+
+def _overlay_state(text: str) -> dict[str, Any]:
+    value = _page(_overlay_panel_expression(text))
+    if not isinstance(value, dict):
+        return {"found": False, "count": 0, "panel_text": False}
+    return {
+        "found": bool(value.get("found")),
+        "count": int(value.get("count") or 0),
+        "panel_text": bool(value.get("panel_text")),
+    }
+
+
+def _send_overlay_bubble(text: str) -> dict[str, Any]:
+    """Envia uma bolha no painel de DM aberto sobre o perfil."""
+    composer_text = _composer_safe_text(text)
+    url = str(_page("location.href") or "")
+    if not _composer_center():
+        raise browser.InternalBrowserError("Campo de mensagem não encontrado")
+    _focus_composer()
+    before_state = _overlay_state(composer_text)
+    before = before_state["count"]
+    if before:
+        # A bolha já está na conversa: a retentativa apenas confirma o envio
+        # anterior em vez de duplicar a mensagem.
+        _clear_composer()
+        return {"sent": True, "method": "overlay-already-present"}
+    _wait(.15 + random.random() * .25)
+    existing = _page("(()=>{const e=document.activeElement;return String(e?.value||e?.innerText||e?.textContent||'').trim()})()")
+    if existing:
+        _clear_composer()
+    _focus_composer()
+    browser.action({"kind": "type", "text": composer_text})
+    entered = _page("(()=>{const e=document.activeElement;return (e?.value||e?.innerText||e?.textContent||'').trim()})()")
+    if str(entered or "").strip() != composer_text:
+        raise browser.InternalBrowserError("Texto não foi inserido no campo da conversa")
+    if str(_page("location.href") or "") != url:
+        raise browser.InternalBrowserError("Conversa mudou antes do envio")
+    send_point = _send_button_center()
+    if send_point:
+        browser.action({"kind": "click", **send_point})
+        _wait(.28)
+        still_draft = _page("(()=>{const e=document.activeElement;return (e?.value||e?.innerText||e?.textContent||'').trim()})()")
+        if str(still_draft or "").strip() == composer_text:
+            browser.action({"kind": "key", "key": "Enter"})
+    else:
+        browser.action({"kind": "key", "key": "Enter"})
+    for _ in range(12):
+        _wait(.5)
+        if str(_page("location.href") or "") != url:
+            raise browser.InternalBrowserError("Conversa mudou antes da confirmação")
+        state = _overlay_state(composer_text)
+        if state["count"] > before:
+            return {"sent": True, "method": "overlay-visible-bubble"}
+        draft = _page("(()=>{const e=document.activeElement;return (e?.value||e?.innerText||e?.textContent||'').trim()})()")
+        if not str(draft or "").strip() and state["panel_text"]:
+            return {"sent": True, "method": "overlay-cleared-bubble"}
+    raise browser.InternalBrowserError("Mensagem não apareceu na conversa para confirmação")
+
+
 def _prospecting_cycle() -> dict[str, Any]:
     """Executa uma rodada espaçada de prospecção pela sessão persistente."""
     status = execute("agentStatus", {})
@@ -188,11 +338,16 @@ def _prospecting_cycle() -> dict[str, Any]:
     if not pacing.get("ready"):
         return {"prospecting": True, "browser": "prospecting-paced", "wait_seconds": pacing.get("wait_seconds", 0)}
     profiles = _page(r'''(()=>{
-      const reserved=new Set(['accounts','direct','explore','reels','stories','about','developer','legal','privacy','web']);
+      const reserved=new Set(['accounts','direct','explore','reels','stories','about','developer','legal','privacy','web','p','reel','tv']);
+      const own=__OWN__;
       const out=[],seen=new Set();
       for(const link of document.querySelectorAll('a[href]')){
-        let path='';try{path=new URL(link.href,location.href).pathname.split('/').filter(Boolean)[0]||''}catch{}
-        if(!/^[a-z0-9._]{1,30}$/i.test(path)||reserved.has(path.toLowerCase())||seen.has(path.toLowerCase()))continue;
+        let parts=[];try{parts=new URL(link.href,location.href).pathname.split('/').filter(Boolean)}catch{continue}
+        // Somente perfis: /p/<code>/ e /reel/<code>/ também têm um primeiro
+        // segmento válido e antes entravam na fila como se fossem usuários.
+        if(parts.length!==1)continue;
+        const path=parts[0];
+        if(!/^[a-z0-9._]{2,30}$/i.test(path)||reserved.has(path.toLowerCase())||path.toLowerCase()===own||seen.has(path.toLowerCase()))continue;
         const rect=link.getBoundingClientRect();if(!rect.width||!rect.height||rect.top>innerHeight*1.4)continue;
         let scope=link;for(let i=0;i<5&&scope.parentElement;i++,scope=scope.parentElement){if((scope.innerText||'').length>1800)break}
         const text=(scope.innerText||'').replace(/\s+/g,' ').trim().slice(0,4000);
@@ -200,7 +355,7 @@ def _prospecting_cycle() -> dict[str, Any]:
         seen.add(path.toLowerCase());out.push({username:path.toLowerCase(),text,following});
       }
       return out.slice(0,30);
-    })()''')
+    })()'''.replace("__OWN__", repr(_own_username())))
     if not isinstance(profiles, list) or not profiles:
         _page("window.scrollBy({top:Math.max(560,innerHeight*.82),behavior:'smooth'});true")
         _wait(.9)
@@ -212,46 +367,76 @@ def _prospecting_cycle() -> dict[str, Any]:
     payload = claim.get("payload") or {}
     username = str(payload.get("username") or "").strip().lower()
     action_id = int(claim.get("id") or 0)
+    stage = str(claim.get("stage") or "")
+    if not re.fullmatch(r"[a-z0-9._]{2,30}", username) or username == _own_username():
+        execute("campaignConfirm", {"id": action_id, "state": "skipped", "note": "Perfil inválido para prospecção"})
+        return {"prospecting": True, "browser": "prospecting-skipped", "username": username}
     reserved = execute("prospectingPacing", {"mode": "reserve", "kind": "instagram_campaign", "target": username})
     if not reserved.get("reserved"):
         execute("campaignConfirm", {"id": action_id, "state": "pending", "note": "Aguardando a próxima janela"})
         return {"prospecting": True, "browser": "prospecting-paced", "wait_seconds": reserved.get("wait_seconds", 0)}
     try:
-        browser.action({"kind": "navigate", "url": f"https://www.instagram.com/{username}/"})
-        _wait(1.8)
-        follow = _prospecting_point(r'''(()=>{const e=[...document.querySelectorAll('button,[role="button"]')].find(x=>/^(seguir|follow)$/i.test((x.innerText||x.getAttribute('aria-label')||'').trim()));if(!e)return null;const r=e.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()''')
-        if follow: browser.action({"kind": "click", **follow}); _wait(.8)
-        post = _prospecting_point(r'''(()=>{const e=[...document.querySelectorAll('a[href]')].find(x=>{try{return /\/(?:p|reel)\//.test(new URL(x.href,location.href).pathname)}catch{return false}});if(!e)return null;const r=e.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()''')
-        if post: browser.action({"kind": "click", **post}); _wait(1.3)
-        like = _prospecting_point(r'''(()=>{const e=[...document.querySelectorAll('button,[role="button"],[aria-label]')].find(x=>/^(?:curtir|like)$/i.test((x.getAttribute('aria-label')||x.innerText||'').trim()));if(!e)return null;const r=e.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()''')
-        if like: browser.action({"kind": "click", **like}); _wait(.8)
-        comment = _prospecting_point(r'''(()=>{const e=[...document.querySelectorAll('textarea,input,[contenteditable="true"],[role="textbox"]')].find(x=>/coment|comment|adicionar/i.test((x.placeholder||'')+' '+(x.getAttribute('aria-label')||'')));if(!e)return null;const r=e.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()''')
-        if comment:
-            browser.action({"kind": "click", **comment}); browser.action({"kind": "type", "text": "Muito bonito o trabalho de vocês! 😊"}); browser.action({"kind": "key", "key": "Enter"}); _wait(1.0)
-        browser.action({"kind": "navigate", "url": f"https://www.instagram.com/{username}/"}); _wait(1.2)
-        message = None
-        for _ in range(8):
-            message = _prospecting_point(r'''(()=>{const e=[...document.querySelectorAll('button,[role="button"],a')].find(x=>/(?:^|\s)(?:mensagem|message|enviar mensagem|send message)(?:\s|$)/i.test((x.innerText||x.getAttribute('aria-label')||x.getAttribute('title')||'').replace(/\s+/g,' ').trim()));if(!e)return null;const r=e.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()''')
-            if message: break
-            _wait(.5)
-        if not message: raise RuntimeError("Botão de mensagem não encontrado")
-        browser.action({"kind": "click", **message})
-        thread = {}
-        for _ in range(40):
-            _wait(.5)
-            thread = _thread_snapshot()
-            if thread.get('thread_id') and thread.get('url') and _composer_center():
-                break
+        if stage != "dm":
+            browser.action({"kind": "navigate", "url": f"https://www.instagram.com/{username}/"})
+            _wait(1.8)
+            follow = _prospecting_point(r'''(()=>{const e=[...document.querySelectorAll('button,[role="button"]')].find(x=>/^(seguir|follow)$/i.test((x.innerText||x.getAttribute('aria-label')||'').trim()));if(!e)return null;const r=e.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()''')
+            if follow: browser.action({"kind": "click", **follow}); _wait(.8)
+            post = _prospecting_point(r'''(()=>{const e=[...document.querySelectorAll('a[href]')].find(x=>{try{return /\/(?:p|reel)\//.test(new URL(x.href,location.href).pathname)}catch{return false}});if(!e)return null;const r=e.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()''')
+            if post: browser.action({"kind": "click", **post}); _wait(1.3)
+            like = _prospecting_point(r'''(()=>{const e=[...document.querySelectorAll('button,[role="button"],[aria-label]')].find(x=>/^(?:curtir|like)$/i.test((x.getAttribute('aria-label')||x.innerText||'').trim()));if(!e)return null;const r=e.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()''')
+            if like: browser.action({"kind": "click", **like}); _wait(.8)
+            comment = _prospecting_point(r'''(()=>{const e=[...document.querySelectorAll('textarea,input,[contenteditable="true"],[role="textbox"]')].find(x=>/coment|comment|adicionar/i.test((x.placeholder||'')+' '+(x.getAttribute('aria-label')||'')));if(!e)return null;const r=e.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()''')
+            if comment:
+                browser.action({"kind": "click", **comment}); browser.action({"kind": "type", "text": "Muito bonito o trabalho de vocês! 😊"}); browser.action({"kind": "key", "key": "Enter"}); _wait(1.0)
+            # A partir daqui a retentativa não repete follow/curtida/comentário:
+            # apenas reabre a DM do mesmo perfil.
+            execute("campaignStage", {"id": action_id, "stage": "dm"})
+        surface = _open_profile_dm(username)
+        intro = str(payload.get('intro') or 'Olá! Muito legal o trabalho de vocês ❤️')
+        if surface.get("mode") == "thread" and surface.get("url"):
+            _send_bubble(intro, str(surface["url"]))
         else:
-            raise RuntimeError("Conversa ainda carregando; envio não executado")
-        _send_bubble(str(payload.get('intro') or 'Olá! Muito legal o trabalho de vocês ❤️'), thread['url'])
+            _send_overlay_bubble(intro)
         execute("campaignConfirm", {"id": action_id, "state": "sent", "note": "Interações confirmadas pela sessão interna"})
-        _open_home()
-        return {"prospecting": True, "browser": "prospecting-sent", "username": username, "action_id": action_id}
+        try:
+            _open_home()
+        except browser.InternalBrowserError:
+            pass
+        return {
+            "prospecting": True,
+            "browser": "prospecting-sent",
+            "username": username,
+            "action_id": action_id,
+            "mode": surface.get("mode"),
+        }
+    except _ProspectSkip as exc:
+        execute("campaignConfirm", {"id": action_id, "state": "skipped", "note": str(exc)[:500]})
+        try:
+            _open_home()
+        except browser.InternalBrowserError:
+            pass
+        return {
+            "prospecting": True,
+            "browser": "prospecting-skipped",
+            "username": username,
+            "reason": str(exc)[:160],
+        }
     except Exception as exc:
-        execute("campaignConfirm", {"id": action_id, "state": "needs_check", "note": str(exc)[:500]})
-        _open_home()
-        return {"prospecting": True, "browser": "prospecting-error", "error": str(exc)[:160]}
+        try:
+            outcome = execute("campaignFail", {"id": action_id, "note": str(exc)[:500]})
+        except Exception:
+            outcome = {}
+        try:
+            _open_home()
+        except browser.InternalBrowserError:
+            pass
+        return {
+            "prospecting": True,
+            "browser": "prospecting-error",
+            "error": str(exc)[:160],
+            "retry_state": outcome.get("state"),
+            "attempts": outcome.get("attempts"),
+        }
 
 
 def _login_or_identity_step(url: str) -> bool:
@@ -775,28 +960,6 @@ def _click_live_follow_back(username: str, fallback: dict[str, Any]) -> bool:
         return False
 
 
-def _open_new_follower_thread(username: str) -> dict[str, Any]:
-    """Abre a DM do perfil usando o identificador confirmado pela notificação."""
-    browser.action({"kind": "navigate", "url": f"https://www.instagram.com/{username}/"})
-    for _ in range(14):
-        _wait(.4)
-        point = _page(r'''(()=>{const nodes=[...document.querySelectorAll('button,[role="button"],a')];
-          const node=nodes.find(e=>/^(?:mensagem|message|enviar mensagem|send message)$/i.test(String(e.getAttribute('aria-label')||e.getAttribute('title')||e.innerText||'').replace(/s+/g,' ').trim()));
-          if(!node)return null;const r=node.getBoundingClientRect();
-          return r.width>0&&r.height>0?{x:r.left+r.width/2,y:r.top+r.height/2}:null;
-        })()''')
-        if not isinstance(point, dict):
-            continue
-        browser.action({"kind": "click", "x": float(point["x"]), "y": float(point["y"])})
-        for _ in range(16):
-            _wait(.35)
-            snap = _thread_snapshot()
-            if snap.get("thread_id") and snap.get("url"):
-                return snap
-        break
-    return {}
-
-
 def _capture_notification_actions() -> dict[str, int]:
     candidates = _notification_candidates()
     queued = 0
@@ -811,15 +974,25 @@ def _capture_notification_actions() -> dict[str, int]:
             if _click_live_follow_back(username, candidate):
                 followed += 1
             plan=execute('followerCycle', {'username':username,'profile':{'text':candidate.get('profile_text','')}})
-            if plan.get('new_follower'):
-                snap = _open_new_follower_thread(username)
-                if snap.get('thread_id') and snap.get('url'):
+            if plan.get('new_follower') and welcomed < 1:
+                try:
+                    surface = _open_profile_dm(username)
                     for bubble in str(plan.get('text') or '').split('\n[[AGENT_BUBBLE]]\n'):
-                        if bubble.strip():
-                            _send_bubble(bubble.strip(), snap['url'])
+                        bubble = bubble.strip()
+                        if not bubble:
+                            continue
+                        if surface.get("mode") == "thread" and surface.get("url"):
+                            _send_bubble(bubble, str(surface["url"]))
+                        else:
+                            _send_overlay_bubble(bubble)
                     execute('followerConfirm', {'username': username, 'text': str(plan.get('text') or '')})
                     welcomed += 1
-    _open_home()
+                except Exception:
+                    continue
+    try:
+        _open_home()
+    except browser.InternalBrowserError:
+        pass
     return {"notification_candidates": len(candidates), "notification_queued": queued, "notification_followed": followed, "notification_welcomed": welcomed}
 
 

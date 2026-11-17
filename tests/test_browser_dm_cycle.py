@@ -340,6 +340,33 @@ class BrowserDmCycleTests(unittest.TestCase):
             self.assertFalse(execute("campaignClaim", {})["claimed"])
             self.assertEqual(execute("campaignConfirm", {"id": claimed["id"], "state": "sent"})["state"], "sent")
 
+    def test_campaign_failure_requeues_twice_then_requires_review(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}
+        ):
+            created = execute("campaignDiscover", {"profiles": [{
+                "username": "clinica.teste", "text": "Clínica multidisciplinar TEA", "following": False,
+            }]})["created"]
+            claimed = execute("campaignClaim", {})
+            self.assertTrue(claimed["claimed"])
+            execute("campaignStage", {"id": claimed["id"], "stage": "dm"})
+
+            first = execute("campaignFail", {"id": claimed["id"], "note": "Conversa ainda carregando"})
+            self.assertEqual("pending", first["state"])
+            self.assertEqual(1, first["attempts"])
+            reclaimed = execute("campaignClaim", {})
+            self.assertTrue(reclaimed["claimed"])
+            self.assertEqual("dm", reclaimed["stage"])
+
+            second = execute("campaignFail", {"id": claimed["id"], "note": "Conversa ainda carregando"})
+            self.assertEqual("pending", second["state"])
+            self.assertEqual(2, second["attempts"])
+            execute("campaignClaim", {})
+            third = execute("campaignFail", {"id": claimed["id"], "note": "Conversa ainda carregando"})
+            self.assertEqual("needs_check", third["state"])
+            self.assertEqual(3, third["attempts"])
+            self.assertFalse(execute("campaignClaim", {})["claimed"])
+
     def test_pending_follower_resumes_and_records_last_message(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(
             os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}

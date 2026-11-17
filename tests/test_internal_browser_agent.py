@@ -353,5 +353,158 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
         open_inbox.assert_called_once_with()
 
 
+    @patch("scripts.vps.internal_browser_agent._wait")
+    @patch("scripts.vps.internal_browser_agent._composer_center", return_value={"x": 1021.0, "y": 751.0})
+    @patch("scripts.vps.internal_browser_agent._profile_message_button", return_value={"x": 751.0, "y": 352.0})
+    @patch("scripts.vps.internal_browser_agent._page", return_value="https://www.instagram.com/clinica.teste/")
+    @patch("scripts.vps.internal_browser_agent.browser.action")
+    def test_open_profile_dm_accepts_overlay_without_thread_url(self, action, _page, _button, _composer, _wait):
+        result = internal_browser_agent._open_profile_dm("clinica.teste")
+
+        self.assertEqual("overlay", result["mode"])
+        self.assertIn(call({"kind": "click", "x": 751.0, "y": 352.0}), action.call_args_list)
+
+    @patch("scripts.vps.internal_browser_agent._wait")
+    @patch("scripts.vps.internal_browser_agent._composer_center", return_value={"x": 1021.0, "y": 751.0})
+    @patch("scripts.vps.internal_browser_agent._profile_message_button", return_value={"x": 751.0, "y": 352.0})
+    @patch("scripts.vps.internal_browser_agent._page", return_value="https://www.instagram.com/direct/t/123/")
+    @patch("scripts.vps.internal_browser_agent.browser.action")
+    def test_open_profile_dm_returns_thread_when_url_changes(self, action, _page, _button, _composer, _wait):
+        result = internal_browser_agent._open_profile_dm("clinica.teste")
+
+        self.assertEqual("thread", result["mode"])
+        self.assertEqual("123", result["thread_id"])
+
+    @patch("scripts.vps.internal_browser_agent._wait")
+    @patch("scripts.vps.internal_browser_agent._send_button_center", return_value={"x": 1195.0, "y": 751.0})
+    @patch("scripts.vps.internal_browser_agent._overlay_state")
+    @patch("scripts.vps.internal_browser_agent._focus_composer")
+    @patch("scripts.vps.internal_browser_agent._page")
+    @patch("scripts.vps.internal_browser_agent._composer_center", return_value={"x": 1021.0, "y": 751.0})
+    @patch("scripts.vps.internal_browser_agent.browser.action")
+    def test_send_overlay_bubble_confirms_bubble_inside_profile_panel(
+        self, action, _composer, page, _focus, overlay, _send, _wait
+    ):
+        url = "https://www.instagram.com/clinica.teste/"
+        page.side_effect = [url, "", "texto", url, "", url]
+        overlay.side_effect = [
+            {"found": True, "count": 0, "panel_text": False},
+            {"found": True, "count": 1, "panel_text": True},
+        ]
+
+        result = internal_browser_agent._send_overlay_bubble("texto")
+
+        self.assertTrue(result["sent"])
+        self.assertIn(call({"kind": "type", "text": "texto"}), action.call_args_list)
+        self.assertIn(call({"kind": "click", "x": 1195.0, "y": 751.0}), action.call_args_list)
+
+    @patch("scripts.vps.internal_browser_agent._own_username", return_value="erpclinicatea")
+    @patch("scripts.vps.internal_browser_agent._open_home", return_value=True)
+    @patch("scripts.vps.internal_browser_agent._send_overlay_bubble")
+    @patch("scripts.vps.internal_browser_agent._open_profile_dm", return_value={"mode": "overlay", "url": "https://www.instagram.com/clinica.teste/"})
+    @patch("scripts.vps.internal_browser_agent.browser.action")
+    @patch("scripts.vps.internal_browser_agent._page")
+    @patch("scripts.vps.internal_browser_agent.execute")
+    def test_prospecting_retry_stage_skips_follow_and_comment(
+        self, execute, _page, action, open_dm, send_overlay, _home, _own
+    ):
+        execute.side_effect = [
+            {"active": True, "prospecting_active": True},
+            {"ready": True},
+            {"created": [{"id": 7}]},
+            {"claimed": True, "id": 7, "stage": "dm", "payload": {
+                "username": "clinica.teste", "intro": "Olá! Tudo bem?",
+            }},
+            {"reserved": True},
+            {"id": 7, "state": "sent"},
+        ]
+        _page.side_effect = [
+            "https://www.instagram.com/",
+            [{"username": "clinica.teste", "text": "Clínica multidisciplinar TEA", "following": False}],
+        ]
+
+        result = internal_browser_agent._prospecting_cycle()
+
+        self.assertEqual("prospecting-sent", result["browser"])
+        self.assertEqual("overlay", result["mode"])
+        open_dm.assert_called_once_with("clinica.teste")
+        send_overlay.assert_called_once_with("Olá! Tudo bem?")
+        action.assert_not_called()
+        self.assertIn(
+            call("campaignConfirm", {"id": 7, "state": "sent", "note": "Interações confirmadas pela sessão interna"}),
+            execute.call_args_list,
+        )
+
+
+    @patch("scripts.vps.internal_browser_agent._clear_composer")
+    @patch("scripts.vps.internal_browser_agent._focus_composer")
+    @patch("scripts.vps.internal_browser_agent._page", return_value="https://www.instagram.com/clinica.teste/")
+    @patch("scripts.vps.internal_browser_agent._composer_center", return_value={"x": 1021.0, "y": 751.0})
+    @patch("scripts.vps.internal_browser_agent._overlay_state", return_value={"found": True, "count": 1, "panel_text": True})
+    @patch("scripts.vps.internal_browser_agent.browser.action")
+    def test_send_overlay_bubble_does_not_duplicate_existing_bubble(
+        self, action, overlay, _composer, _page, _focus, clear
+    ):
+        result = internal_browser_agent._send_overlay_bubble("texto")
+
+        self.assertTrue(result["sent"])
+        self.assertEqual("overlay-already-present", result["method"])
+        clear.assert_called_once_with()
+        self.assertNotIn(call({"kind": "type", "text": "texto"}), action.call_args_list)
+
+    @patch("scripts.vps.internal_browser_agent._own_username", return_value="erpclinicatea")
+    @patch("scripts.vps.internal_browser_agent._page")
+    @patch("scripts.vps.internal_browser_agent.execute")
+    def test_prospecting_skips_own_profile_without_retry(self, execute, _page, _own):
+        execute.side_effect = [
+            {"active": True, "prospecting_active": True},
+            {"ready": True},
+            {"created": []},
+            {"claimed": True, "id": 9, "stage": "", "payload": {"username": "erpclinicatea"}},
+            {"id": 9, "state": "skipped"},
+        ]
+        _page.side_effect = [
+            "https://www.instagram.com/",
+            [{"username": "clinica.teste", "text": "Clínica", "following": False}],
+        ]
+
+        result = internal_browser_agent._prospecting_cycle()
+
+        self.assertEqual("prospecting-skipped", result["browser"])
+        self.assertIn(
+            call("campaignConfirm", {"id": 9, "state": "skipped", "note": "Perfil inválido para prospecção"}),
+            execute.call_args_list,
+        )
+        self.assertNotIn("campaignFail", [c.args[0] for c in execute.call_args_list if c.args])
+
+    @patch("scripts.vps.internal_browser_agent._own_username", return_value="erpclinicatea")
+    @patch("scripts.vps.internal_browser_agent._open_home", return_value=True)
+    @patch("scripts.vps.internal_browser_agent._open_profile_dm", side_effect=internal_browser_agent._ProspectSkip("Botão de mensagem não encontrado"))
+    @patch("scripts.vps.internal_browser_agent._page")
+    @patch("scripts.vps.internal_browser_agent.execute")
+    def test_prospecting_skips_profile_without_message_surface(self, execute, _page, open_dm, _home, _own):
+        execute.side_effect = [
+            {"active": True, "prospecting_active": True},
+            {"ready": True},
+            {"created": []},
+            {"claimed": True, "id": 11, "stage": "dm", "payload": {"username": "sem.dm"}},
+            {"reserved": True},
+            {"id": 11, "state": "skipped"},
+        ]
+        _page.side_effect = [
+            "https://www.instagram.com/",
+            [{"username": "sem.dm", "text": "Clínica", "following": False}],
+        ]
+
+        result = internal_browser_agent._prospecting_cycle()
+
+        self.assertEqual("prospecting-skipped", result["browser"])
+        self.assertIn(
+            call("campaignConfirm", {"id": 11, "state": "skipped", "note": "Botão de mensagem não encontrado"}),
+            execute.call_args_list,
+        )
+        self.assertNotIn("campaignFail", [c.args[0] for c in execute.call_args_list if c.args])
+
+
 if __name__ == "__main__":
     unittest.main()

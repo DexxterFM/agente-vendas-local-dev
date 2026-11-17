@@ -157,7 +157,7 @@ def execute(command, args):
             # agregada: nunca thread, usuário, conteúdo ou URL da sessão.
             raw_browser = args.get('browser') if isinstance(args.get('browser'), dict) else {}
             browser_state = str(raw_browser.get('browser','unknown'))[:40]
-            if browser_state not in {'paused','offline','waiting-login','recovering-page','thread','message','notification','inbox-no-new-unread','sweep','ready','prospecting-sent','prospecting-error'}:
+            if browser_state not in {'paused','offline','waiting-login','recovering-page','thread','message','notification','inbox-no-new-unread','sweep','ready','prospecting-sent','prospecting-error','prospecting-paced','prospecting-no-candidate','prospecting-scrolled','prospecting-waiting-home','prospecting-skipped'}:
                 browser_state = 'unknown'
             try:
                 browser_threads = max(0, min(1000, int(raw_browser.get('threads', 0) or 0)))
@@ -321,7 +321,7 @@ def execute(command, args):
             for profile in profiles[:30]:
                 if not isinstance(profile,dict) or profile.get('following'): continue
                 username=str(profile.get('username','')).strip().lstrip('@').lower()
-                if not re.fullmatch(r'[a-z0-9._]{1,30}', username): continue
+                if not re.fullmatch(r'[a-z0-9._]{2,30}', username): continue
                 segment=_follower_segment({'username':username,'text':str(profile.get('text',''))[:4000]})
                 if segment['segment']=='community': continue
                 key='sales.campaign.profile:'+username
@@ -346,8 +346,36 @@ def execute(command, args):
             if not claimed:
                 return {'claimed':False}
             payload=json.loads(row[1])
+            stage=memory.get_setting(f'sales.campaign.stage:{action_id}','')
             memory.audit('sales.campaign.claim',f'campaign:{action_id}','ok','browser interaction reserved')
-            return {'claimed':True,'id':action_id,'payload':payload}
+            return {'claimed':True,'id':action_id,'payload':payload,'stage':stage}
+        if command == 'campaignStage':
+            action_id=int(args.get('id',0))
+            stage=str(args.get('stage',''))[:40]
+            if not action_id:
+                raise ValueError('Campanha inválida')
+            memory.set_setting(f'sales.campaign.stage:{action_id}',stage)
+            return {'id':action_id,'stage':stage}
+        if command == 'campaignFail':
+            action_id=int(args.get('id',0))
+            if not action_id:
+                raise ValueError('Campanha inválida')
+            note=str(args.get('note',''))[:500]
+            attempts=int(memory.get_setting(f'sales.campaign.attempts:{action_id}','0') or 0)+1
+            memory.set_setting(f'sales.campaign.attempts:{action_id}',str(attempts))
+            # Falhas transitórias devolvem a ação para a fila; só depois de
+            # três tentativas ela exige revisão humana. O estágio persistido
+            # impede repetir follow, curtida e comentário na retentativa.
+            state='pending' if attempts < 3 else 'needs_check'
+            updated=memory.db.execute(
+                "update pending_actions set status=?,decided_at=?,decision_note=? where id=? and status='processing'",
+                (state,datetime.now().isoformat(),note,action_id),
+            ).rowcount
+            memory.db.commit()
+            if not updated:
+                raise ValueError('Campanha não estava reservada')
+            memory.audit('sales.campaign.retry',f'campaign:{action_id}',state,f'attempt={attempts}; {note}')
+            return {'id':action_id,'state':state,'attempts':attempts}
         if command == 'campaignConfirm':
             action_id=int(args.get('id',0))
             state=str(args.get('state','needs_check'))
