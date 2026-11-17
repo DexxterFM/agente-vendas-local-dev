@@ -120,12 +120,93 @@ async function libraryView(){
  if(templates[0])load(templates[0]);
 }
 
-async function operatorView(){
- const content=activatePanel('Copiloto do operador','Converse com o agente para completar contexto, ajustar mensagens e preparar links ou materiais de apoio.');
- content.innerHTML=`<div class="operator-layout"><section class="operator-chat"><div class="operator-intro"><span>✦</span><div><strong>Agente comercial local</strong><p>Descreva o ajuste que falta. Eu devolvo uma proposta pronta para entrar no fluxo.</p></div></div><div id="operator-thread" class="operator-thread"><div class="operator-message agent">Olá, Denis. Qual camada do diálogo você quer melhorar agora?</div></div><form id="operator-form" class="operator-composer"><select name="stage">${Object.entries(stageNames).map(([id,name])=>`<option value="${id}">${name}</option>`).join('')}</select><textarea name="message" required rows="3" placeholder="Ex.: quando a clínica disser que usa outro sistema, pergunte qual é antes de enviar o comparativo."></textarea><details><summary>Adicionar contexto, links ou imagens</summary><textarea name="context" rows="2" placeholder="Informações que o agente precisa considerar"></textarea><textarea name="links" rows="2" placeholder="Links oficiais"></textarea><textarea name="images" rows="2" placeholder="Imagem/poster de apoio"></textarea></details>${button('Enviar ajuste ao agente','primary-button','operator-send')}</form></section><aside class="operator-guide"><span class="eyebrow">CAMADAS DO DIÁLOGO</span><h3>O que pode ser ajustado</h3><ul><li>pergunta prevista e intenção</li><li>resposta por etapa e tom</li><li>contexto do lead e objeções</li><li>links de trial e instalação</li><li>posters e comparativos</li></ul><div class="operator-note">Todo ajuste aprovado aqui pode ser salvo diretamente na Biblioteca de respostas.</div></aside></div>`;
- el('#operator-form').onsubmit=async event=>{event.preventDefault();const data=Object.fromEntries(new FormData(event.target));const thread=el('#operator-thread');thread.insertAdjacentHTML('beforeend',`<div class="operator-message operator">${safe(data.message)}</div>`);event.target.querySelector('button').disabled=true;try{const result=await call('operatorAssist',data);thread.insertAdjacentHTML('beforeend',`<div class="operator-message agent"><p>${safe(result.reply)}</p><button class="ghost-button apply-assist">Usar como nova resposta</button></div>`);thread.lastElementChild.querySelector('.apply-assist').onclick=()=>openTemplateFromAssist(result);event.target.reset();}catch(error){report(error);}finally{event.target.querySelector('button').disabled=false;thread.scrollTop=thread.scrollHeight;}};
+let flowChatLog=[];
+let flowProposal=null;
+let flowStateCache={revision:0,history:[],lessons:[],templates:[]};
+
+function flowStageOptions(selected){return Object.entries(stageNames).map(([id,name])=>`<option value="${id}" ${id===selected?'selected':''}>${name}</option>`).join('');}
+function flowOperationCard(op,index){
+ const action=['add','update','remove'].includes(op.action)?op.action:'add';const preview=op.preview||{};const stage=op.stage||preview.stage||'descoberta';
+ if(action==='remove')return `<article class="change-card remove" data-op-index="${index}"><div class="change-head"><span class="studio-badge remove">Remover</span><span class="flow-stage">${safe(stageNames[stage]||stage)}</span></div><div class="change-before"><strong>${safe(preview.question||op.question||'Resposta existente')}</strong><p>${safe(preview.response||'')}</p></div></article>`;
+ const before=op.before||(action==='update'?preview:null);
+ return `<article class="change-card ${action}" data-op-index="${index}"><div class="change-head"><span class="studio-badge ${action}">${action==='add'?'Nova':'Alterar'}</span><span class="flow-stage">${safe(stageNames[stage]||stage)}</span><small>${safe(op.id||'nova resposta')}</small></div><label class="change-field">Etapa do fluxo<select data-field="stage">${flowStageOptions(stage)}</select></label><label class="change-field">Pergunta ou situação prevista<textarea data-field="question" rows="2">${safe(op.question||'')}</textarea></label><label class="change-field">Resposta que o agente deve enviar<textarea data-field="response" rows="4">${safe(op.response||'')}</textarea></label><div class="change-grid"><label class="change-field">Quando usar e o que evitar<textarea data-field="context" rows="2">${safe(op.context||'')}</textarea></label><label class="change-field">Gatilhos da mensagem do lead<textarea data-field="match" rows="2" placeholder="já uso | já usamos | temos sistema">${safe(op.match||'')}</textarea></label></div>${before?`<div class="change-before"><small>Antes</small><strong>${safe(before.question||'')}</strong><p>${safe(before.response||'')}</p></div>`:''}</article>`;
 }
-function openTemplateFromAssist(result){libraryView().then(()=>{const f=el('#template-form');f.stage.value=result.stage;f.question.value=result.draft_question;f.context.value=result.draft_context;f.links.value=result.links;f.images.value=result.images;f.response.focus();report({message:'Rascunho preparado. Complete a resposta e salve no fluxo.'});}).catch(report);}
+function flowRenderProposal(){
+ const card=el('#proposal-card');if(!card)return;
+ if(!flowProposal){card.innerHTML=`<div class="section-heading"><h3>Alterações propostas</h3><span class="status-pill">em espera</span></div>${empty('✦','Nada para aplicar','Descreva o ajuste no campo ao lado. O agente devolve as mudanças para você revisar antes de gravar.')}`;return;}
+ const ops=flowProposal.operations||[];const warnings=[...(flowProposal.warnings||[])].filter(Boolean);
+ card.innerHTML=`<div class="section-heading"><h3>Alterações propostas</h3><span class="status-pill">${ops.length} mudança${ops.length===1?'':'s'}</span></div><p class="proposal-reply">${safe(flowProposal.reply||'')}</p><div class="proposal-summary"><strong>${safe(flowProposal.summary||'')}</strong><small>Base: versão ${safe(flowProposal.base_revision)} · ${flowProposal.source==='model'?'interpretado pelo modelo local':'interpretação local por regras'}</small></div>${warnings.length?`<ul class="proposal-warnings">${warnings.map(w=>`<li>${safe(w)}</li>`).join('')}</ul>`:''}<div class="change-list">${ops.map(flowOperationCard).join('')||empty('◌','Nenhuma operação','Reformule o pedido indicando a situação e a resposta desejada.')}</div>${ops.length?`<div class="editor-actions"><button class="primary-button" id="apply-proposal">✓ Aplicar na biblioteca</button><button class="ghost-button" id="discard-proposal">Descartar</button></div>`:''}`;
+ card.querySelectorAll('[data-op-index]').forEach(node=>{const op=flowProposal.operations[Number(node.dataset.opIndex)];if(!op)return;node.querySelectorAll('[data-field]').forEach(field=>{field.oninput=()=>{op[field.dataset.field]=field.value;};});});
+ const apply=el('#apply-proposal');if(apply)apply.onclick=()=>flowApplyProposal().catch(report);
+ const discard=el('#discard-proposal');if(discard)discard.onclick=()=>{flowProposal=null;flowRenderProposal();};
+}
+async function flowRefreshState(){
+ let state;
+ try{state=await call('flowState');}catch(error){await new Promise(resolve=>setTimeout(resolve,450));state=await call('flowState');}
+ flowStateCache=state;
+ const version=el('#studio-version');if(version)version.textContent=`versão ${state.revision}`;
+ flowRenderHistory(state.history||[]);flowRenderLessons(state.lessons||[]);
+ if(flowProposal&&Number(flowProposal.base_revision)!==Number(state.revision)){flowProposal=null;flowRenderProposal();}
+}
+function flowRenderHistory(rows){
+ const card=el('#history-card');if(!card)return;
+ const seed=Number(flowStateCache.revision)>0?`<article class="history-item"><div><strong>v0</strong><span>Roteiro semente</span></div><small>Biblioteca original</small><button class="ghost-button" data-revert="0">Reverter</button></article>`:'';
+ card.innerHTML=`<div class="section-heading"><h3>Histórico de versões</h3><span class="status-pill">v${safe(flowStateCache.revision)}</span></div><div class="history-list">${rows.map(r=>`<article class="history-item"><div><strong>v${safe(r.revision)}</strong><span>${safe(r.summary||'Alteração')}</span></div><small>${formatTime(r.created_at)} · ${safe(r.source==='revert'?'reversão':r.source==='library'?'edição manual':'prompt')}</small><button class="ghost-button" data-revert="${safe(r.revision)}">Reverter</button></article>`).join('')||empty('◷','Sem versões','A primeira alteração aplicada aparece aqui.')}${seed}</div>`;
+ card.querySelectorAll('[data-revert]').forEach(b=>b.onclick=()=>flowRevert(Number(b.dataset.revert)));
+}
+function flowRenderLessons(rows){
+ const card=el('#lessons-card');if(!card)return;
+ card.innerHTML=`<div class="section-heading"><h3>O que o agente aprendeu</h3><span class="status-pill">${rows.length}</span></div><div class="lesson-list">${rows.map(r=>`<article class="lesson-item"><strong>${safe(r.summary||'Ajuste de fluxo')}</strong><p>${safe(r.lesson||'')}</p><small>v${safe(r.revision)} · ${formatTime(r.created_at)}</small></article>`).join('')||empty('◌','Ainda sem aprendizados','Cada alteração aplicada entra na memória usada nas próximas respostas.')}</div>`;
+}
+function flowAddMessage(role,text){
+ flowChatLog.push({role,text});const thread=el('#operator-thread');if(!thread)return;
+ thread.insertAdjacentHTML('beforeend',`<div class="operator-message ${role==='operator'?'operator':'agent'}">${role==='operator'?safe(text):`<p>${safe(text)}</p>`}</div>`);
+ thread.scrollTop=thread.scrollHeight;
+}
+async function flowApplyProposal(){
+ if(!flowProposal)return;const button=el('#apply-proposal');if(button){button.disabled=true;button.textContent='Aplicando…';}
+ try{
+  const result=await call('flowApply',{operations:flowProposal.operations,base_revision:flowProposal.base_revision,prompt:flowProposal.prompt||'',summary:flowProposal.summary||'',lesson:flowProposal.lesson||''});
+  if(!result.applied){report({message:result.reason||'Nada foi alterado.'});return;}
+  const learned=Number((result.learned||[]).length);
+  flowProposal=null;flowRenderProposal();flowStateCache.revision=result.revision;const badge=el('#studio-version');if(badge)badge.textContent=`versão ${result.revision}`;flowAddMessage('agent',`Aplicado na versão ${result.revision}. ${result.summary}.${learned?` ${learned} aprendizado(s) gravado(s) na memória comercial.`:''}`);
+  await flowRefreshState();
+ }finally{const current=el('#apply-proposal');if(current){current.disabled=false;current.textContent='✓ Aplicar na biblioteca';}}
+}
+async function flowRevert(revision){
+ if(!confirm(`Restaurar a versão ${revision} da biblioteca? A versão atual fica preservada no histórico.`))return;
+ try{
+  const result=await call('flowRevert',{revision});
+  if(!result.applied){report({message:result.reason||'Nada foi alterado.'});return;}
+  flowStateCache.revision=result.revision;const badge=el('#studio-version');if(badge)badge.textContent=`versão ${result.revision}`;
+  flowAddMessage('agent',`Fluxos restaurados. Nova versão ${result.revision} criada a partir da versão ${result.restored_from}.`);
+  await flowRefreshState();report({message:`Versão ${revision} restaurada.`});
+ }catch(error){report(error);}
+}
+
+async function operatorView(){
+ const content=activatePanel('Estúdio de fluxos','Explique a mudança em português. O agente interpreta, mostra o diff e só grava na biblioteca depois da sua confirmação.');
+ content.innerHTML=`<div class="flow-studio"><section class="operator-chat"><div class="studio-head"><div><p class="eyebrow">AJUSTE POR PROMPT</p><h3>Ajuste o diálogo conversando</h3><p>O agente lê a biblioteca ativa, interpreta sua instrução e propõe respostas por etapa. Cada aplicação gera uma versão reversível e um aprendizado na memória comercial.</p></div><span class="status-pill" id="studio-version">versão …</span></div><div id="operator-thread" class="operator-thread"></div><div class="example-chips"><button data-example="Quando a clínica disser que já usa outro sistema, pergunte qual é antes de falar do comparativo.">Objeção de concorrente</button><button data-example="Quando o lead perguntar sobre preço, responda que o valor depende do tamanho da equipe e pergunte quantos profissionais atendem hoje.">Objeção de preço</button><button data-example="Na etapa proposta, troque a resposta do link para explicar que os 3 meses começam após a ativação acompanhada.">Link de 3 meses</button><button data-example="Na etapa follow-up, crie uma retomada para quem não respondeu depois de 3 dias.">Follow-up</button></div><form id="operator-form" class="operator-composer"><div class="composer-top"><select name="stage">${flowStageOptions('descoberta')}</select><small>Ctrl+Enter envia</small></div><textarea name="message" required rows="4" placeholder="Ex.: quando a clínica disser que usa outro sistema, pergunte qual é antes de enviar o comparativo."></textarea><details><summary>Adicionar contexto, links ou imagens</summary><textarea name="context" rows="2" placeholder="Informações que o agente precisa considerar"></textarea><textarea name="links" rows="2" placeholder="Links oficiais"></textarea><textarea name="images" rows="2" placeholder="Imagem/poster de apoio"></textarea></details><div class="composer-row"><small>A alteração só entra na biblioteca depois de você revisar e aplicar.</small><button class="primary-button" type="submit">✦ Interpretar ajuste</button></div></form></section><aside class="studio-side"><section class="data-card" id="proposal-card"></section><section class="data-card" id="history-card"></section><section class="data-card" id="lessons-card"></section></aside></div>`;
+ const thread=el('#operator-thread');
+ if(!flowChatLog.length)flowChatLog.push({role:'agent',text:'Olá, Denis. Descreva em português o que deve mudar no diálogo. Eu interpreto, mostro o diff e só gravo depois da sua confirmação.'});
+ thread.innerHTML=flowChatLog.map(m=>`<div class="operator-message ${m.role==='operator'?'operator':'agent'}">${m.role==='operator'?safe(m.text):`<p>${safe(m.text)}</p>`}</div>`).join('');
+ thread.scrollTop=thread.scrollHeight;
+ const form=el('#operator-form');const messageField=form.querySelector('textarea[name="message"]');
+ form.querySelectorAll('[data-example]').forEach(b=>b.onclick=()=>{messageField.value=b.dataset.example;messageField.focus();});
+ messageField.onkeydown=event=>{if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){event.preventDefault();form.requestSubmit();}};
+ form.onsubmit=async event=>{
+  event.preventDefault();const data=Object.fromEntries(new FormData(form));const message=String(data.message||'').trim();if(!message)return;
+  const prior=flowChatLog.slice(-6).map(m=>({role:m.role,text:m.text}));
+  flowAddMessage('operator',message);const button=form.querySelector('button[type="submit"]');button.disabled=true;button.textContent='Interpretando…';
+  try{
+   const proposal=await call('flowChat',{message,stage:data.stage,context:data.context,links:data.links,images:data.images,history:prior});
+   flowProposal={...proposal,prompt:message};flowAddMessage('agent',proposal.reply);flowRenderProposal();form.reset();form.stage.value=data.stage||'descoberta';
+  }catch(error){flowAddMessage('agent',`Não consegui interpretar o ajuste: ${error.message||error}`);report(error);}
+  finally{button.disabled=false;button.textContent='✦ Interpretar ajuste';thread.scrollTop=thread.scrollHeight;}
+ };
+ flowRenderProposal();flowRenderHistory(flowStateCache.history||[]);flowRenderLessons(flowStateCache.lessons||[]);
+ await flowRefreshState();
+}
 
 async function crmView(){const leads=await call('leads');const content=activatePanel('Leads e CRM','Visão comercial das conversas persistidas localmente.');content.innerHTML=`<div class="crm-overview"><article><small>LEADS CADASTRADOS</small><strong>${leads.length}</strong></article><article><small>MAIOR INTENÇÃO</small><strong>${Math.max(0,...leads.map(l=>Number(l.score)||0))}</strong></article><article><small>PRÓXIMAS AÇÕES</small><strong>${leads.filter(l=>l.next_action).length}</strong></article></div><section class="data-card"><div class="section-heading"><h3>Lista de oportunidades</h3>${button('+ Novo lead','primary-button','crm-new')}</div><div class="responsive-table"><table><thead><tr><th>Lead</th><th>Contato</th><th>Etapa</th><th>Score</th><th>Próxima ação</th></tr></thead><tbody>${leads.map(l=>`<tr><td><strong>${safe(l.name)}</strong></td><td>${safe(l.contact||'—')}</td><td><span class="status-pill">${safe(l.stage||'Novo')}</span></td><td>${safe(l.score)}</td><td>${safe(l.next_action||'—')}</td></tr>`).join('')||'<tr><td colspan="5">Nenhum lead cadastrado.</td></tr>'}</tbody></table></div></section>`;el('#crm-new').onclick=()=>el('#new-lead')?.click();}
 async function recordsView(type){const rows=await call('records',{type});const isCampaign=type==='campaigns';const title=isCampaign?'Campanhas':'Follow-ups';const content=activatePanel(title,isCampaign?'Acompanhe as respostas preparadas, pendentes e concluídas.':'Organize retomadas sem perder o contexto comercial.');content.innerHTML=`<div class="record-grid">${rows.map(r=>`<article class="record-card"><div><span class="record-icon">${isCampaign?'↗':'◷'}</span><span class="status-pill">${safe(r.status||'agendado')}</span></div><h3>${safe(r.action||r.kind||'Ação comercial')}</h3><p>${safe(r.rationale||r.note||r.payload||'Sem detalhes adicionais.')}</p><small>${formatTime(r.created_at||r.due_at)}</small>${isCampaign&&r.status==='pending'?button('Aprovar envio','primary-button',`approve-${r.id}`):''}</article>`).join('')||empty(isCampaign?'↗':'◷',`Nenhuma ${isCampaign?'campanha':'retomada'} pendente`,isCampaign?'As mensagens preparadas aparecerão aqui.':'Gere um follow-up a partir de uma conversa.')}</div>`;if(isCampaign)rows.filter(r=>r.status==='pending').forEach(r=>{const b=el(`#approve-${r.id}`);if(b)b.onclick=async()=>{await call('approveReply',{id:r.id});await recordsView(type);report({message:'Resposta aprovada.'});};});}
