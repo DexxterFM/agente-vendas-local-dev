@@ -61,16 +61,17 @@ def main() -> None:
     })
     while RUNNING:
         try:
-            if postflow_sync and time.monotonic() >= next_postflow_sync:
-                result = execute("syncPostflow", {})
-                next_postflow_sync = time.monotonic() + postflow_interval
-                print(datetime.now(timezone.utc).isoformat(), "postflow_sync", result, flush=True)
-            result = execute("agentCycle", {})
-            # O navegador interno persistente é a rota principal do agente na
-            # VPS. O ciclo não toca a autenticação: só começa depois que a
-            # página autenticada foi detectada e mantém a confirmação visual
-            # de cada mensagem antes de gravá-la na memória.
-            browser_result = internal_browser_cycle()
+            with internal_browser.browser_task_lock(timeout=3.0) as acquired:
+                if not acquired:
+                    print(datetime.now(timezone.utc).isoformat(), "cycle_deferred", "browser_task_busy", flush=True)
+                    continue
+                internal_browser.cleanup_stale_tabs()
+                if postflow_sync and time.monotonic() >= next_postflow_sync:
+                    result = execute("syncPostflow", {})
+                    next_postflow_sync = time.monotonic() + postflow_interval
+                    print(datetime.now(timezone.utc).isoformat(), "postflow_sync", result, flush=True)
+                result = execute("agentCycle", {})
+                browser_result = internal_browser_cycle()
             if auto_dispatch and result.get("active"):
                 execute("dispatchDue", {})
             execute("workerHeartbeat", {

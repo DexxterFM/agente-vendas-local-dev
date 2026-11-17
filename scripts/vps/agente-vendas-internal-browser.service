@@ -10,7 +10,7 @@ Group=agentevendas
 Environment=HOME=/var/lib/agente-vendas-local
 # A sessão roda em navegador gráfico numa tela virtual. Isso preserva o
 # perfil em disco e apresenta corretamente telas de recuperação e validação.
-ExecStart=/usr/bin/xvfb-run --auto-servernum "--server-args=-screen 0 1280x900x24" /usr/bin/chromium-browser --no-sandbox --disable-dev-shm-usage --disable-gpu --no-first-run --no-default-browser-check --remote-debugging-address=127.0.0.1 --remote-debugging-port=9222 --user-data-dir=/var/lib/agente-vendas-local/internal-browser-profile --profile-directory=Default --password-store=basic --window-size=1280,900 https://www.instagram.com/
+ExecStart=/usr/bin/xvfb-run --auto-servernum "--server-args=-screen 0 1280x900x24" /usr/bin/chromium-browser --no-sandbox --disable-dev-shm-usage --disable-gpu --no-first-run --no-default-browser-check --renderer-process-limit=4 --process-per-site --remote-debugging-address=127.0.0.1 --remote-debugging-port=9222 --user-data-dir=/var/lib/agente-vendas-local/internal-browser-profile --profile-directory=Default --password-store=basic --window-size=1280,900 https://www.instagram.com/
 Restart=always
 RestartSec=5
 NoNewPrivileges=true

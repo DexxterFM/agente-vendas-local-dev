@@ -6,6 +6,7 @@ navegador pertence ao systemd e guarda a sessão em um diretório do agente.
 from __future__ import annotations
 
 import base64
+from contextlib import contextmanager
 import json
 import os
 import socket
@@ -25,6 +26,52 @@ except ImportError:  # a unidade da VPS instala python3-websocket-client
 DEBUG_URL = "http://127.0.0.1:9222"
 _PRIMARY_HOSTS = {"instagram.com", "www.instagram.com"}
 _ACCESS_HOSTS = _PRIMARY_HOSTS | {"facebook.com", "www.facebook.com"}
+
+
+def cleanup_stale_tabs() -> dict[str, int]:
+    """Close stale account-center pages that accumulate renderer memory."""
+    pages = _http("/json/list")
+    closed = 0
+    for item in pages if isinstance(pages, list) else []:
+        if item.get("type") != "page":
+            continue
+        host = urllib.parse.urlparse(str(item.get("url") or "")).hostname
+        if host != "accountscenter.instagram.com":
+            continue
+        try:
+            _http("/json/close/" + urllib.parse.quote(str(item.get("id") or ""), safe=""), method="GET")
+            closed += 1
+        except InternalBrowserError:
+            continue
+    return {"closed": closed}
+
+
+@contextmanager
+def browser_task_lock(timeout: float = 2.0):
+    """Serialize worker navigation cycles across processes on Linux."""
+    try:
+        import fcntl
+    except ImportError:
+        yield True
+        return
+    lock_path = os.path.join(os.environ.get("SALES_AGENT_DATA_DIR", "/var/lib/agente-vendas-local"), "browser-task.lock")
+    os.makedirs(os.path.dirname(lock_path), exist_ok=True)
+    handle = open(lock_path, "a+", encoding="utf-8")
+    acquired = False
+    try:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                acquired = True
+                break
+            except BlockingIOError:
+                time.sleep(.05)
+        yield acquired
+    finally:
+        if acquired:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        handle.close()
 
 
 class InternalBrowserError(RuntimeError):

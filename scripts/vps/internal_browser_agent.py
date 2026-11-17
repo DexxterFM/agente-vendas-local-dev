@@ -380,14 +380,27 @@ def _prospecting_cycle() -> dict[str, Any]:
             browser.action({"kind": "navigate", "url": f"https://www.instagram.com/{username}/"})
             _wait(1.8)
             follow = _prospecting_point(r'''(()=>{const e=[...document.querySelectorAll('button,[role="button"]')].find(x=>/^(seguir|follow)$/i.test((x.innerText||x.getAttribute('aria-label')||'').trim()));if(!e)return null;const r=e.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()''')
-            if follow: browser.action({"kind": "click", **follow}); _wait(.8)
+            if follow:
+                browser.action({"kind": "click", **follow}); _wait(.8)
+                execute("campaignStage", {"id": action_id, "stage": "profile", "action": "follow", "state": "done"})
+            else:
+                execute("campaignStage", {"id": action_id, "stage": "profile", "action": "follow", "state": "not_executed"})
             post = _prospecting_point(r'''(()=>{const e=[...document.querySelectorAll('a[href]')].find(x=>{try{return /\/(?:p|reel)\//.test(new URL(x.href,location.href).pathname)}catch{return false}});if(!e)return null;const r=e.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()''')
             if post: browser.action({"kind": "click", **post}); _wait(1.3)
             like = _prospecting_point(r'''(()=>{const e=[...document.querySelectorAll('button,[role="button"],[aria-label]')].find(x=>/^(?:curtir|like)$/i.test((x.getAttribute('aria-label')||x.innerText||'').trim()));if(!e)return null;const r=e.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()''')
-            if like: browser.action({"kind": "click", **like}); _wait(.8)
+            if like:
+                browser.action({"kind": "click", **like}); _wait(.8)
+                execute("campaignStage", {"id": action_id, "stage": "post", "action": "like", "state": "done"})
+            else:
+                execute("campaignStage", {"id": action_id, "stage": "post", "action": "like", "state": "not_executed"})
             comment = _prospecting_point(r'''(()=>{const e=[...document.querySelectorAll('textarea,input,[contenteditable="true"],[role="textbox"]')].find(x=>/coment|comment|adicionar/i.test((x.placeholder||'')+' '+(x.getAttribute('aria-label')||'')));if(!e)return null;const r=e.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()''')
             if comment:
                 browser.action({"kind": "click", **comment}); browser.action({"kind": "type", "text": "Muito bonito o trabalho de vocês! 😊"}); browser.action({"kind": "key", "key": "Enter"}); _wait(1.0)
+                execute("campaignStage", {"id": action_id, "stage": "post", "action": "comment", "state": "done"})
+            else:
+                execute("campaignStage", {"id": action_id, "stage": "post", "action": "comment", "state": "not_executed"})
+            execute("campaignStage", {"id": action_id, "stage": "post", "action": "repost", "state": "not_executed"})
+            execute("campaignStage", {"id": action_id, "stage": "post", "action": "story_share", "state": "not_executed"})
             # A partir daqui a retentativa não repete follow/curtida/comentário:
             # apenas reabre a DM do mesmo perfil.
             execute("campaignStage", {"id": action_id, "stage": "dm"})
@@ -397,6 +410,7 @@ def _prospecting_cycle() -> dict[str, Any]:
             _send_bubble(intro, str(surface["url"]))
         else:
             _send_overlay_bubble(intro)
+        execute("campaignStage", {"id": action_id, "stage": "dm", "action": "dm", "state": "done"})
         execute("campaignConfirm", {"id": action_id, "state": "sent", "note": "Interações confirmadas pela sessão interna"})
         try:
             _open_home()

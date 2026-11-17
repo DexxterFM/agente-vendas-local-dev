@@ -196,6 +196,10 @@ def execute(command, args):
             profile=args.get('profile') if isinstance(args.get('profile'),dict) else {}
             profile={key:str(profile.get(key,'') or '')[:3000] for key in ('username','name','bio','text')}
             segment=_follower_segment(profile)
+            segment['text']=memory.get_setting(
+                'sales.follower.welcome_message',
+                segment.get('text',''),
+            ) or segment.get('text','')
             memory.set_setting(key,'claimed')
             memory.set_setting(key+'.profile',json.dumps({'profile':profile,**segment},ensure_ascii=False))
             return {'active':True,'new_follower':True,'username':username,'text':segment['text'],'segment':segment['segment'],'reason':segment['reason'],'key':key}
@@ -313,7 +317,8 @@ def execute(command, args):
                 key='sales.campaign.profile:'+username
                 if memory.get_setting(key,''): continue
                 lead_id=memory.add_lead(username,username,'Descoberto no feed: '+segment['reason'])
-                payload={'lead_id':lead_id,'username':username,'segment':segment['segment'],'intro':'Olá! Muito legal o trabalho de vocês ❤️','profile_text':str(profile.get('text',''))[:1200]}
+                intro=memory.get_setting('sales.prospecting.intro','Olá! Muito legal o trabalho de vocês ❤️') or 'Olá! Muito legal o trabalho de vocês ❤️'
+                payload={'lead_id':lead_id,'username':username,'segment':segment['segment'],'intro':intro,'profile_text':str(profile.get('text',''))[:1200]}
                 action_id=memory.create_pending_action('instagram_follow_intro',payload,'Perfil público compatível com o público do ERP Clínica TEA')
                 memory.set_setting(key,str(action_id));created.append({'id':action_id,**payload})
             return {'created':created,'reviewed':len(profiles)}
@@ -341,6 +346,17 @@ def execute(command, args):
             if not action_id:
                 raise ValueError('Campanha inválida')
             memory.set_setting(f'sales.campaign.stage:{action_id}',stage)
+            action_name=str(args.get('action','')).strip().lower()[:40]
+            action_state=str(args.get('state','done')).strip().lower()[:30] or 'done'
+            if action_name:
+                # A etapa é persistida como evento sanitizado para a tela de
+                # campanhas. Nunca gravamos texto privado da conversa aqui.
+                memory.audit(
+                    'sales.campaign.step',
+                    f'campaign:{action_id}',
+                    action_state,
+                    f'action={action_name}; stage={stage}',
+                )
             return {'id':action_id,'stage':stage}
         if command == 'campaignFail':
             action_id=int(args.get('id',0))
@@ -376,6 +392,78 @@ def execute(command, args):
                 raise ValueError('Campanha não estava reservada')
             memory.audit('sales.campaign.result',f'campaign:{action_id}',state,str(args.get('note',''))[:1000])
             return {'id':action_id,'state':state}
+        if command == 'campaignMessage':
+            mode=str(args.get('mode','get')).strip().lower()
+            key='sales.prospecting.intro'
+            default='Olá! Muito legal o trabalho de vocês ❤️'
+            if mode == 'get':
+                return {'message':memory.get_setting(key,default) or default}
+            if mode != 'save':
+                raise ValueError('Modo de mensagem inválido')
+            message=' '.join(str(args.get('message','')).split()).strip()
+            if not message:
+                raise ValueError('A mensagem de prospecção não pode ficar vazia')
+            if len(message)>500:
+                raise ValueError('A mensagem de prospecção deve ter no máximo 500 caracteres')
+            memory.set_setting(key,message)
+            memory.audit('sales.campaign.message','prospecting','updated',f'chars={len(message)}')
+            return {'message':message,'saved':True}
+        if command == 'followerMessage':
+            mode=str(args.get('mode','get')).strip().lower()
+            key='sales.follower.welcome_message'
+            fallback='Obrigado por seguir! Parabéns pelo seu trabalho! Tenho um presente para você. Diga “eu quero” que te mando para você. 😊'
+            if mode == 'get':
+                return {'message':memory.get_setting(key,fallback) or fallback}
+            if mode != 'save':
+                raise ValueError('Modo de mensagem de novo seguidor inválido')
+            message=' '.join(str(args.get('message','')).split()).strip()
+            if not message:
+                raise ValueError('A mensagem de novo seguidor não pode ficar vazia')
+            if len(message)>500:
+                raise ValueError('A mensagem de novo seguidor deve ter no máximo 500 caracteres')
+            memory.set_setting(key,message)
+            memory.audit('sales.campaign.message','new_follower','updated',f'chars={len(message)}')
+            return {'message':message,'saved':True}
+        if command == 'campaignHistory':
+            # Retorno próprio para a área de campanhas: uma linha por perfil,
+            # com o estado confirmado de cada interação e o histórico recente.
+            rows=memory.db.execute(
+                "select id,created_at,payload,rationale,status,decided_at,decision_note "
+                "from pending_actions where action='instagram_follow_intro' order by id desc limit 100"
+            ).fetchall()
+            events=memory.list_audit(1000)
+            by_campaign={}
+            for created_at,actor,action,target,status,detail in events:
+                if action!='sales.campaign.step' or not str(target).startswith('campaign:'):
+                    continue
+                try: cid=int(str(target).split(':',1)[1])
+                except Exception: continue
+                item=by_campaign.setdefault(cid,{})
+                bits={}
+                for part in str(detail or '').split(';'):
+                    if '=' in part:
+                        k,v=part.split('=',1);bits[k.strip()]=v.strip()
+                name=bits.get('action')
+                if name:
+                    item[name]={'status':status,'at':created_at}
+            result=[]
+            for row in rows:
+                try: payload=json.loads(row[2] or '{}')
+                except Exception: payload={}
+                cid=int(row[0]); actions=by_campaign.get(cid,{})
+                # O envio final também é uma interação visível no resumo.
+                if row[4] == 'sent' and 'dm' not in actions:
+                    actions['dm']={'status':'done','at':row[5] or row[1]}
+                result.append({
+                    'id':cid,'created_at':row[1],'updated_at':row[5] or row[1],
+                    'username':str(payload.get('username','perfil'))[:80],
+                    'profile':str(payload.get('profile_url') or ('https://www.instagram.com/'+str(payload.get('username','')).strip('/'))).strip()[:300],
+                    'segment':str(payload.get('segment',''))[:60],
+                    'status':row[4],'rationale':str(row[3] or '')[:240],
+                    'actions':actions,
+                })
+            fallback='Olá! Muito legal o trabalho de vocês ❤️'
+            return {'message':memory.get_setting('sales.prospecting.intro',fallback) or fallback,'items':result}
         if command == 'followupRecords':
             cursor=memory.db.execute("select f.id,f.lead_id,f.due_at,f.task,f.done,coalesce(f.draft,'') as draft,coalesce(f.status,'draft') as status,coalesce(f.channel,'manual') as channel,l.name,l.contact from followups f join leads l on l.id=f.lead_id order by f.due_at asc limit 100")
             return [dict(zip([col[0] for col in cursor.description],row)) for row in cursor.fetchall()]

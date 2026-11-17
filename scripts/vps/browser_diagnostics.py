@@ -13,6 +13,26 @@ ROOT = Path(os.environ.get('SALES_AGENT_DATA_DIR', '/var/lib/agente-vendas-local
 RECOVERY_REQUEST = ROOT / 'browser-recovery.request'
 
 
+def resource_sample():
+    """Read process counters even when the renderer cannot answer."""
+    processes = []
+    for entry in Path('/proc').glob('[0-9]*'):
+        try:
+            values = dict(line.split(':', 1) for line in (entry / 'status').read_text().splitlines() if ':' in line)
+            if 'chromium' not in values.get('Name', ''):
+                continue
+            # Scope counters to the agent service, not other applications.
+            if 'agente-vendas-internal-browser.service' not in (entry / 'cgroup').read_text():
+                continue
+            processes.append({'pid': int(entry.name),
+                              'rss_kib': int(values.get('VmRSS', '0').split()[0]),
+                              'swap_kib': int(values.get('VmSwap', '0').split()[0])})
+        except (OSError, ValueError, IndexError):
+            continue
+    return {'processes': processes, 'rss_kib': sum(p['rss_kib'] for p in processes),
+            'swap_kib': sum(p['swap_kib'] for p in processes)}
+
+
 def sample():
     """Obtém uma fotografia agregada em uma única conexão DevTools.
 
@@ -57,7 +77,7 @@ def main():
     previous = None
     failures = 0
     while True:
-        record = {'at': datetime.now(timezone.utc).isoformat()}
+        record = {'at': datetime.now(timezone.utc).isoformat(), 'resources': resource_sample()}
         try:
             state = sample()
             reasons = []
