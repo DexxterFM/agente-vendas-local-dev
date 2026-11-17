@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import mimetypes
 import os
+import base64
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -16,6 +17,7 @@ if str(ROOT) not in os.sys.path:
 from core.desktop_rpc import _response
 from core.memory import Memory
 from scripts.vps.meta_webhook import ingest, verify_signature, verify_subscription
+from scripts.vps.internal_browser import screenshot as browser_screenshot
 
 
 class ControlHandler(BaseHTTPRequestHandler):
@@ -38,6 +40,14 @@ class ControlHandler(BaseHTTPRequestHandler):
         path = unquote(parsed.path)
         if path == "/api/health":
             self._json(HTTPStatus.OK, {"ok": True, "service": "agente-vendas"})
+            return
+        if path == "/api/browser/screenshot":
+            try:
+                image = base64.b64decode(str(browser_screenshot().get("png") or ""), validate=True)
+                if image[:8] != b"\x89PNG\r\n\x1a\n": raise ValueError("PNG inválido")
+                self.send_response(HTTPStatus.OK); self.send_header("Content-Type", "image/png"); self.send_header("Content-Length", str(len(image))); self.send_header("Cache-Control", "no-store"); self.end_headers(); self.wfile.write(image)
+            except Exception:
+                self.send_error(HTTPStatus.SERVICE_UNAVAILABLE)
             return
         if path == "/api/meta/webhook":
             query = {key: values[-1] for key, values in parse_qs(parsed.query).items() if values}
