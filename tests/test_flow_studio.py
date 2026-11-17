@@ -208,6 +208,79 @@ class FlowStudioTests(unittest.TestCase):
         self.assertEqual('existing-app', operation['preview']['id'])
         self.assertIn('Qual app', operation['preview']['response'])
 
+    def test_teach_saves_response_for_the_client_message_and_repeats(self):
+        lead_id = execute('create', {'name': 'Clínica Teste', 'contact': 'clinica.teste'})
+        history = [
+            {'role': 'assistant', 'text': 'Vocês já usam algum app?'},
+            {'role': 'user', 'text': 'Já uso o sistema X aqui.'},
+        ]
+        saved = execute('flowTeach', {
+            'message': 'Já uso o sistema X aqui.',
+            'response': 'Qual sistema vocês usam hoje?',
+            'lead_id': lead_id,
+        })
+        self.assertTrue(saved['applied'])
+        self.assertEqual(1, saved['revision'])
+        self.assertEqual('dialogue', execute('flowState', {})['history'][0]['source'])
+
+        first = execute('draft', {'id': lead_id, 'browser_history': history})
+        self.assertEqual('Qual sistema vocês usam hoje?', first)
+
+        updated = execute('flowTeach', {
+            'message': 'Já uso o sistema X aqui.',
+            'response': 'Entendi. Qual sistema a clínica usa hoje?',
+            'lead_id': lead_id,
+        })
+        self.assertTrue(updated['applied'])
+        self.assertEqual(2, updated['revision'])
+        self.assertEqual(saved['template']['id'], updated['template']['id'])
+        self.assertEqual(
+            'Entendi. Qual sistema a clínica usa hoje?',
+            execute('draft', {'id': lead_id, 'browser_history': history}),
+        )
+        templates = execute('responseLibrary', {})
+        self.assertEqual(1, len([item for item in templates if item.get('custom')]))
+
+    def test_teach_short_message_matches_exactly(self):
+        lead_id = execute('create', {'name': 'Clínica Teste', 'contact': 'clinica.teste'})
+        saved = execute('flowTeach', {
+            'message': 'oi',
+            'response': 'Oi! Tudo bem? Já usa algum app na clínica?',
+            'lead_id': lead_id,
+        })
+        self.assertTrue(saved['applied'])
+        answer = execute('draft', {
+            'id': lead_id,
+            'browser_history': [
+                {'role': 'assistant', 'text': 'Olá! Posso falar com você?'},
+                {'role': 'user', 'text': 'oi'},
+            ],
+        })
+        self.assertEqual('Oi! Tudo bem? Já usa algum app na clínica?', answer)
+
+    def test_teach_requires_message_and_response(self):
+        with self.assertRaises(ValueError):
+            execute('flowTeach', {'message': '', 'response': 'Olá'})
+        with self.assertRaises(ValueError):
+            execute('flowTeach', {'message': 'oi', 'response': '   '})
+
+    def test_teach_never_overrides_safety_rules(self):
+        lead_id = execute('create', {'name': 'Clínica Teste', 'contact': 'clinica.teste'})
+        execute('flowTeach', {
+            'message': 'Vou ser cobrado automaticamente depois dos 3 meses?',
+            'response': 'Resposta ensinada pelo operador.',
+            'lead_id': lead_id,
+        })
+        answer = execute('draft', {
+            'id': lead_id,
+            'browser_history': [
+                {'role': 'assistant', 'text': 'Você ganhou 3 meses grátis.'},
+                {'role': 'user', 'text': 'Vou ser cobrado automaticamente depois dos 3 meses?'},
+            ],
+        })
+        self.assertIn('não gera cobrança automática', answer)
+        self.assertNotIn('Resposta ensinada', answer)
+
 
 if __name__ == '__main__':
     unittest.main()

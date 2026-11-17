@@ -750,6 +750,14 @@ def execute(command, args):
                     + BROWSER_BUBBLE_SEPARATOR
                     + 'Nosso compromisso é atender você com excelência, para que tenha uma experiência realmente transformadora na forma de administrar sua clínica. 😊'
                 )
+            # Ajustes aprovados pelo operador no Estúdio de fluxos ou direto no
+            # balão da conversa têm prioridade sobre o roteiro genérico, mas
+            # nunca sobre as regras de segurança, cobrança, humano e reclamação
+            # tratadas acima. Cada ajuste salvo vira conhecimento local.
+            studio = FlowStudio(memory)
+            approved = studio.match(latest_user, previous_assistant, custom_only=True)
+            if approved:
+                return str(approved.get('response') or '').strip()
             proposal_analysis = bool(latest_user and re.search(
                 r'\b(?:vou|vamos|iremos|preciso|precisamos).{0,45}\b(?:analis|avali|pensar|ver com (?:a |o )?(?:equipe|s[oó]ci[oa]|respons[aá]vel))',
                 latest_user,
@@ -857,14 +865,6 @@ def execute(command, args):
             if not history:
                 company=str(lead.get('name') or 'vocês')
                 return f"Vi o trabalho da {company} e achei muito bonito o cuidado de vocês. Vocês já usam algum app ou programa para fazer a gestão da clínica?"
-            # Ajustes aprovados pelo operador no Estúdio de fluxos têm
-            # prioridade sobre o roteiro genérico, mas nunca sobre as regras de
-            # segurança e de cobrança tratadas acima. A biblioteca é editável
-            # por prompt e cada alteração aplicada vira conhecimento local.
-            studio = FlowStudio(memory)
-            approved = studio.match(latest_user, previous_assistant, custom_only=True)
-            if approved:
-                return str(approved.get('response') or '').strip()
             if history and history[-1][0]=='user' and latest_user and re.fullmatch(r'(?:sim|s[ií]m)[.! ]*',latest_user,re.I):
                 return 'Que bom! Qual app ou programa vocês usam hoje para organizar a gestão da clínica?'
             no_app_answer = bool(
@@ -1013,6 +1013,14 @@ def execute(command, args):
             )
         if command == 'flowRevert':
             return FlowStudio(memory).revert(args.get('revision'))
+        if command == 'flowTeach':
+            return FlowStudio(memory).teach(
+                args.get('message'),
+                args.get('response'),
+                stage=args.get('stage', ''),
+                context=args.get('context', ''),
+                lead_id=args.get('lead_id'),
+            )
         if command == 'saveResponseTemplate':
             item = args.get('template') if isinstance(args.get('template'), dict) else {}
             return FlowStudio(memory).upsert(item)

@@ -103,8 +103,46 @@ async function selectLead(id){
  el('.hot-badge').textContent=`${Number(selectedLead.score)>=75?'🔥 Lead quente':'◈ Em desenvolvimento'} · score ${selectedLead.score}`;
  el('.profile-head span').textContent=selectedLead.contact||'Sem Instagram';el('.profile-facts').innerHTML=`<div><dt>Etapa atual</dt><dd>${safe(selectedLead.stage||'Novo')}</dd></div><div><dt>Observações</dt><dd>${safe(selectedLead.notes||'Sem observações')}</dd></div><div><dt>Próxima ação</dt><dd>${safe(selectedLead.next_action||'Definir próximo passo')}</dd></div>`;
  el('.score-bar i').style.width=Math.min(100,Number(selectedLead.score)||0)+'%';el('.score-block strong').textContent=`${selectedLead.score} / 100`;el('.contact-meta').textContent='Atualizado em '+formatTime(selectedLead.updated_at);
- const rows=await call('messages',{id});el('#chat-body').innerHTML=rows.map(r=>`<div class="bubble ${r[0]==='assistant'?'out':'in'}">${safe(r[1])}<time>${safe(r[2])}</time></div>`).join('')||'<p>Sem mensagens registradas nesta conversa.</p>';
+ const rows=await call('messages',{id});
+ const body=el('#chat-body');
+ body.innerHTML=rows.map((r,index)=>`<div class="bubble ${r[0]==='assistant'?'out':'in'}" data-bubble="${index}"><span class="bubble-text">${safe(r[1])}</span><time>${safe(r[2])}</time>${r[0]==='assistant'?`<button class="bubble-adjust" data-adjust="${index}" title="Editar e salvar esta resposta no fluxo">✎ Ajustar</button>`:''}</div>`).join('')||'<p>Sem mensagens registradas nesta conversa.</p>';
+ body.querySelectorAll('[data-adjust]').forEach(button=>button.onclick=()=>openBubbleAdjust(Number(button.dataset.adjust),rows).catch(report));
  el('#draft-text').textContent='Clique em Gerar resposta para usar o contexto desta conversa.';
+}
+async function openBubbleAdjust(index,rows){
+ const bubble=el(`[data-bubble="${index}"]`);
+ if(!bubble)return;
+ const trigger=[...rows.slice(0,index)].reverse().find(r=>r[0]==='user');
+ if(!trigger)return report({message:'Não há mensagem do cliente antes desta resposta para vincular o ajuste.'});
+ el('#chat-body').querySelectorAll('.bubble-editor').forEach(node=>node.remove());
+ const editor=document.createElement('div');
+ editor.className='bubble-editor';
+ editor.innerHTML=`<small>O lead disse</small><blockquote>${safe(trigger[1])}</blockquote><label>Resposta que o agente deve enviar<textarea rows="4">${safe(rows[index][1])}</textarea></label><div class="bubble-editor-actions"><button class="primary-button" data-save>✓ Salvar resposta</button><button class="ghost-button" data-retest>↻ Perguntar de novo</button><button class="ghost-button" data-close>Cancelar</button></div><p class="bubble-test-result" hidden></p>`;
+ bubble.insertAdjacentElement('afterend',editor);
+ const field=editor.querySelector('textarea');
+ const result=editor.querySelector('.bubble-test-result');
+ const history=rows.slice(0,index).map(r=>({role:r[0],text:r[1]}));
+ const ask=async()=>{
+  result.hidden=false;result.textContent='Perguntando ao agente…';
+  const answer=await call('draft',{id:selectedLead.id,browser_history:history});
+  result.innerHTML=`<strong>Teste · mesma pergunta</strong><span>${safe(answer)}</span>`;
+  return answer;
+ };
+ editor.querySelector('[data-retest]').onclick=()=>ask().catch(report);
+ editor.querySelector('[data-close]').onclick=()=>editor.remove();
+ editor.querySelector('[data-save]').onclick=async()=>{
+  const button=editor.querySelector('[data-save]');
+  button.disabled=true;button.textContent='Salvando…';
+  try{
+   const saved=await call('flowTeach',{message:trigger[1],response:field.value,lead_id:selectedLead.id});
+   if(!saved.applied){report({message:saved.reason||'Nada foi alterado.'});return;}
+   bubble.querySelector('.bubble-text').textContent=saved.template.response;
+   const answer=await ask();
+   result.innerHTML=`<strong>Salvo na versão ${safe(saved.revision)} · aprendizado gravado</strong><span>${safe(answer)}</span>`;
+   report({message:`Resposta ajustada e salva na versão ${saved.revision}.`});
+  }finally{button.disabled=false;button.textContent='✓ Salvar resposta';}
+ };
+ field.focus();
 }
 
 function templateCard(t,selected=false){return `<button class="flow-card ${selected?'selected':''}" data-template-id="${safe(t.id)}"><span class="flow-stage">${safe(stageNames[t.stage]||t.stage)}</span><strong>${safe(t.question)}</strong><small>${safe(t.response)}</small><em>${t.links?'↗ Link anexado':''}${t.images?' ▧ Imagem anexada':''}</em></button>`;}
@@ -158,6 +196,63 @@ function flowRenderLessons(rows){
  const card=el('#lessons-card');if(!card)return;
  card.innerHTML=`<div class="section-heading"><h3>O que o agente aprendeu</h3><span class="status-pill">${rows.length}</span></div><div class="lesson-list">${rows.map(r=>`<article class="lesson-item"><strong>${safe(r.summary||'Ajuste de fluxo')}</strong><p>${safe(r.lesson||'')}</p><small>v${safe(r.revision)} · ${formatTime(r.created_at)}</small></article>`).join('')||empty('◌','Ainda sem aprendizados','Cada alteração aplicada entra na memória usada nas próximas respostas.')}</div>`;
 }
+let flowTestState={leadId:0,history:[],message:'',response:''};
+async function flowTestLoad(leadId){
+ const rows=await call('messages',{id:leadId});
+ const history=rows.map(r=>({role:r[0],text:r[1]}));
+ const lastUserIndex=history.map(r=>r.role).lastIndexOf('user');
+ return {
+  leadId,
+  history:lastUserIndex>=0?history.slice(0,lastUserIndex):history,
+  message:lastUserIndex>=0?history[lastUserIndex].text:'',
+  response:''
+ };
+}
+async function flowTestAsk(messageField,responseField,status){
+ const message=String(messageField.value||'').trim();
+ if(!message)return report({message:'Escreva a mensagem do cliente para testar.'});
+ if(!flowTestState.leadId)return report({message:'Selecione uma conversa para testar.'});
+ const history=flowTestState.history.slice();
+ if(!history.length||history[history.length-1].text!==message)history.push({role:'user',text:message});
+ status.textContent='Perguntando ao agente…';
+ const answer=await call('draft',{id:flowTestState.leadId,browser_history:history});
+ flowTestState.message=message;flowTestState.response=answer;
+ responseField.value=answer;
+ status.innerHTML=`<strong>Resposta atual do agente</strong><span>${safe(answer)}</span>`;
+ return answer;
+}
+async function flowTestSave(messageField,responseField,status){
+ if(!flowTestState.leadId)return report({message:'Selecione uma conversa para salvar o ajuste.'});
+ const message=String(messageField.value||'').trim();
+ const response=String(responseField.value||'').trim();
+ if(!message||!response)return report({message:'Informe a mensagem do cliente e a resposta ajustada.'});
+ const saved=await call('flowTeach',{message,response,lead_id:flowTestState.leadId});
+ if(!saved.applied){report({message:saved.reason||'Nada foi alterado.'});return;}
+ flowTestState.message=message;flowTestState.response=response;
+ status.innerHTML=`<strong>Salvo na versão ${safe(saved.revision)}</strong><span>Perguntando de novo para confirmar…</span>`;
+ const answer=await flowTestAsk(messageField,responseField,status);
+ status.innerHTML=`<strong>Salvo na versão ${safe(saved.revision)} · teste da mesma pergunta</strong><span>${safe(answer)}</span>`;
+ await flowRefreshState();
+ report({message:`Resposta ajustada e salva na versão ${saved.revision}.`});
+}
+function flowRenderTest(leads){
+ const card=el('#test-card');if(!card)return;
+ if(!leads.length){card.innerHTML=`<div class="section-heading"><h3>Teste de diálogo</h3><span class="status-pill">sem conversas</span></div>${empty('◌','Nenhuma conversa para testar','Importe as DMs do Instagram ou crie um lead para repetir a pergunta do cliente.')}`;return;}
+ const selected=leads.some(l=>Number(l.id)===Number(flowTestState.leadId))?Number(flowTestState.leadId):Number(leads[0].id);
+ card.innerHTML=`<div class="section-heading"><h3>Teste de diálogo</h3><span class="status-pill">mesma pergunta</span></div><p class="test-hint">Escolha a conversa, repita a mensagem do cliente e veja se o agente devolve a resposta ajustada.</p><label class="test-field">Conversa<select id="test-lead">${leads.map(l=>`<option value="${safe(l.id)}" ${Number(l.id)===selected?'selected':''}>${safe(l.name)}${l.contact?' · '+safe(l.contact):''}</option>`).join('')}</select></label><label class="test-field">Mensagem do cliente<textarea id="test-message" rows="2" placeholder="Ex.: já uso outro sistema"></textarea></label><div class="test-actions"><button class="primary-button" id="test-ask">✦ Perguntar ao agente</button><button class="ghost-button" id="test-last">↺ Usar última mensagem</button></div><label class="test-field">Resposta do agente (edite e salve)<textarea id="test-response" rows="4" placeholder="A resposta do agente aparece aqui."></textarea></label><div class="test-actions"><button class="primary-button" id="test-save">✓ Salvar ajuste</button><button class="ghost-button" id="test-again">↻ Perguntar de novo</button></div><p class="test-status" id="test-status"></p>`;
+ const leadSelect=el('#test-lead'),messageField=el('#test-message'),responseField=el('#test-response'),status=el('#test-status');
+ const loadLead=async leadId=>{
+  flowTestState=await flowTestLoad(leadId);
+  messageField.value=flowTestState.message;responseField.value='';
+  status.textContent=flowTestState.message?'Última mensagem do cliente carregada.':'Esta conversa ainda não tem mensagem do cliente.';
+ };
+ leadSelect.onchange=()=>loadLead(Number(leadSelect.value)).catch(report);
+ el('#test-last').onclick=()=>loadLead(Number(leadSelect.value)).catch(report);
+ el('#test-ask').onclick=()=>flowTestAsk(messageField,responseField,status).catch(report);
+ el('#test-again').onclick=()=>flowTestAsk(messageField,responseField,status).catch(report);
+ el('#test-save').onclick=()=>flowTestSave(messageField,responseField,status).catch(report);
+ loadLead(selected).catch(report);
+}
 function flowAddMessage(role,text){
  flowChatLog.push({role,text});const thread=el('#operator-thread');if(!thread)return;
  thread.insertAdjacentHTML('beforeend',`<div class="operator-message ${role==='operator'?'operator':'agent'}">${role==='operator'?safe(text):`<p>${safe(text)}</p>`}</div>`);
@@ -186,7 +281,7 @@ async function flowRevert(revision){
 
 async function operatorView(){
  const content=activatePanel('Estúdio de fluxos','Explique a mudança em português. O agente interpreta, mostra o diff e só grava na biblioteca depois da sua confirmação.');
- content.innerHTML=`<div class="flow-studio"><section class="operator-chat"><div class="studio-head"><div><p class="eyebrow">AJUSTE POR PROMPT</p><h3>Ajuste o diálogo conversando</h3><p>O agente lê a biblioteca ativa, interpreta sua instrução e propõe respostas por etapa. Cada aplicação gera uma versão reversível e um aprendizado na memória comercial.</p></div><span class="status-pill" id="studio-version">versão …</span></div><div id="operator-thread" class="operator-thread"></div><div class="example-chips"><button data-example="Quando a clínica disser que já usa outro sistema, pergunte qual é antes de falar do comparativo.">Objeção de concorrente</button><button data-example="Quando o lead perguntar sobre preço, responda que o valor depende do tamanho da equipe e pergunte quantos profissionais atendem hoje.">Objeção de preço</button><button data-example="Na etapa proposta, troque a resposta do link para explicar que os 3 meses começam após a ativação acompanhada.">Link de 3 meses</button><button data-example="Na etapa follow-up, crie uma retomada para quem não respondeu depois de 3 dias.">Follow-up</button></div><form id="operator-form" class="operator-composer"><div class="composer-top"><select name="stage">${flowStageOptions('descoberta')}</select><small>Ctrl+Enter envia</small></div><textarea name="message" required rows="4" placeholder="Ex.: quando a clínica disser que usa outro sistema, pergunte qual é antes de enviar o comparativo."></textarea><details><summary>Adicionar contexto, links ou imagens</summary><textarea name="context" rows="2" placeholder="Informações que o agente precisa considerar"></textarea><textarea name="links" rows="2" placeholder="Links oficiais"></textarea><textarea name="images" rows="2" placeholder="Imagem/poster de apoio"></textarea></details><div class="composer-row"><small>A alteração só entra na biblioteca depois de você revisar e aplicar.</small><button class="primary-button" type="submit">✦ Interpretar ajuste</button></div></form></section><aside class="studio-side"><section class="data-card" id="proposal-card"></section><section class="data-card" id="history-card"></section><section class="data-card" id="lessons-card"></section></aside></div>`;
+ content.innerHTML=`<div class="flow-studio"><section class="operator-chat"><div class="studio-head"><div><p class="eyebrow">AJUSTE POR PROMPT</p><h3>Ajuste o diálogo conversando</h3><p>O agente lê a biblioteca ativa, interpreta sua instrução e propõe respostas por etapa. Cada aplicação gera uma versão reversível e um aprendizado na memória comercial.</p></div><span class="status-pill" id="studio-version">versão …</span></div><div id="operator-thread" class="operator-thread"></div><div class="example-chips"><button data-example="Quando a clínica disser que já usa outro sistema, pergunte qual é antes de falar do comparativo.">Objeção de concorrente</button><button data-example="Quando o lead perguntar sobre preço, responda que o valor depende do tamanho da equipe e pergunte quantos profissionais atendem hoje.">Objeção de preço</button><button data-example="Na etapa proposta, troque a resposta do link para explicar que os 3 meses começam após a ativação acompanhada.">Link de 3 meses</button><button data-example="Na etapa follow-up, crie uma retomada para quem não respondeu depois de 3 dias.">Follow-up</button></div><form id="operator-form" class="operator-composer"><div class="composer-top"><select name="stage">${flowStageOptions('descoberta')}</select><small>Ctrl+Enter envia</small></div><textarea name="message" required rows="4" placeholder="Ex.: quando a clínica disser que usa outro sistema, pergunte qual é antes de enviar o comparativo."></textarea><details><summary>Adicionar contexto, links ou imagens</summary><textarea name="context" rows="2" placeholder="Informações que o agente precisa considerar"></textarea><textarea name="links" rows="2" placeholder="Links oficiais"></textarea><textarea name="images" rows="2" placeholder="Imagem/poster de apoio"></textarea></details><div class="composer-row"><small>A alteração só entra na biblioteca depois de você revisar e aplicar.</small><button class="primary-button" type="submit">✦ Interpretar ajuste</button></div></form></section><aside class="studio-side"><section class="data-card" id="test-card"></section><section class="data-card" id="proposal-card"></section><section class="data-card" id="history-card"></section><section class="data-card" id="lessons-card"></section></aside></div>`;
  const thread=el('#operator-thread');
  if(!flowChatLog.length)flowChatLog.push({role:'agent',text:'Olá, Denis. Descreva em português o que deve mudar no diálogo. Eu interpreto, mostro o diff e só gravo depois da sua confirmação.'});
  thread.innerHTML=flowChatLog.map(m=>`<div class="operator-message ${m.role==='operator'?'operator':'agent'}">${m.role==='operator'?safe(m.text):`<p>${safe(m.text)}</p>`}</div>`).join('');
@@ -204,7 +299,8 @@ async function operatorView(){
   }catch(error){flowAddMessage('agent',`Não consegui interpretar o ajuste: ${error.message||error}`);report(error);}
   finally{button.disabled=false;button.textContent='✦ Interpretar ajuste';thread.scrollTop=thread.scrollHeight;}
  };
- flowRenderProposal();flowRenderHistory(flowStateCache.history||[]);flowRenderLessons(flowStateCache.lessons||[]);
+ const leads=await call('leads').catch(()=>[]);
+ flowRenderTest(leads);flowRenderProposal();flowRenderHistory(flowStateCache.history||[]);flowRenderLessons(flowStateCache.lessons||[]);
  await flowRefreshState();
 }
 

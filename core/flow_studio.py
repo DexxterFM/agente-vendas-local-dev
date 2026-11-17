@@ -526,6 +526,108 @@ class FlowStudio:
         self.memory.audit('flow.library', f'response_library:{new_revision}', 'ok', summary, actor='operator')
         return item
 
+    def teach(self, message, response, *, stage: str = '', context: str = '',
+              lead_id=None) -> dict:
+        """Salva a resposta editada no balão da conversa e a vincula à mensagem do lead.
+
+        A mensagem recebida vira a situação reconhecida e também o gatilho de
+        correspondência. Assim, quando o operador repetir a mesma pergunta no
+        teste, o agente devolve exatamente a resposta ajustada.
+        """
+        situation = _clean(message, FIELD_LIMITS['question'])
+        reply = _clean(response, FIELD_LIMITS['response'])
+        if not situation:
+            raise ValueError('Informe a mensagem do cliente que o agente deve reconhecer.')
+        if not reply:
+            raise ValueError('Escreva a resposta ajustada antes de salvar.')
+        stage_value = (
+            _stage(stage)
+            or self._explicit_stage(situation)
+            or self._infer_stage(normalize(situation))
+            or 'descoberta'
+        )
+        templates = [dict(entry) for entry in self.templates()]
+        situation_key = normalize_words(situation)
+        existing = next(
+            (
+                entry for entry in templates
+                if entry.get('custom')
+                and normalize_words(entry.get('question')) == situation_key
+            ),
+            None,
+        )
+        if existing is None and situation_key.strip():
+            existing = next(
+                (
+                    entry for entry in templates
+                    if entry.get('custom')
+                    and situation_key.strip() in normalize_words(entry.get('match'))
+                ),
+                None,
+            )
+        if existing is not None:
+            before = dict(existing)
+            existing['stage'] = stage_value
+            existing['response'] = reply
+            existing['match'] = existing.get('match') or situation
+            if context:
+                existing['context'] = _clean(context, FIELD_LIMITS['context'])
+            existing['custom'] = True
+            if existing == before:
+                return {
+                    'applied': False,
+                    'reason': 'A resposta já está salva para esta mensagem.',
+                    'revision': self.revision(),
+                    'template': before,
+                }
+            change = _change('update', before, dict(existing))
+            item = existing
+        else:
+            item = _clean_template({
+                'stage': stage_value,
+                'question': situation,
+                'response': reply,
+                'context': context,
+                'match': situation,
+            })
+            item['custom'] = True
+            templates.insert(0, item)
+            change = _change('add', None, dict(item))
+        new_revision = self.revision() + 1
+        summary = (
+            f'Ajuste na conversa · {STAGE_LABELS.get(item["stage"], item["stage"])}: '
+            f'{situation[:70]}'
+        )
+        lesson = (
+            f'Quando o lead enviar “{situation[:160]}”, responda: “{reply[:240]}”'
+        )
+        self._store(
+            templates,
+            revision=new_revision,
+            prompt=f'Ajuste direto no diálogo: {situation}',
+            summary=summary,
+            lesson=lesson,
+            operations=[self._public_operation(change)],
+            changes=[change],
+            source='dialogue',
+        )
+        self._learn([change], prompt=lesson)
+        self.memory.audit(
+            'flow.teach',
+            f'response_library:{new_revision}',
+            'ok',
+            f'lead={lead_id if lead_id is not None else "-"}; {summary}',
+            actor='operator',
+        )
+        return {
+            'applied': True,
+            'revision': new_revision,
+            'template': item,
+            'changes': [change],
+            'summary': summary,
+            'lesson': lesson,
+        }
+
     def revert(self, revision) -> dict:
         try:
             target_revision = int(revision)
@@ -946,13 +1048,20 @@ class FlowStudio:
         match_text = item.get('match', '')
         triggers = [part.strip() for part in re.split(r'[|\n;]+', match_text) if part.strip()]
         question_tokens = tokens(' '.join([question] + triggers))
+        # A resposta ensinada no balão usa a própria mensagem do lead como
+        # gatilho. Igualdade exata também cobre mensagens curtas como “oi”,
+        # que não têm palavras suficientes para a pontuação por tokens.
+        user_words = normalize_words(user_text)
+        if user_words.strip() and any(
+            normalize_words(phrase) == user_words for phrase in [question] + triggers
+        ):
+            return 1.0, max(3, len(question_tokens))
         if not question_tokens:
             return 0.0, 0
         user_tokens = tokens(user_text)
         target_tokens = user_tokens | tokens(previous_assistant)
         shared = question_tokens & target_tokens
         score = len(shared) / len(question_tokens)
-        user_words = normalize_words(user_text)
         for phrase in [question] + triggers:
             phrase_words = normalize_words(phrase)
             if len(phrase_words.strip()) >= 12 and phrase_words in user_words:
