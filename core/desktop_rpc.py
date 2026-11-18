@@ -317,6 +317,13 @@ def execute(command, args):
                 action_id=memory.create_pending_action('instagram_follow_intro',payload,'Perfil público compatível com o público do ERP Clínica TEA')
                 memory.set_setting(key,str(action_id));created.append({'id':action_id,**payload})
             return {'created':created,'reviewed':len(profiles)}
+        if command == 'campaignProfileIntro':
+            # O agente entra no perfil que recebeu curtida/comentário/repost e
+            # lê nome+bio para escolher a saudação já aprovada nos fluxos.
+            username=str(args.get('username','')).strip().lstrip('@').lower()
+            text=str(args.get('text',''))[:6000]
+            segment=_follower_segment({'username':username,'text':text})
+            return {'username':username,'segment':segment['segment'],'reason':segment['reason'],'intro':segment['text']}
         if command == 'campaignClaim':
             row=memory.db.execute(
                 "select id,payload from pending_actions where action='instagram_follow_intro' and status in ('pending','approved') order by id asc limit 1"
@@ -626,6 +633,9 @@ def execute(command, args):
         if command == 'internalBrowserMetadata':
             from scripts.vps.internal_browser import metadata
             return metadata()
+        if command == 'internalBrowserEngagementMetadata':
+            from scripts.vps.internal_browser import engagement_metadata
+            return engagement_metadata()
         if command == 'internalBrowserScreenshot':
             from scripts.vps.internal_browser import screenshot
             return screenshot()

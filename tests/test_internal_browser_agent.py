@@ -506,5 +506,95 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
         self.assertNotIn("campaignFail", [c.args[0] for c in execute.call_args_list if c.args])
 
 
+    @patch("scripts.vps.internal_browser_agent._wait")
+    @patch("scripts.vps.internal_browser_agent._own_username", return_value="erpclinicatea")
+    @patch("scripts.vps.internal_browser_agent._open_home", return_value=True)
+    @patch("scripts.vps.internal_browser_agent._send_overlay_bubble")
+    @patch(
+        "scripts.vps.internal_browser_agent._open_profile_dm",
+        return_value={"mode": "overlay", "url": "https://www.instagram.com/clinica.teste/"},
+    )
+    @patch("scripts.vps.internal_browser_agent.browser.action")
+    @patch(
+        "scripts.vps.internal_browser_agent._engagement_metadata",
+        side_effect=[
+            {
+                "follow": {"x": 900.0, "y": 120.0},
+                "post": {"x": 640.0, "y": 300.0},
+                "like": None,
+                "comment": None,
+                "comment_field": None,
+                "share": None,
+                "repost": None,
+            },
+            {
+                "follow": None,
+                "post": None,
+                "like": {"x": 700.0, "y": 600.0},
+                "comment": {"x": 760.0, "y": 600.0},
+                "comment_field": {"x": 640.0, "y": 740.0},
+                "share": {"x": 820.0, "y": 600.0},
+                "repost": None,
+            },
+            {
+                "follow": None,
+                "post": None,
+                "like": None,
+                "comment": None,
+                "comment_field": {"x": 640.0, "y": 740.0},
+                "share": {"x": 820.0, "y": 600.0},
+                "repost": None,
+            },
+            {
+                "follow": None,
+                "post": None,
+                "like": None,
+                "comment": None,
+                "comment_field": None,
+                "share": None,
+                "repost": {"x": 640.0, "y": 420.0},
+            },
+        ],
+    )
+    @patch("scripts.vps.internal_browser_agent._page")
+    @patch("scripts.vps.internal_browser_agent.execute")
+    def test_prospecting_engages_and_sends_approved_profile_intro(
+        self, execute, _page, engagement, action, open_dm, send_overlay, _home, _own, _wait
+    ):
+        execute.side_effect = [
+            {"active": True, "prospecting_active": True},
+            {"ready": True},
+            {"created": [{"id": 3}]},
+            {"claimed": True, "id": 3, "stage": "", "payload": {"username": "clinica.teste"}},
+            {"reserved": True},
+            {"username": "clinica.teste", "segment": "clinic_multi", "intro": "Saudação aprovada para clínica"},
+            {"id": 3, "stage": "dm"},
+            {"id": 3, "state": "sent"},
+        ]
+        _page.side_effect = [
+            "https://www.instagram.com/",
+            [{"username": "clinica.teste", "text": "Clínica multidisciplinar TEA", "following": False}],
+            "Clínica TEA atendimento infantil equipe multidisciplinar",
+        ]
+
+        result = internal_browser_agent._prospecting_cycle()
+
+        self.assertEqual("prospecting-sent", result["browser"])
+        self.assertIn(call({"kind": "click", "x": 900.0, "y": 120.0}), action.call_args_list)
+        self.assertIn(call({"kind": "click", "x": 700.0, "y": 600.0}), action.call_args_list)
+        self.assertIn(call({"kind": "click", "x": 820.0, "y": 600.0}), action.call_args_list)
+        self.assertIn(call({"kind": "click", "x": 640.0, "y": 420.0}), action.call_args_list)
+        self.assertIn(call({"kind": "type", "text": "Muito bonito o trabalho de vocês! 😊"}), action.call_args_list)
+        self.assertIn(
+            call("campaignProfileIntro", {"username": "clinica.teste", "text": "Clínica TEA atendimento infantil equipe multidisciplinar"}),
+            execute.call_args_list,
+        )
+        send_overlay.assert_called_once_with("Saudação aprovada para clínica")
+        self.assertIn(
+            call("campaignStage", {"id": 3, "stage": "dm"}),
+            execute.call_args_list,
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

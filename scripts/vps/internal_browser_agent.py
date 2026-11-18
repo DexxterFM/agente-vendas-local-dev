@@ -176,6 +176,15 @@ def _prospecting_point(expression: str) -> dict[str, float] | None:
         return None
 
 
+def _engagement_metadata() -> dict[str, Any]:
+    """Metadados de localização dos controles de engajamento da sessão interna."""
+    try:
+        value = browser.engagement_metadata()
+    except browser.InternalBrowserError:
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
 class _ProspectSkip(RuntimeError):
     """Perfil sem superfície de DM; retentar não muda o resultado."""
 
@@ -376,23 +385,52 @@ def _prospecting_cycle() -> dict[str, Any]:
         execute("campaignConfirm", {"id": action_id, "state": "pending", "note": "Aguardando a próxima janela"})
         return {"prospecting": True, "browser": "prospecting-paced", "wait_seconds": reserved.get("wait_seconds", 0)}
     try:
+        intro = str(payload.get('intro') or 'Olá! Muito legal o trabalho de vocês ❤️')
         if stage != "dm":
             browser.action({"kind": "navigate", "url": f"https://www.instagram.com/{username}/"})
             _wait(1.8)
-            follow = _prospecting_point(r'''(()=>{const e=[...document.querySelectorAll('button,[role="button"]')].find(x=>/^(seguir|follow)$/i.test((x.innerText||x.getAttribute('aria-label')||'').trim()));if(!e)return null;const r=e.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()''')
+            # Metadados de localização: o agente clica nos pontos reais dos
+            # controles (seguir, curtir, comentar, recompartilhar), nunca em
+            # texto da página. Um controle ausente não bloqueia a DM.
+            engagement = _engagement_metadata()
+            follow = engagement.get("follow")
             if follow: browser.action({"kind": "click", **follow}); _wait(.8)
-            post = _prospecting_point(r'''(()=>{const e=[...document.querySelectorAll('a[href]')].find(x=>{try{return /\/(?:p|reel)\//.test(new URL(x.href,location.href).pathname)}catch{return false}});if(!e)return null;const r=e.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()''')
-            if post: browser.action({"kind": "click", **post}); _wait(1.3)
-            like = _prospecting_point(r'''(()=>{const e=[...document.querySelectorAll('button,[role="button"],[aria-label]')].find(x=>/^(?:curtir|like)$/i.test((x.getAttribute('aria-label')||x.innerText||'').trim()));if(!e)return null;const r=e.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()''')
+            post = engagement.get("post")
+            if post:
+                browser.action({"kind": "click", **post}); _wait(1.3)
+                engagement = _engagement_metadata()
+            like = engagement.get("like")
             if like: browser.action({"kind": "click", **like}); _wait(.8)
-            comment = _prospecting_point(r'''(()=>{const e=[...document.querySelectorAll('textarea,input,[contenteditable="true"],[role="textbox"]')].find(x=>/coment|comment|adicionar/i.test((x.placeholder||'')+' '+(x.getAttribute('aria-label')||'')));if(!e)return null;const r=e.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()''')
+            comment = engagement.get("comment")
             if comment:
-                browser.action({"kind": "click", **comment}); browser.action({"kind": "type", "text": "Muito bonito o trabalho de vocês! 😊"}); browser.action({"kind": "key", "key": "Enter"}); _wait(1.0)
-            # A partir daqui a retentativa não repete follow/curtida/comentário:
-            # apenas reabre a DM do mesmo perfil.
+                # O balão de comentários abre o campo; a localização do campo
+                # é lida de novo porque a interface se reorganiza ao abrir.
+                browser.action({"kind": "click", **comment}); _wait(.6)
+                engagement = _engagement_metadata()
+            field = engagement.get("comment_field") or comment
+            if field:
+                browser.action({"kind": "click", **field})
+                browser.action({"kind": "type", "text": "Muito bonito o trabalho de vocês! 😊"})
+                browser.action({"kind": "key", "key": "Enter"}); _wait(1.0)
+            share = engagement.get("share")
+            if share:
+                browser.action({"kind": "click", **share}); _wait(.7)
+                repost = _engagement_metadata().get("repost")
+                if repost: browser.action({"kind": "click", **repost}); _wait(.8)
+            # Entra no perfil que recebeu as ações, lê nome+bio e escolhe a
+            # saudação já aprovada nos fluxos para clínica ou profissional.
+            browser.action({"kind": "navigate", "url": f"https://www.instagram.com/{username}/"})
+            _wait(1.5)
+            profile_text = str(_page(r'''(()=>{
+              const scope=document.querySelector('header section')||document.querySelector('header')||document.body;
+              return (scope.innerText||'').replace(/\s+/g,' ').trim().slice(0,4000);
+            })()''') or '')
+            intro_info = execute("campaignProfileIntro", {"username": username, "text": profile_text})
+            intro = str(intro_info.get("intro") or intro)
+            # A partir daqui a retentativa não repete follow/curtida/comentário/
+            # repost: apenas reabre a DM do mesmo perfil.
             execute("campaignStage", {"id": action_id, "stage": "dm"})
         surface = _open_profile_dm(username)
-        intro = str(payload.get('intro') or 'Olá! Muito legal o trabalho de vocês ❤️')
         if surface.get("mode") == "thread" and surface.get("url"):
             _send_bubble(intro, str(surface["url"]))
         else:

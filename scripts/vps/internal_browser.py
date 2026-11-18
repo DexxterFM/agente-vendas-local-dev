@@ -575,6 +575,66 @@ def metadata() -> dict[str, Any]:
     }
 
 
+def engagement_metadata() -> dict[str, Any]:
+    """Localizações dos controles de engajamento da postagem/perfil abertos.
+
+    São devolvidas somente coordenadas e indicadores estruturais. Nenhum texto
+    da postagem ou do perfil sai do navegador: o operador e o agente recebem
+    apenas os pontos onde o clique nativo deve ser entregue.
+    """
+    expression = r'''(()=>{
+      const norm=value=>String(value||'').replace(/\s+/g,' ').trim();
+      const visible=element=>{const r=element.getBoundingClientRect();return r.width>0&&r.height>0};
+      const point=element=>{const r=element.getBoundingClientRect();return {x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)}};
+      const all=[...document.querySelectorAll('button,[role="button"],a,[aria-label]')].filter(visible);
+      const find=pattern=>all.find(element=>pattern.test(norm([element.getAttribute('aria-label'),element.innerText].filter(Boolean).join(' '))));
+      const like=find(/^(?:curtir|like)$/i);
+      const comment=find(/^(?:comentar|coment[aá]rio|comment)$/i);
+      const share=find(/^(?:compartilhar|share|repost|recompartilhar)$/i);
+      const repost=find(/^(?:repost|recompartilhar|compartilhar no feed|share to feed)$/i);
+      const follow=find(/^(?:seguir|follow)$/i);
+      const post=[...document.querySelectorAll('a[href]')].find(element=>{
+        try{return /\/(?:p|reel)\/[A-Za-z0-9_-]+/.test(new URL(element.href,location.href).pathname)}catch{return false}
+      });
+      const field=[...document.querySelectorAll('textarea,input,[contenteditable="true"],[role="textbox"]')].filter(visible).find(element=>/coment|comment|adicionar/i.test(norm((element.getAttribute('placeholder')||'')+' '+(element.getAttribute('aria-label')||''))));
+      return {
+        path:location.pathname,
+        post:post?point(post):null,
+        follow:follow?point(follow):null,
+        like:like?point(like):null,
+        comment:comment?point(comment):null,
+        comment_field:field?point(field):null,
+        share:share?point(share):null,
+        repost:repost?point(repost):null,
+      };
+    })()'''
+    value = evaluate(expression)
+    if not isinstance(value, dict):
+        raise InternalBrowserError("Metadados de engajamento inválidos")
+
+    def clean_point(item: Any) -> dict[str, float] | None:
+        if not isinstance(item, dict):
+            return None
+        try:
+            x, y = float(item.get("x")), float(item.get("y"))
+        except (TypeError, ValueError):
+            return None
+        if not (0 <= x <= 1280 and 0 <= y <= 900):
+            return None
+        return {"x": x, "y": y}
+
+    return {
+        "path": str(value.get("path") or "")[:240],
+        "post": clean_point(value.get("post")),
+        "follow": clean_point(value.get("follow")),
+        "like": clean_point(value.get("like")),
+        "comment": clean_point(value.get("comment")),
+        "comment_field": clean_point(value.get("comment_field")),
+        "share": clean_point(value.get("share")),
+        "repost": clean_point(value.get("repost")),
+    }
+
+
 def frontend_events(clear: bool = True) -> dict[str, Any]:
     """Instala e consome sinais estruturais emitidos pelo front autenticado.
 

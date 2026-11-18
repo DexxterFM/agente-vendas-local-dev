@@ -115,6 +115,43 @@ class InternalBrowserTests(unittest.TestCase):
         self.assertNotIn("private_text", result)
 
     @patch("scripts.vps.internal_browser.evaluate")
+    def test_engagement_metadata_returns_only_control_locations(self, evaluate):
+        evaluate.return_value = {
+            "path": "/p/abc123/",
+            "post": {"x": 640, "y": 300},
+            "follow": {"x": 900, "y": 120},
+            "like": {"x": 700, "y": 600},
+            "comment": {"x": 760, "y": 600},
+            "comment_field": {"x": 640, "y": 740},
+            "share": {"x": 820, "y": 600},
+            "repost": {"x": 640, "y": 420},
+            "private_text": "não pode sair",
+        }
+
+        result = internal_browser.engagement_metadata()
+
+        self.assertEqual("/p/abc123/", result["path"])
+        self.assertEqual({"x": 700.0, "y": 600.0}, result["like"])
+        self.assertEqual({"x": 820.0, "y": 600.0}, result["share"])
+        self.assertEqual({"x": 640.0, "y": 420.0}, result["repost"])
+        self.assertNotIn("private_text", result)
+
+    @patch("scripts.vps.internal_browser.evaluate")
+    def test_engagement_metadata_drops_out_of_bounds_locations(self, evaluate):
+        evaluate.return_value = {
+            "path": "/",
+            "like": {"x": 5000, "y": 600},
+            "share": {"x": 200, "y": -30},
+            "comment": "inválido",
+        }
+
+        result = internal_browser.engagement_metadata()
+
+        self.assertIsNone(result["like"])
+        self.assertIsNone(result["share"])
+        self.assertIsNone(result["comment"])
+
+    @patch("scripts.vps.internal_browser.evaluate")
     def test_frontend_events_expose_only_structural_status(self, evaluate):
         evaluate.return_value = {
             "installed": True,
