@@ -11,6 +11,7 @@ from core.memory import Memory
 from adapters.ollama import OllamaClient
 from adapters.local_llama import LocalLlamaClient
 from core.activation_flow import ActivationFlow, ActivationRequest
+from core.activation_token import ActivationTokenManager
 
 BROWSER_DRAFT_VERSION = 'context-v8-preserved-bubble-separator'
 BROWSER_BUBBLE_SEPARATOR = '\n[[AGENT_BUBBLE]]\n'
@@ -88,8 +89,8 @@ def _response_templates(memory):
 def _save_response_templates(memory, templates):
     memory.set_setting('sales.response_library.v1', json.dumps(templates, ensure_ascii=False))
 
-def _installation_bubbles(memory, offer):
-    """Link da versão escolhida e os três avisos editáveis em balões separados."""
+def _installation_bubbles(memory, offer, lead_id=None, lead_name=None):
+    """Link da versão escolhida, token de ativação e os três avisos editáveis em balões separados."""
     defaults = {
         'install-validity': 'Aviso esse link é valido por 3 dias. Caso não seja ativado voce perde o premios 😢',
         'install-security': 'Essa é uma tivação segura seus dados saõ criptografados e possuimos um sitema demonitormento. Sem uso de dados bancarios e sem uso de cartão.',
@@ -101,10 +102,26 @@ def _installation_bubbles(memory, offer):
     }
     def phrase(template_id):
         return (saved.get(template_id) or defaults[template_id])[:1200]
-    return (f'Seu link de instalação: {offer["url"]}'
-            + BROWSER_BUBBLE_SEPARATOR + phrase('install-validity')
-            + BROWSER_BUBBLE_SEPARATOR + phrase('install-security')
-            + BROWSER_BUBBLE_SEPARATOR + phrase('install-support'))
+    bubbles = [f'Seu link de instalação: {offer["url"]}']
+    # Consome um token de ativação de uso único para este lead.
+    token_code = None
+    if lead_id is not None:
+        try:
+            token_mgr = ActivationTokenManager(memory)
+            consumed = token_mgr.consume_token(int(lead_id), lead_name)
+            if consumed and consumed.get('consumed'):
+                token_code = consumed.get('token')
+        except Exception:
+            # Sem tokens disponíveis não bloqueia o envio do link.
+            token_code = None
+    if token_code:
+        bubbles.append(f'Seu código de ativação: {token_code}')
+    bubbles.extend([
+        phrase('install-validity'),
+        phrase('install-security'),
+        phrase('install-support'),
+    ])
+    return BROWSER_BUBBLE_SEPARATOR.join(bubbles)
 
 def _operator_assist(message, stage, context, links, images):
     text = str(message or '').strip()
@@ -1026,15 +1043,17 @@ def execute(command, args):
                 if re.search(r'\b(?:cl[ií]nica|multiprofissional|equipe)\b', latest_user, re.I):
                     memory.set_setting('sales.agent.trial_segment:'+str(int(args['id'])), 'clinic')
                     offer = trial_offer['clinic']
+                    lead = memory.get_lead_detail(int(args['id'])) or {}
                     return (f'Perfeito! A versão {offer["name"]} é a ideal para vocês.'
                             + BROWSER_BUBBLE_SEPARATOR
-                            + _installation_bubbles(memory, offer))
+                            + _installation_bubbles(memory, offer, int(args['id']), lead.get('name')))
                 if re.search(r'\b(?:profissional|individual|consult[oó]rio|sozinh[oa])\b', latest_user, re.I):
                     memory.set_setting('sales.agent.trial_segment:'+str(int(args['id'])), 'professional')
                     offer = trial_offer['professional']
+                    lead = memory.get_lead_detail(int(args['id'])) or {}
                     return (f'Perfeito! A versão {offer["name"]} é a ideal para você.'
                             + BROWSER_BUBBLE_SEPARATOR
-                            + _installation_bubbles(memory, offer))
+                            + _installation_bubbles(memory, offer, int(args['id']), lead.get('name')))
             trial_segment = memory.get_setting('sales.agent.trial_segment:'+str(int(args['id'])), '')
             if (
                 trial_segment in ('clinic', 'professional')
@@ -1054,9 +1073,10 @@ def execute(command, args):
                 and re.search(r'\b(?:3\s+meses|link|ativa[cç][aã]o|presente)\b', previous_assistant, re.I)
             ):
                 offer = trial_offer[trial_segment]
+                lead = memory.get_lead_detail(int(args['id'])) or {}
                 return (f'Perfeito! Você ganhou 3 meses grátis do {offer["name"]}.'
                         + BROWSER_BUBBLE_SEPARATOR
-                        + _installation_bubbles(memory, offer))
+                        + _installation_bubbles(memory, offer, int(args['id']), lead.get('name')))
             # Keep the first two turns deterministic so the sales flow does not
             # skip qualification or jump straight to a generic pitch.
             if not history:
@@ -1233,6 +1253,18 @@ def execute(command, args):
         if command == 'activationList':
             flow = ActivationFlow(memory)
             return {'activations': flow.list_all()}
+        if command == 'activationTokenRegister':
+            mgr = ActivationTokenManager(memory)
+            tokens = args.get('tokens', [])
+            if isinstance(tokens, str):
+                tokens = [t.strip() for t in tokens.split(',') if t.strip()]
+            return mgr.register_tokens(tokens)
+        if command == 'activationTokenStats':
+            mgr = ActivationTokenManager(memory)
+            return mgr.stats()
+        if command == 'activationTokenList':
+            mgr = ActivationTokenManager(memory)
+            return {'tokens': mgr.list_all()}
         if command == 'responseLibrary': return _response_templates(memory)
         if command == 'followIntroTemplates':
             from core.flow_studio import FOLLOW_INTRO_TEMPLATES
