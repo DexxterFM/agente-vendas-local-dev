@@ -96,10 +96,32 @@ INSTALL_FOLLOWUP_TEMPLATES = [
     },
 ]
 
+# Texto aprovado pelo operador para quem usa aplicativo gratuito. Cada balão
+# tem ID fixo para poder ser editado na biblioteca sem alterar o roteiro.
+FREE_APP_TEMPLATES = [
+    {
+        'id': 'free-app-offer-1', 'stage': 'descoberta',
+        'question': 'A pessoa usa um aplicativo gratuito para gestão',
+        'response': 'Estamos oferecendo 3 meses grátis para você usar! Sem cobranças automáticas, sem uso de cartão.',
+        'context': 'Primeiro balão para quem usa app gratuito. Texto aprovado pelo operador.',
+        'links': '', 'images': '',
+        'match': 'app gratuito | aplicativo gratuito | gratuito | grátis | sem cartão',
+    },
+    {
+        'id': 'free-app-offer-2', 'stage': 'proposta',
+        'question': 'Condição de engajamento para quem usa app gratuito',
+        'response': 'Se engajar nos 3 primeiros meses e atingir um uso efetivo do app, oferecemos mais 3 meses de cortesia.',
+        'context': 'Segundo balão, enviado logo após a oferta de 3 meses grátis.',
+        'links': '', 'images': '',
+        'match': 'uso efetivo do app | mais 3 meses de cortesia | engajar',
+    },
+]
+
 BUILTIN_TEMPLATES = [
     *FOLLOW_INTRO_TEMPLATES,
     PRIZE_CHOICE_TEMPLATE,
     *INSTALL_FOLLOWUP_TEMPLATES,
+    *FREE_APP_TEMPLATES,
     {'id': 'welcome-app', 'stage': 'acolhimento', 'question': 'A pessoa agradeceu o elogio', 'response': 'Você merece! Me conta: já possui algum app para a gestão da sua clínica? 😊', 'context': 'Use depois de um agradecimento simples; não diga que a pessoa compartilhou algo.', 'links': '', 'images': '', 'match': 'obrigado | obrigada | agradeceu | valeu'},
     {'id': 'qualified-greeting', 'stage': 'descoberta', 'question': 'Lead qualificado responde apenas com oi, olá ou uma saudação', 'response': 'Tudo bem! Espero que sim 😊 Por acaso já utiliza algum app ou programa para administrar sua clínica? Se já usa, qual?', 'context': 'Trate a saudação como continuidade da conversa; não reinicie a apresentação do ERP.', 'links': '', 'images': '', 'match': 'oi | olá | bom dia | boa tarde | boa noite'},
     {'id': 'no-app', 'stage': 'apresentação', 'question': 'A pessoa diz que ainda não usa app', 'response': 'Então chegou o momento de conhecer algo que pode salvar muitas horas do seu dia e deixar mais tempo para cuidar dos pacientes. Quer que eu mostre como funciona? 😊', 'context': 'Apresente benefícios antes de falar do período de teste.', 'links': '', 'images': '', 'match': 'não uso | ainda não | nunca usei | não usamos'},
@@ -299,7 +321,7 @@ class FlowStudio:
         # Instalações que já salvaram a biblioteca também precisam enxergar as
         # frases de agradecimento por seguir; a versão salva sempre prevalece.
         known = {str(item.get('id') or '') for item in stored}
-        for required in (*FOLLOW_INTRO_TEMPLATES, PRIZE_CHOICE_TEMPLATE, *INSTALL_FOLLOWUP_TEMPLATES):
+        for required in (*FOLLOW_INTRO_TEMPLATES, PRIZE_CHOICE_TEMPLATE, *INSTALL_FOLLOWUP_TEMPLATES, *FREE_APP_TEMPLATES):
             if required['id'] not in known:
                 stored.append(dict(required))
         return stored

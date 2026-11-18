@@ -158,6 +158,41 @@ def _contextual_no_reply(previous_assistant):
         return 'Tudo bem! Quando quiser escolher a versão, é só me avisar. 😊'
     return None
 
+FREE_APP_OFFER_DEFAULTS = {
+    'free-app-offer-1': 'Estamos oferecendo 3 meses grátis para você usar! Sem cobranças automáticas, sem uso de cartão.',
+    'free-app-offer-2': 'Se engajar nos 3 primeiros meses e atingir um uso efetivo do app, oferecemos mais 3 meses de cortesia.',
+}
+
+def _free_app_offer(memory):
+    """Oferta aprovada para quem usa app gratuito, editável na biblioteca de fluxos."""
+    saved = {
+        str(item.get('id') or ''): str(item.get('response') or '').strip()
+        for item in _response_templates(memory) if isinstance(item, dict)
+    }
+    def phrase(template_id):
+        return (saved.get(template_id) or FREE_APP_OFFER_DEFAULTS[template_id])[:1200]
+    return (phrase('free-app-offer-1')
+            + BROWSER_BUBBLE_SEPARATOR
+            + phrase('free-app-offer-2'))
+
+def _mentions_free_app(text):
+    """Reconhece quem usa aplicativo gratuito para gestão."""
+    text = str(text or '')
+    return bool(
+        re.search(r'\b(?:app|aplicativo|programa|sistema|software|ferramenta)\s+(?:gratuit[oa]|gr[aá]tis|free)\b', text, re.I)
+        or re.search(r'\b(?:gratuit[oa]|gr[aá]tis|free)\s+(?:app|aplicativo|programa|sistema|software)\b', text, re.I)
+        or re.search(r'\b(?:uso|usamos|usa|utilizo|utilizamos|tem|temos)\s+(?:um|uma|o|a)?\s*(?:app|aplicativo|programa|sistema)?\s*(?:gratuit[oa]|gr[aá]tis|free)\b', text, re.I)
+        or re.search(r'\b(?:[eé]|essa|esse)\s+(?:gratuit[oa]|gr[aá]tis|free)\b', text, re.I)
+    )
+
+def _accepts_free_app_offer(text):
+    """Reconhece aceite da oferta feita a quem usa app gratuito."""
+    return bool(str(text or '') and re.search(
+        r'\b(?:vou aceitar|aceito|aceitar|quero|sim|s[ií]m|topo|pode enviar|manda o link|enviar o link)\b',
+        str(text),
+        re.I,
+    ))
+
 def _operator_assist(message, stage, context, links, images):
     text = str(message or '').strip()
     if not text:
@@ -960,6 +995,38 @@ def execute(command, args):
                     + BROWSER_BUBBLE_SEPARATOR
                     + 'Nosso compromisso é atender você com excelência, para que tenha uma experiência realmente transformadora na forma de administrar sua clínica. 😊'
                 )
+            # Quem usa app gratuito recebe a oferta aprovada pelo operador.
+            # Este ramo vem antes do match livre para que uma edição salva com
+            # match amplo não devolva apenas um dos dois balões da oferta.
+            free_offer_key = 'sales.agent.free_app_offer:'+str(int(args['id']))
+            if (previous_assistant
+                    and re.search(r'\b(?:app|aplicativo|programa|sistema|gest[aã]o)\b', previous_assistant, re.I)
+                    and _mentions_free_app(latest_user)):
+                memory.set_setting(free_offer_key, '1')
+                return _free_app_offer(memory)
+            if memory.get_setting(free_offer_key, '') == '1' and previous_assistant:
+                free_offer_shown = bool(re.search(
+                    r'\b(?:3 meses gr[aá]tis|uso efetivo do app|sem cobran[cç]as autom[aá]ticas)\b',
+                    previous_assistant,
+                    re.I,
+                ))
+                if free_offer_shown and _accepts_free_app_offer(latest_user):
+                    segment = memory.get_setting('sales.agent.trial_segment:'+str(int(args['id'])), '')
+                    if segment not in ('clinic', 'professional'):
+                        segment = 'clinic'
+                        memory.set_setting('sales.agent.trial_segment:'+str(int(args['id'])), segment)
+                    offer = trial_offer[segment]
+                    lead_offer = memory.get_lead_detail(int(args['id'])) or {}
+                    memory.set_setting(free_offer_key, '0')
+                    return (f'Perfeito! Você ganhou 3 meses grátis do {offer["name"]}.'
+                            + BROWSER_BUBBLE_SEPARATOR
+                            + _installation_bubbles(memory, offer, int(args['id']), lead_offer.get('name')))
+                if free_offer_shown and latest_user and re.fullmatch(
+                    r'(?:oi|ol[aá]|bom\s+dia|boa\s+tarde|boa\s+noite)[!., 😊👋]*',
+                    latest_user.strip(),
+                    re.I,
+                ):
+                    return 'Oi! Posso enviar agora o link para ativar os 3 meses grátis? 😊'
             # Ajustes aprovados pelo operador no Estúdio de fluxos ou direto no
             # balão da conversa têm prioridade sobre o roteiro genérico, mas
             # nunca sobre as regras de segurança, cobrança, humano e reclamação

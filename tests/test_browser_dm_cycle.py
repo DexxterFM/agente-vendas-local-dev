@@ -334,6 +334,92 @@ class BrowserDmCycleTests(unittest.TestCase):
             self.assertNotIn("salvar muitas horas", answer)
             self.assertNotIn("clínica com equipe", answer)
 
+    def test_free_app_uses_operator_approved_offer(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}
+        ):
+            lead_id = execute("create", {"name": "Clínica teste", "contact": "clinica.teste"})
+            answer = execute("draft", {
+                "id": lead_id,
+                "browser_history": [
+                    {"role": "assistant", "text": "Vocês já usam algum app ou programa para a gestão?"},
+                    {"role": "user", "text": "Usamos um gratuito"},
+                ],
+            })
+            self.assertIn("3 meses grátis para você usar", answer)
+            self.assertIn("Sem cobranças automáticas, sem uso de cartão", answer)
+            self.assertIn("uso efetivo do app", answer)
+            self.assertIn("mais 3 meses de cortesia", answer)
+            self.assertNotIn("Posso comparar rapidamente", answer)
+
+    def test_free_app_offer_uses_edited_library_text(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}
+        ):
+            lead_id = execute("create", {"name": "Clínica teste", "contact": "clinica.teste"})
+            execute("saveResponseTemplate", {"template": {
+                "id": "free-app-offer-1",
+                "stage": "descoberta",
+                "question": "A pessoa usa um aplicativo gratuito para gestão",
+                "response": "Texto revisado pelo operador para quem usa app gratuito.",
+            }})
+            answer = execute("draft", {
+                "id": lead_id,
+                "browser_history": [
+                    {"role": "assistant", "text": "Vocês já usam algum app ou programa para a gestão?"},
+                    {"role": "user", "text": "Usamos um gratuito"},
+                ],
+            })
+            self.assertIn("Texto revisado pelo operador", answer)
+            self.assertIn("uso efetivo do app", answer)
+            self.assertNotIn("Estamos oferecendo 3 meses grátis", answer)
+
+    def test_free_app_acceptance_sends_installation_link(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}
+        ):
+            lead_id = execute("create", {"name": "Clínica teste", "contact": "clinica.teste"})
+            offer = execute("draft", {
+                "id": lead_id,
+                "browser_history": [
+                    {"role": "assistant", "text": "Vocês já usam algum app ou programa para a gestão?"},
+                    {"role": "user", "text": "Usamos um gratuito"},
+                ],
+            })
+            self.assertIn("3 meses grátis", offer)
+            answer = execute("draft", {
+                "id": lead_id,
+                "browser_history": [
+                    {"role": "assistant", "text": offer},
+                    {"role": "user", "text": "Oi Vou aceitar"},
+                ],
+            })
+            self.assertIn("Seu link de instalação", answer)
+            self.assertIn("erpclinicatea.com/login/admin", answer)
+            self.assertIn("Aviso esse link é valido por 3 dias", answer)
+
+    def test_free_app_greeting_pending_asks_for_confirmation(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}
+        ):
+            lead_id = execute("create", {"name": "Clínica teste", "contact": "clinica.teste"})
+            offer = execute("draft", {
+                "id": lead_id,
+                "browser_history": [
+                    {"role": "assistant", "text": "Vocês já usam algum app ou programa para a gestão?"},
+                    {"role": "user", "text": "Usamos um app gratuito"},
+                ],
+            })
+            answer = execute("draft", {
+                "id": lead_id,
+                "browser_history": [
+                    {"role": "assistant", "text": offer},
+                    {"role": "user", "text": "Oi"},
+                ],
+            })
+            self.assertIn("Posso enviar agora o link", answer)
+            self.assertNotIn("Seu link de instalação", answer)
+
     def test_trial_link_is_routed_by_service_profile(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(
             os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}
