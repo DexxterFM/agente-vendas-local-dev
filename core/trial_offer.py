@@ -26,7 +26,7 @@ DEFAULT_TRIAL_OFFER = {
     },
     "activation": (
         "Os três meses começam após a ativação acompanhada. "
-        "O link da campanha deve ser usado em até 2 dias."
+        "O link da campanha deve ser usado em até 3 dias."
     ),
     "billing_policy": {
         "automatic_charge": False,
