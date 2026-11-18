@@ -13,6 +13,7 @@ import struct
 import time
 import urllib.parse
 import urllib.request
+from contextlib import contextmanager
 from itertools import count
 from typing import Any
 
@@ -141,6 +142,12 @@ class DevTools:
         except Exception as exc:
             raise InternalBrowserError("Falha ao conectar ao navegador interno") from exc
         self.ids = count(1)
+        self.events: list[dict[str, Any]] = []
+
+    def drain_events(self) -> list[dict[str, Any]]:
+        items = list(self.events)
+        self.events.clear()
+        return items
 
     def close(self) -> None:
         try:
@@ -167,6 +174,8 @@ class DevTools:
                 # de perfil ou uma transição de documento.
                 raise InternalBrowserError("Navegador interno não respondeu") from exc
             if payload.get("id") != call_id:
+                if payload.get("method"):
+                    self.events.append(payload)
                 continue
             if "error" in payload:
                 raise InternalBrowserError(str(payload["error"].get("message") or "Falha no navegador interno"))
@@ -335,6 +344,117 @@ def select_target(target_id: str) -> dict[str, Any]:
         raise InternalBrowserError("Não foi possível fixar a janela") from exc
     _activate(item)
     return {"selected": True, "id": wanted, "url": str(item.get("url") or "")}
+
+
+def cleanup_stale_tabs() -> dict[str, int]:
+    """Fecha páginas auxiliares do accounts center que acumulam memória."""
+    pages = _http("/json/list")
+    closed = 0
+    for item in pages if isinstance(pages, list) else []:
+        if not isinstance(item, dict) or item.get("type") != "page":
+            continue
+        host = urllib.parse.urlparse(str(item.get("url") or "")).hostname
+        if host not in {"accountscenter.instagram.com", "accounts.instagram.com"}:
+            continue
+        try:
+            _http("/json/close/" + urllib.parse.quote(str(item.get("id") or ""), safe=""), method="GET")
+            closed += 1
+        except InternalBrowserError:
+            continue
+    return {"closed": closed}
+
+
+@contextmanager
+def browser_task_lock(timeout: float = 2.0):
+    """Serializa ciclos do worker entre processos no Linux (fcntl)."""
+    try:
+        import fcntl
+    except ImportError:
+        yield True
+        return
+    lock_path = os.path.join(
+        os.environ.get("SALES_AGENT_DATA_DIR", "/var/lib/agente-vendas-local"),
+        "browser-task.lock",
+    )
+    try:
+        os.makedirs(os.path.dirname(lock_path), exist_ok=True)
+        handle = open(lock_path, "a+", encoding="utf-8")
+    except OSError:
+        yield True
+        return
+    acquired = False
+    try:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                acquired = True
+                break
+            except BlockingIOError:
+                time.sleep(0.05)
+        yield acquired
+    finally:
+        if acquired:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        handle.close()
+
+
+def login_state() -> dict[str, Any]:
+    """Classifica o estado de acesso sem expor conteúdo privado da página.
+
+    Distingue sessão autenticada, tela de confirmação de perfil (one-tap),
+    desafio de código, formulário de senha e bloqueio por taxa (HTTP 429).
+    O payload devolve apenas indicadores estruturais para o painel orientar o
+    operador; nenhum texto da página ou cookie é retornado.
+    """
+    def run(page: DevTools):
+        page.call("Runtime.enable")
+        # Sonda same-origin: um único fetch ao endpoint que o Instagram limita.
+        # Cada chamada RPC abre uma conexão DevTools nova, então eventos de Log
+        # passados não são confiáveis; o fetch devolve o status atual direto.
+        value = page.call("Runtime.evaluate", {
+            "expression": r'''(async()=>{
+              const path=location.pathname.toLowerCase();
+              const text=(document.body?.innerText||'').toLowerCase();
+              const inputs=[...document.querySelectorAll('input')].map(e=>(e.type+' '+(e.placeholder||'')+' '+(e.getAttribute('aria-label')||'')).toLowerCase());
+              const hasPassword=inputs.some(v=>v.includes('password'));
+              const hasOneTap=[...document.querySelectorAll('[role=button],button,a')].some(e=>(e.getAttribute('aria-label')||e.innerText||'').toLowerCase().includes('continue'));
+              const hasChallenge=/challenge|checkpoint|two_factor|two_step|verification|confirm/.test(path);
+              const hasLoginForm=/accounts\/login|accounts\/password|\/login/.test(path)||hasPassword;
+              const authenticated=/\/direct\/|\/direct\/inbox|\/inbox/.test(path)||(document.querySelector('a[href*="/direct/inbox"]')&&!hasLoginForm);
+              const blocked=/too many requests|rate limit|try again later|bloquead|suspicious|spam/.test(text);
+              let probe=0;
+              try{
+                const r=await fetch('/accounts/login/',{credentials:'same-origin',cache:'no-store'});
+                probe=r.status;
+              }catch(e){probe=-1;}
+              return {path:location.pathname,hasOneTap:!!hasOneTap,hasChallenge:!!hasChallenge,hasLoginForm:!!hasLoginForm,authenticated:!!authenticated,blockedText:!!blocked,probe:probe};
+            })()''',
+            "returnByValue": True,
+            "awaitPromise": True,
+        }).get("result", {}).get("value") or {}
+        rate_limited = int(value.get("probe") or 0) == 429
+        state = "unknown"
+        if value.get("authenticated"):
+            state = "authenticated"
+        elif value.get("hasChallenge"):
+            state = "challenge"
+        elif value.get("hasLoginForm"):
+            state = "login_form"
+        elif value.get("hasOneTap"):
+            state = "profile_confirmation"
+        if rate_limited or value.get("blockedText"):
+            state = "rate_limited"
+        return {
+            "state": state,
+            "path": str(value.get("path") or "")[:200],
+            "rate_limited": bool(rate_limited),
+            "probe": int(value.get("probe") or 0),
+            "one_tap": bool(value.get("hasOneTap")),
+            "challenge": bool(value.get("hasChallenge")),
+            "login_form": bool(value.get("hasLoginForm")),
+        }
+    return _with_page(run)
 
 
 def status() -> dict[str, Any]:
@@ -700,6 +820,35 @@ def action(payload: dict[str, Any]) -> dict[str, Any]:
                 return {"ok": True, "moved": False}
             page.call("Page.navigateToHistoryEntry", {"entryId": entry_id})
             return {"ok": True, "moved": True}
+        elif kind == "confirm_profile":
+            # Localiza o botão real de confirmação do perfil salvo (one-tap) e
+            # dispara mouse nativo nas coordenadas atuais. Um clique de DOM
+            # (.click()) não é registrado pelos DIVs do React do Instagram.
+            found = page.call("Runtime.evaluate", {
+                "expression": r'''(()=>{
+                  const els=[...document.querySelectorAll('[role=button],button')];
+                  const btn=els.find(e=>/continue/i.test((e.getAttribute('aria-label')||'')+' '+(e.innerText||'')))
+                         ||els.find(e=>/use another profile|create new account/i.test(e.innerText||''));
+                  if(!btn)return null;
+                  btn.scrollIntoView({block:'center'});
+                  const r=btn.getBoundingClientRect();
+                  return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2),label:(e=>e.getAttribute('aria-label')||'')(btn)};
+                })()''',
+                "returnByValue": True,
+                "awaitPromise": True,
+            }).get("result", {}).get("value")
+            if not found:
+                return {"ok": False, "clicked": False}
+            x, y = float(found.get("x", -1)), float(found.get("y", -1))
+            if not (0 <= x <= 1280 and 0 <= y <= 900):
+                return {"ok": False, "clicked": False}
+            time.sleep(0.2)
+            page.call("Input.dispatchMouseEvent", {"type": "mouseMoved", "x": x, "y": y})
+            time.sleep(0.15)
+            page.call("Input.dispatchMouseEvent", {"type": "mousePressed", "x": x, "y": y, "button": "left", "clickCount": 1})
+            time.sleep(0.12)
+            page.call("Input.dispatchMouseEvent", {"type": "mouseReleased", "x": x, "y": y, "button": "left", "clickCount": 1})
+            return {"ok": True, "clicked": True, "x": x, "y": y}
         elif kind == "reload":
             page.call("Page.reload", {"ignoreCache": False})
         elif kind == "navigate":

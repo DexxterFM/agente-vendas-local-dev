@@ -271,3 +271,97 @@ class InternalBrowserTests(unittest.TestCase):
 
         self.assertEqual(1279, image["width"])
         self.assertEqual(756, image["height"])
+
+    @patch("scripts.vps.internal_browser._with_page")
+    def test_login_state_reports_rate_limit_without_private_page_text(self, with_page):
+        expressions = []
+
+        class Page:
+            def call(self, method, payload=None):
+                if method == "Runtime.evaluate":
+                    expressions.append(str((payload or {}).get("expression") or ""))
+                    return {"result": {"value": {
+                        "path": "/",
+                        "hasOneTap": True,
+                        "hasChallenge": False,
+                        "hasLoginForm": False,
+                        "authenticated": False,
+                        "blockedText": False,
+                        "probe": 429,
+                    }}}
+                return {}
+
+        with_page.side_effect = lambda callback: callback(Page())
+
+        result = internal_browser.login_state()
+
+        self.assertEqual("rate_limited", result["state"])
+        self.assertTrue(result["rate_limited"])
+        self.assertEqual(429, result["probe"])
+        self.assertTrue(result["one_tap"])
+        self.assertNotIn("text", result)
+        self.assertTrue(any("/accounts/login/" in item for item in expressions))
+
+    @patch("scripts.vps.internal_browser._with_page")
+    def test_login_state_classifies_authenticated_surface(self, with_page):
+        class Page:
+            def call(self, method, payload=None):
+                if method == "Runtime.evaluate":
+                    return {"result": {"value": {
+                        "path": "/direct/inbox/",
+                        "hasOneTap": False,
+                        "hasChallenge": False,
+                        "hasLoginForm": False,
+                        "authenticated": True,
+                        "blockedText": False,
+                        "probe": 200,
+                    }}}
+                return {}
+
+        with_page.side_effect = lambda callback: callback(Page())
+
+        result = internal_browser.login_state()
+
+        self.assertEqual("authenticated", result["state"])
+        self.assertFalse(result["rate_limited"])
+
+    @patch("scripts.vps.internal_browser.time.sleep")
+    @patch("scripts.vps.internal_browser._with_page")
+    def test_action_confirm_profile_dispatches_native_mouse_at_live_coordinates(self, with_page, _sleep):
+        calls = []
+
+        class Page:
+            def call(self, method, payload=None):
+                calls.append((method, payload))
+                if method == "Runtime.evaluate":
+                    return {"result": {"value": {"x": 900, "y": 412, "label": "Continue erpclinicatea"}}}
+                return {}
+
+        with_page.side_effect = lambda callback: callback(Page())
+
+        result = internal_browser.action({"kind": "confirm_profile"})
+
+        self.assertEqual({"ok": True, "clicked": True, "x": 900.0, "y": 412.0}, result)
+        mouse = [(method, payload) for method, payload in calls if method == "Input.dispatchMouseEvent"]
+        self.assertEqual(3, len(mouse))
+        self.assertEqual("mousePressed", mouse[1][1]["type"])
+        self.assertEqual("mouseReleased", mouse[2][1]["type"])
+        self.assertEqual(900.0, mouse[1][1]["x"])
+        self.assertEqual(412.0, mouse[1][1]["y"])
+
+    @patch("scripts.vps.internal_browser._http")
+    def test_cleanup_stale_tabs_closes_only_accounts_center_pages(self, request):
+        request.return_value = [
+            {"id": "home", "type": "page", "url": "https://www.instagram.com/"},
+            {"id": "aux", "type": "page", "url": "https://accountscenter.instagram.com/accounts/"},
+            {"id": "browser-ui", "type": "browser_ui", "url": "https://accountscenter.instagram.com/"},
+        ]
+
+        result = internal_browser.cleanup_stale_tabs()
+
+        self.assertEqual({"closed": 1}, result)
+        self.assertTrue(any("/json/close/aux" in str(call) for call in request.call_args_list))
+
+    def test_browser_task_lock_is_usable_as_context_manager(self):
+        with internal_browser.browser_task_lock(timeout=0.1) as acquired:
+            self.assertIsInstance(acquired, bool)
