@@ -308,7 +308,7 @@ class BrowserDmCycleTests(unittest.TestCase):
             ]})
             self.assertIn("Posso enviar o link", clinic)
             self.assertEqual(2, len(clinic.split(BROWSER_BUBBLE_SEPARATOR)))
-            self.assertIn("erpclinicatea.com/planos", clinic_link)
+            self.assertIn("erpclinicatea.com/ativacao", clinic_link)
             self.assertIn("plano=clinica-multiprofissional", clinic_link)
             self.assertIn("convite_tres_meses", clinic_link)
             clinic_parts = clinic_link.split(BROWSER_BUBBLE_SEPARATOR)
@@ -318,7 +318,7 @@ class BrowserDmCycleTests(unittest.TestCase):
             self.assertIn("dados saõ criptografados", clinic_parts[3])
             self.assertIn("51 8054-2244", clinic_parts[4])
             self.assertIn("Posso enviar o link", individual)
-            self.assertIn("erpclinicatea.com/planos", individual_link)
+            self.assertIn("erpclinicatea.com/ativacao", individual_link)
             self.assertIn("plano=profissional", individual_link)
             self.assertIn("3 meses grátis", individual_link)
             self.assertEqual(5, len(individual_link.split(BROWSER_BUBBLE_SEPARATOR)))
@@ -553,8 +553,8 @@ class BrowserDmCycleTests(unittest.TestCase):
             parts = answer.split(BROWSER_BUBBLE_SEPARATOR)
             self.assertEqual(len(parts), 5)
             self.assertIn("Multiprofissional", parts[0])
-            self.assertNotIn("erpclinicatea.com/planos", parts[0])
-            self.assertIn("erpclinicatea.com/planos", parts[1])
+            self.assertNotIn("erpclinicatea.com/ativacao", parts[0])
+            self.assertIn("erpclinicatea.com/ativacao", parts[1])
             self.assertEqual(
                 'Aviso esse link é valido por 3 dias. Caso não seja ativado voce perde o premios 😢',
                 parts[2],

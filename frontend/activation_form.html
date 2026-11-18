@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ativação - ERP Clínica TEA - 3 Meses Grátis</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #f5f7fa; color: #1f2937; line-height: 1.5; }
+  .container { max-width: 480px; margin: 48px auto; padding: 0 20px; }
+  .card { background: #ffffff; border-radius: 16px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); padding: 36px 32px; }
+  .logo { display: flex; align-items: center; gap: 10px; margin-bottom: 24px; }
+  .logo .mark { width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, #7638FA, #4F46E5); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; font-size: 16px; }
+  .logo h1 { font-size: 20px; font-weight: 700; color: #111827; letter-spacing: -0.5px; }
+  .badge { display: inline-block; margin-top: 8px; padding: 4px 10px; border-radius: 999px; background: #EFF6FF; color: #2563EB; font-size: 12px; font-weight: 700; }
+  h2 { font-size: 24px; font-weight: 700; margin-bottom: 8px; color: #111827; }
+  p.subtitle { color: #6b7280; font-size: 14px; margin-bottom: 24px; }
+  label { display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px; }
+  .field { margin-bottom: 18px; position: relative; }
+  input[type="text"], input[type="email"], input[type="password"], input[type="tel"] {
+    width: 100%; padding: 12px 14px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; color: #111827; background: #f9fafb;
+  }
+  input:focus { outline: none; border-color: #7638FA; box-shadow: 0 0 0 3px rgba(118, 56, 250, 0.15); }
+  .field small { color: #9ca3af; font-size: 12px; margin-top: 4px; display: block; }
+  .field .error { color: #dc2626; font-size: 12px; margin-top: 4px; display: none; }
+  button.btn { width: 100%; padding: 14px; background: linear-gradient(135deg, #7638FA, #4F46E5); color: #fff; border: none; border-radius: 10px; font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 8px; }
+  button.btn:hover { filter: brightness(0.95); }
+  button.btn:disabled { opacity: 0.65; cursor: not-allowed; }
+  .success { display: none; margin-top: 20px; padding: 16px; background: #ECFDF5; border: 1px solid #BBF7D0; border-radius: 10px; color: #166534; }
+  .success h3 { margin-bottom: 8px; font-size: 16px; font-weight: 700; }
+  .success p { font-size: 13px; color: #15803d; margin-bottom: 8px; }
+  .success code { background: #fff; padding: 2px 6px; border-radius: 4px; font-size: 12px; color: #166534; border: 1px solid #BBF7D0; }
+  .footer { margin-top: 24px; text-align: center; color: #9ca3af; font-size: 12px; }
+  .footer a { color: #7638FA; text-decoration: none; }
+  .spinner { display: none; width: 18px; height: 18px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 8px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="card">
+    <div class="logo">
+      <div class="mark">CT</div>
+      <div>
+        <h1>ERP Clínica TEA</h1>
+      </div>
+    </div>
+    <div class="badge">Teste gratuito · 3 meses</div>
+    <h2>Cadastre sua clínica</h2>
+    <p class="subtitle">Preencha os dados abaixo para ativar seu ambiente Multiprofissional.</p>
+
+    <form id="activationForm" novalidate>
+      <div class="field">
+        <label for="companyName">Nome da clínica / empresa</label>
+        <input type="text" id="companyName" name="company_name" placeholder="Ex: Clínica Harmonia ABA" required>
+        <small class="error" id="errCompany">Informe o nome da empresa.</small>
+      </div>
+
+      <div class="field">
+        <label for="cnpj">CNPJ</label>
+        <input type="text" id="cnpj" name="cnpj" placeholder="00.000.000/0000-00" required maxlength="18">
+        <small class="error" id="errCnpj">CNPJ inválido.</small>
+      </div>
+
+      <div class="field">
+        <label for="email">E-mail</label>
+        <input type="email" id="email" name="email" placeholder="clinica@exemplo.com" required>
+        <small class="error" id="errEmail">E-mail inválido.</small>
+      </div>
+
+      <div class="field">
+        <label for="phone">Telefone (opcional)</label>
+        <input type="tel" id="phone" name="phone" placeholder="(11) 99999-9999">
+      </div>
+
+      <div class="field">
+        <label for="password">Crie sua senha</label>
+        <input type="password" id="password" name="password" placeholder="••••••••" required minlength="6">
+        <small class="error" id="errPassword">A senha deve ter pelo menos 6 caracteres.</small>
+        <small>Mínimo de 6 caracteres.</small>
+      </div>
+
+      <input type="hidden" name="plan" value="clinic_multi">
+      <input type="hidden" name="utm_source" id="utmSource" value="">
+      <input type="hidden" name="utm_campaign" id="utmCampaign" value="convite_tres_meses">
+
+      <button type="submit" class="btn" id="submitBtn">
+        <span class="spinner" id="spinner"></span>
+        Ativar teste gratuito de 3 meses
+      </button>
+    </form>
+
+    <div class="success" id="success">
+      <h3>Ativação concluída!</h3>
+      <p id="successMsg"></p>
+      <p><strong>Código de ativação:</strong> <code id="activationCode"></code></p>
+      <p>Guarde este código e a senha criada. Eles serão usados para acessar seu ambiente provisionado do ERP Clínica TEA Multiprofissional.</p>
+    </div>
+
+    <div class="footer">
+      <p>© 2026 AvanthCode · ERP Clínica TEA · <a href="https://avanthcode.com" target="_blank" rel="noopener">avanthcode.com</a></p>
+      <p>Teste sem cobrança automática. Após os 3 meses, você decide se continua.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var form = document.getElementById('activationForm');
+  var success = document.getElementById('success');
+  var submitBtn = document.getElementById('submitBtn');
+  var spinner = document.getElementById('spinner');
+  var successMsg = document.getElementById('successMsg');
+  var activationCodeEl = document.getElementById('activationCode');
+
+  // Captura parâmetros UTM da URL, se houver
+  function getParam(name){
+    var m = window.location.search.match(new RegExp('[?&]' + name + '=([^&]+)'));
+    return m ? decodeURIComponent(m[1]) : '';
+  }
+  document.getElementById('utmSource').value = getParam('utm_source') || 'instagram';
+  document.getElementById('utmCampaign').value = getParam('utm_campaign') || 'convite_tres_meses';
+
+  // Máscara simples de CNPJ durante a digitação
+  var cnpjInput = document.getElementById('cnpj');
+  cnpjInput.addEventListener('input', function(e){
+    var v = e.target.value.replace(/\D/g, '');
+    if (v.length > 2) v = v.substring(0,2) + '.' + v.substring(2);
+    if (v.length > 6) v = v.substring(0,6) + '.' + v.substring(6);
+    if (v.length > 10) v = v.substring(0,10) + '/' + v.substring(10);
+    if (v.length > 15) v = v.substring(0,15) + '-' + v.substring(15);
+    e.target.value = v;
+  });
+
+  function showFieldError(id, show){
+    var el = document.getElementById(id);
+    if (el) el.style.display = show ? 'block' : 'none';
+  }
+
+  function clearErrors(){
+    ['errCompany','errCnpj','errEmail','errPassword'].forEach(function(id){ showFieldError(id, false); });
+  }
+
+  function validateCNPJ(cnpj){
+    var d = cnpj.replace(/\D/g, '');
+    if (d.length !== 14 || /^(\d)\1{13}$/.test(d)) return false;
+    function calc(ds, weights){
+      var t = 0;
+      for (var i = 0; i < weights.length; i++) t += parseInt(ds[i], 10) * weights[i];
+      var r = t % 11;
+      return r < 2 ? 0 : 11 - r;
+    }
+    var w1 = [5,4,3,2,9,8,7,6,5,4,3,2];
+    var w2 = [6,5,4,3,2,9,8,7,6,5,4,3,2];
+    if (parseInt(d[12],10) !== calc(d.substring(0,12), w1)) return false;
+    if (parseInt(d[13],10) !== calc(d.substring(0,13), w2)) return false;
+    return true;
+  }
+
+  form.addEventListener('submit', function(e){
+    e.preventDefault();
+    clearErrors();
+    var companyName = document.getElementById('companyName').value.trim();
+    var cnpj = document.getElementById('cnpj').value.trim();
+    var email = document.getElementById('email').value.trim();
+    var phone = document.getElementById('phone').value.trim();
+    var password = document.getElementById('password').value;
+    var plan = document.querySelector('input[name="plan"]').value;
+
+    var ok = true;
+    if (!companyName){ showFieldError('errCompany', true); ok = false; }
+    if (!validateCNPJ(cnpj)){ showFieldError('errCnpj', true); ok = false; }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ showFieldError('errEmail', true); ok = false; }
+    if (!password || password.length < 6){ showFieldError('errPassword', true); ok = false; }
+    if (!ok) return;
+
+    var payload = {
+      company_name: companyName,
+      cnpj: cnpj,
+      email: email,
+      phone: phone,
+      password: password,
+      plan: plan,
+      utm_source: document.getElementById('utmSource').value,
+      utm_campaign: document.getElementById('utmCampaign').value,
+    };
+
+    submitBtn.disabled = true;
+    spinner.style.display = 'block';
+    submitBtn.querySelector('span:not(.spinner)').style.display = 'none';
+
+    var endpoint = getParam('api') || '/api/activation/register';
+    fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      spinner.style.display = 'none';
+      submitBtn.querySelector('span:not(.spinner)').style.display = '';
+      submitBtn.disabled = false;
+      if (data.ok){
+        form.style.display = 'none';
+        success.style.display = 'block';
+        successMsg.textContent = data.message || 'Ativação concluída com sucesso.';
+        activationCodeEl.textContent = data.activation_code || '';
+      } else {
+        alert(data.error || 'Erro ao ativar. Tente novamente.');
+      }
+    })
+    .catch(function(err){
+      spinner.style.display = 'none';
+      submitBtn.querySelector('span:not(.spinner)').style.display = '';
+      submitBtn.disabled = false;
+      alert('Erro de conexão. Verifique se o servidor de ativação está disponível.');
+    });
+  });
+})();
+</script>
+</body>
+</html>

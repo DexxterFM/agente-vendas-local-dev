@@ -10,6 +10,7 @@ from core.config import load_config
 from core.memory import Memory
 from adapters.ollama import OllamaClient
 from adapters.local_llama import LocalLlamaClient
+from core.activation_flow import ActivationFlow, ActivationRequest
 
 BROWSER_DRAFT_VERSION = 'context-v8-preserved-bubble-separator'
 BROWSER_BUBBLE_SEPARATOR = '\n[[AGENT_BUBBLE]]\n'
@@ -1182,6 +1183,51 @@ def execute(command, args):
         if command == 'trialLifecyclePaymentConfirmed':
             from core.trial_lifecycle import TrialLifecycle
             return TrialLifecycle(memory).confirm_payment(str(args.get('account_id') or 'default'))
+        if command == 'activationConfig':
+            offer = execute('trialOffer', {})
+            return {
+                'clinic_link': offer.get('clinic', {}).get('url', ''),
+                'professional_link': offer.get('professional', {}).get('url', ''),
+                'months_free': int(offer.get('months_free', 3)),
+                'form_url': 'https://erpclinicatea.com/ativacao',
+                'fields': [
+                    {'id': 'company_name', 'label': 'Nome da clínica / empresa', 'type': 'text', 'required': True},
+                    {'id': 'cnpj', 'label': 'CNPJ', 'type': 'text', 'required': True, 'mask': '00.000.000/0000-00'},
+                    {'id': 'email', 'label': 'E-mail', 'type': 'email', 'required': True},
+                    {'id': 'phone', 'label': 'Telefone', 'type': 'tel', 'required': False},
+                    {'id': 'password', 'label': 'Crie sua senha', 'type': 'password', 'required': True, 'min_length': 6},
+                    {'id': 'plan', 'label': 'Plano', 'type': 'hidden', 'value': 'clinic_multi'},
+                ],
+                'message': (
+                    'Preencha os dados da sua empresa para ativar o teste gratuito de 3 meses '
+                    'do ERP Clínica TEA Multiprofissional. Após o cadastro, seu banco de dados '
+                    'será provisionado e o perfil inicial ficará pronto para uso.'
+                ),
+            }
+        if command == 'activationRegister':
+            flow = ActivationFlow(memory)
+            req = ActivationRequest(
+                company_name=str(args.get('company_name') or ''),
+                cnpj=str(args.get('cnpj') or ''),
+                email=str(args.get('email') or ''),
+                password=str(args.get('password') or ''),
+                phone=str(args.get('phone') or ''),
+                plan=str(args.get('plan') or 'clinic_multi'),
+                utm_source=str(args.get('utm_source') or ''),
+                utm_campaign=str(args.get('utm_campaign') or ''),
+            )
+            result = flow.register(req)
+            return result.to_dict()
+        if command == 'activationStatus':
+            flow = ActivationFlow(memory)
+            return flow.status(
+                activation_code=args.get('activation_code'),
+                cnpj=args.get('cnpj'),
+                email=args.get('email'),
+            )
+        if command == 'activationList':
+            flow = ActivationFlow(memory)
+            return {'activations': flow.list_all()}
         if command == 'responseLibrary': return _response_templates(memory)
         if command == 'followIntroTemplates':
             from core.flow_studio import FOLLOW_INTRO_TEMPLATES
