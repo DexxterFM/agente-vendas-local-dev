@@ -44,11 +44,11 @@ function renderEmptyConversation(){
 
 async function vpsInternalBrowserView(){
  const content=activatePanel('Navegador interno do agente','Sessão persistente do agente na VPS. A entrada é feita uma única vez e permanece no servidor.');
- content.innerHTML=`<section class="data-card" style="max-width:1280px"><div class="module-heading"><div><p class="eyebrow">SESSÃO REMOTA PERSISTENTE</p><h3 id="vps-browser-status">Conectando…</h3></div><div class="editor-actions"><button class="ghost-button" id="vps-browser-back" title="Voltar">← Voltar</button><button class="ghost-button" id="vps-browser-forward" title="Avançar">Avançar →</button><button class="ghost-button" id="vps-browser-home" title="Abrir início">⌂ Início</button><button class="ghost-button" id="vps-browser-refresh">↻ Atualizar imagem</button><button class="ghost-button" id="vps-browser-enter">↵ Enter</button></div></div><div id="vps-browser-layout" style="display:grid;grid-template-columns:minmax(0,1fr) 250px;gap:14px"><div id="vps-browser-stage" tabindex="0" role="application" aria-label="Sessão interna interativa" style="position:relative;background:#07111f;border:1px solid #203a56;border-radius:12px;overflow:auto;min-height:520px;outline:none"><img id="vps-browser-screen" alt="Tela do navegador interno remoto" style="display:block;width:100%;min-width:760px;cursor:text;pointer-events:none" /></div><form id="vps-browser-input" class="dialog-form" style="margin:0"><label>Texto para o campo selecionado<textarea name="text" rows="5" placeholder="Clique em um campo na tela e digite aqui."></textarea><small>O texto é encaminhado somente para a sessão interna do agente.</small></label><button class="primary-button" type="submit">Digitar</button><button class="ghost-button" type="button" id="vps-browser-tab">Tab</button><p style="font-size:11px;color:#8fa4ba;line-height:1.45">Clique no campo na tela e use o teclado normalmente. Enter, Tab, Backspace, Delete e setas também funcionam.</p></form></div></section>`;
+ content.innerHTML=`<section class="data-card" style="max-width:1280px"><div class="module-heading"><div><p class="eyebrow">SESSÃO REMOTA PERSISTENTE</p><h3 id="vps-browser-status">Conectando…</h3></div><div class="editor-actions"><button class="ghost-button" id="vps-browser-back" title="Voltar">← Voltar</button><button class="ghost-button" id="vps-browser-forward" title="Avançar">Avançar →</button><button class="ghost-button" id="vps-browser-home" title="Abrir início">⌂ Início</button><button class="ghost-button" id="vps-browser-relogin" title="Abrir a tela de login">↻ Relogar</button><button class="ghost-button" id="vps-browser-refresh">↻ Atualizar imagem</button><button class="ghost-button" id="vps-browser-enter">↵ Enter</button></div></div><div id="vps-browser-layout" style="display:grid;grid-template-columns:minmax(0,1fr) 250px;gap:14px"><div id="vps-browser-stage" tabindex="0" role="application" aria-label="Sessão interna interativa" style="position:relative;background:#07111f;border:1px solid #203a56;border-radius:12px;overflow:auto;min-height:520px;outline:none"><img id="vps-browser-screen" alt="Tela do navegador interno remoto" style="display:block;width:100%;min-width:760px;cursor:text;pointer-events:none" /></div><form id="vps-browser-input" class="dialog-form" style="margin:0"><label style="display:grid;gap:5px;color:#9fb2c6;font-size:10px">Janela exibida<select id="vps-browser-target" style="width:100%;padding:8px;border:1px solid #29445f;border-radius:8px;background:#071624;color:#eff6ff;font-size:11px"></select></label><label>Texto para o campo selecionado<textarea name="text" rows="5" placeholder="Clique em um campo na tela e digite aqui."></textarea><small>O texto é encaminhado somente para a sessão interna do agente.</small></label><button class="primary-button" type="submit">Digitar</button><button class="ghost-button" type="button" id="vps-browser-tab">Tab</button><p style="font-size:11px;color:#8fa4ba;line-height:1.45">Clique no campo na tela e use o teclado normalmente. Enter, Tab, Backspace, Delete e setas também funcionam.</p></form></div></section>`;
  const layout=el('#vps-browser-layout'),stage=el('#vps-browser-stage'),screen=el('#vps-browser-screen'),inputForm=el('#vps-browser-input');const status=el('#vps-browser-status');
  screen.style.width='100%';screen.style.maxWidth='1280px';screen.style.height='auto';screen.style.objectFit='contain';screen.style.margin='0 auto';
  let refreshing=false;
- const refresh=async()=>{if(refreshing||!document.body.contains(screen))return;refreshing=true;try{const state=await call('internalBrowserStatus');layout.style.gridTemplateColumns='minmax(0,1fr) 250px';inputForm.hidden=false;stage.style.minHeight='520px';screen.style.minWidth='760px';if(!state.running){status.textContent='Navegador interno indisponível';return;}const visual=await call('internalBrowserVisualState').catch(()=>({ready:false,authenticated_surface:false}));status.textContent=visual.authenticated_surface?'Sessão interna ativa':(visual.ready?'Conclua a entrada na sessão interna':'Ação em andamento · exibindo a tela atual');const image=await call('internalBrowserScreenshot').catch(()=>null);if(!image?.png||Number(image.width)<200||Number(image.height)<200){if(!screen.dataset.stableFrame)status.textContent='Aguardando a imagem da sessão interna';return;}screen.dataset.remoteWidth=String(Number(image.width)||1280);screen.dataset.remoteHeight=String(Number(image.height)||900);screen.src='/api/browser/screenshot?ts='+Date.now();screen.dataset.stableFrame='true';}finally{refreshing=false;}};
+ const refresh=async()=>{if(refreshing||!document.body.contains(screen))return;refreshing=true;try{const state=await call('internalBrowserStatus');layout.style.gridTemplateColumns='minmax(0,1fr) 250px';inputForm.hidden=false;stage.style.minHeight='520px';screen.style.minWidth='760px';if(!state.running){status.textContent='Navegador interno indisponível';return;}const visual=await call('internalBrowserVisualState').catch(()=>({ready:false,authenticated_surface:false}));const image=await call('internalBrowserScreenshot').catch(()=>null);let selected=null;try{const list=await call('internalBrowserTargets');const options=(list.targets||[]).map(t=>`<option value="${safe(t.id)}" ${t.selected?'selected':''}>${safe(t.title||'Janela')} · ${safe(t.url||'')}${t.verification?' · verificação':''}</option>`).join('');const picker=el('#vps-browser-target');if(picker&&picker.innerHTML!==options)picker.innerHTML=options;selected=(list.targets||[]).find(t=>t.selected)||null;}catch(error){}status.textContent=(visual.authenticated_surface?'Sessão interna ativa':(visual.ready?'Conclua a entrada na sessão interna':'Ação em andamento · exibindo a tela atual'))+(selected&&selected.url?' · '+String(selected.url).replace(/^https?:\/\//,''):'');if(!image?.png||Number(image.width)<200||Number(image.height)<200){if(!screen.dataset.stableFrame)status.textContent='Aguardando a imagem da sessão interna';return;}screen.dataset.remoteWidth=String(Number(image.width)||1280);screen.dataset.remoteHeight=String(Number(image.height)||900);screen.src='/api/browser/screenshot?ts='+Date.now();screen.dataset.stableFrame='true';}finally{refreshing=false;}};
  const action=async payload=>{await call('internalBrowserAction',payload);await new Promise(resolve=>setTimeout(resolve,650));await refresh();};
  let keyQueue=Promise.resolve(),keyRefresh=null;
  const queueKey=payload=>{keyQueue=keyQueue.then(()=>call('internalBrowserAction',payload)).then(()=>{clearTimeout(keyRefresh);keyRefresh=setTimeout(()=>refresh().catch(()=>null),180);}).catch(report);};
@@ -58,7 +58,7 @@ async function vpsInternalBrowserView(){
  stage.onclick=event=>{if(Date.now()-lastPointer>250)forwardPointer(event);};
  stage.onkeydown=event=>{if(event.ctrlKey||event.metaKey||event.altKey)return;const special=new Set(['Enter','Tab','Escape','Backspace','Delete','ArrowLeft','ArrowUp','ArrowRight','ArrowDown']);if(event.key.length===1){event.preventDefault();queueKey({kind:'type',text:event.key});return;}if(special.has(event.key)){event.preventDefault();queueKey({kind:'key',key:event.key});}};
  el('#vps-browser-input').onsubmit=event=>{event.preventDefault();const text=new FormData(event.target).get('text');if(!String(text||'').trim())return;action({kind:'type',text:String(text)}).then(()=>event.target.reset()).catch(report);};
- el('#vps-browser-refresh').onclick=()=>refresh().catch(report);el('#vps-browser-back').onclick=()=>action({kind:'back'}).catch(report);el('#vps-browser-forward').onclick=()=>action({kind:'forward'}).catch(report);el('#vps-browser-home').onclick=()=>action({kind:'navigate',url:'https://www.instagram.com/'}).catch(report);el('#vps-browser-enter').onclick=()=>action({kind:'key',key:'Enter'}).catch(report);el('#vps-browser-tab').onclick=()=>action({kind:'key',key:'Tab'}).catch(report);await refresh();
+ el('#vps-browser-refresh').onclick=()=>refresh().catch(report);el('#vps-browser-back').onclick=()=>action({kind:'back'}).catch(report);el('#vps-browser-forward').onclick=()=>action({kind:'forward'}).catch(report);el('#vps-browser-home').onclick=()=>action({kind:'navigate',url:'https://www.instagram.com/'}).catch(report);el('#vps-browser-enter').onclick=()=>action({kind:'key',key:'Enter'}).catch(report);el('#vps-browser-tab').onclick=()=>action({kind:'key',key:'Tab'}).catch(report);const targetPicker=el('#vps-browser-target');if(targetPicker)targetPicker.onchange=()=>call('internalBrowserSelectTarget',{id:targetPicker.value}).then(()=>refresh()).catch(report);el('#vps-browser-relogin').onclick=()=>action({kind:'navigate',url:'https://www.instagram.com/accounts/login/'}).catch(report);await refresh();
  const liveImage=setInterval(()=>{if(!document.body.contains(screen)){clearInterval(liveImage);return;}refresh().catch(()=>null);},1500);
 }
 function bindBrowserControls(){
@@ -185,6 +185,7 @@ async function flowRefreshState(){
  const version=el('#studio-version');if(version)version.textContent=`versão ${state.revision}`;
  flowRenderHistory(state.history||[]);flowRenderLessons(state.lessons||[]);
  if(flowProposal&&Number(flowProposal.base_revision)!==Number(state.revision)){flowProposal=null;flowRenderProposal();}
+ waRenderSide();
 }
 function flowRenderHistory(rows){
  const card=el('#history-card');if(!card)return;
@@ -279,9 +280,202 @@ async function flowRevert(revision){
  }catch(error){report(error);}
 }
 
+let waState={leadId:0,leads:[],thread:[],busy:false,epoch:0};
+function waClock(value){
+ const date=value?new Date(value):new Date();
+ return Number.isNaN(date.getTime())?'':date.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+}
+function waBubbleBody(text){
+ const parts=String(text??'').split('[[AGENT_BUBBLE]]').map(part=>part.trim()).filter(Boolean);
+ return parts.map(part=>`<p>${safe(part)}</p>`).join('')||'<p></p>';
+}
+function waBubbleHtml(message,index){
+ if(message.role!=='agent'){
+  return `<div class="wa-row client"><div class="wa-bubble client">${waBubbleBody(message.text)}<time>${safe(message.at||'')}</time></div></div>`;
+ }
+ return `<div class="wa-row agent" data-wa-row="${index}"><div class="wa-bubble agent">${waBubbleBody(message.text)}${message.saved?`<span class="wa-saved">✓ resposta oficial · v${safe(message.revision)}</span>`:''}<time>${safe(message.at||'')}</time></div><button class="wa-edit" data-wa-edit="${index}" title="Editar e salvar esta resposta no fluxo">✎ Editar resposta</button></div>`;
+}
+function waRenderSide(){
+ const state=flowStateCache;
+ const revision=el('#wa-revision');if(revision)revision.textContent=`v${state.revision||0}`;
+ const tabVersion=el('#wa-version');if(tabVersion)tabVersion.textContent=`versão ${state.revision||0}`;
+ const history=el('#wa-history');
+ if(history){
+  const rows=(state.history||[]).slice(0,8);
+  history.innerHTML=rows.map(r=>`<article class="history-item"><div><strong>v${safe(r.revision)}</strong><span>${safe(r.summary||'Alteração')}</span></div><small>${formatTime(r.created_at)} · ${safe(r.source==='dialogue'?'ajuste no diálogo':r.source==='revert'?'reversão':r.source==='library'?'edição manual':'prompt')}</small><button class="ghost-button" data-wa-revert="${safe(r.revision)}">Reverter</button></article>`).join('')||empty('◷','Sem versões','Cada resposta ajustada no chat cria uma versão reversível.');
+  history.querySelectorAll('[data-wa-revert]').forEach(b=>b.onclick=()=>flowRevert(Number(b.dataset.waRevert)).catch(report));
+ }
+ const lessons=el('#wa-lessons');
+ if(lessons){
+  const rows=(state.lessons||[]).slice(0,6);
+  const count=el('#wa-lesson-count');if(count)count.textContent=String((state.lessons||[]).length);
+  lessons.innerHTML=rows.map(r=>`<article class="lesson-item"><strong>${safe(r.summary||'Ajuste de fluxo')}</strong><p>${safe(r.lesson||'')}</p><small>v${safe(r.revision)} · ${formatTime(r.created_at)}</small></article>`).join('')||empty('◌','Ainda sem aprendizados','Cada resposta salva no balão vira conhecimento do agente.');
+ }
+}
+function waRenderThread(){
+ const thread=el('#wa-thread');if(!thread)return;
+ thread.innerHTML=waState.thread.length
+  ? waState.thread.map((message,index)=>waBubbleHtml(message,index)).join('')
+  : empty('💬','Comece pelo cliente','Escreva a primeira mensagem como se fosse o lead. O agente responde com o fluxo oficial e você pode ajustar qualquer resposta.');
+ thread.querySelectorAll('[data-wa-edit]').forEach(b=>b.onclick=()=>waOpenEditor(Number(b.dataset.waEdit)).catch(report));
+ thread.scrollTop=thread.scrollHeight;
+}
+async function waLoadThread(leadId){
+ waState.leadId=Number(leadId)||0;
+ waState.epoch+=1;
+ waState.busy=false;
+ waState.thread=[];
+ try{
+  const rows=await call('messages',{id:waState.leadId});
+  waState.thread=rows.map(r=>({role:r[0]==='assistant'?'agent':'user',text:r[1],at:waClock(r[2])}));
+ }catch(error){waState.thread=[];}
+ const lead=waState.leads.find(l=>Number(l.id)===Number(waState.leadId));
+ if(lead){
+  const name=el('#wa-name'),contact=el('#wa-contact'),avatar=el('#wa-avatar');
+  if(name)name.textContent=lead.name;
+  if(contact)contact.textContent=`${lead.contact||'Contato local'} · ambiente de teste, nada é enviado ao Instagram`;
+  if(avatar)avatar.textContent=(lead.name||'?').slice(0,1);
+ }
+ waRenderThread();
+}
+async function waLoadLeads(preferred){
+ const leads=await call('leads');
+ waState.leads=leads;
+ const select=el('#wa-lead');if(!select)return;
+ if(!leads.length){
+  select.innerHTML='<option value="">Sem conversas</option>';
+  select.disabled=true;
+  const send=el('#wa-send');if(send)send.disabled=true;
+  const repeat=el('#wa-repeat');if(repeat)repeat.disabled=true;
+  waState.thread=[];
+  const thread=el('#wa-thread');
+  if(thread)thread.innerHTML=`<div class="wa-empty"><strong>Nenhuma conversa para testar</strong><p>Crie uma conversa de teste para interpretar o cliente e ajustar as respostas do agente.</p><button class="primary-button" id="wa-create-lead">+ Criar conversa de teste</button></div>`;
+  const create=el('#wa-create-lead');
+  if(create)create.onclick=async()=>{
+   create.disabled=true;create.textContent='Criando…';
+   const id=await call('create',{name:'Teste de diálogo',contact:'teste.local'});
+   await waLoadLeads(id);
+   await refreshLeads().catch(()=>{});
+  };
+  return;
+ }
+ select.disabled=false;
+ const send=el('#wa-send');if(send)send.disabled=false;
+ const repeat=el('#wa-repeat');if(repeat)repeat.disabled=false;
+ const current=preferred||waState.leadId||leads[0].id;
+ const selected=leads.some(l=>Number(l.id)===Number(current))?Number(current):Number(leads[0].id);
+ select.innerHTML=leads.map(l=>`<option value="${safe(l.id)}" ${Number(l.id)===selected?'selected':''}>${safe(l.name)}${l.contact?' · '+safe(l.contact):''}</option>`).join('');
+ select.onchange=()=>waLoadThread(Number(select.value)).catch(report);
+ if(!waState.thread.length||Number(waState.leadId)!==selected)await waLoadThread(selected);
+ else waRenderThread();
+}
+async function waAskAgent(){
+ if(waState.busy||!waState.leadId)return;
+ const epoch=waState.epoch;
+ waState.busy=true;
+ const send=el('#wa-send');if(send)send.disabled=true;
+ const thread=el('#wa-thread');
+ const typing=document.createElement('div');
+ typing.className='wa-row agent wa-typing';
+ typing.innerHTML='<div class="wa-bubble agent"><span class="wa-dots"><i></i><i></i><i></i></span></div>';
+ if(thread){thread.appendChild(typing);thread.scrollTop=thread.scrollHeight;}
+ try{
+  const history=waState.thread.map(message=>({role:message.role==='agent'?'assistant':'user',text:message.text}));
+  const answer=await call('draft',{id:waState.leadId,browser_history:history});
+  if(epoch!==waState.epoch)return;
+  waState.thread.push({role:'agent',text:String(answer||'').trim(),at:waClock()});
+ }finally{
+  typing.remove();
+  waState.busy=false;
+  if(send)send.disabled=false;
+  if(epoch===waState.epoch)waRenderThread();
+ }
+}
+async function waRepeatText(text){
+ const value=String(text||'').trim();
+ if(!value)return report({message:'Escreva a mensagem do cliente antes de testar.'});
+ if(!waState.leadId)return report({message:'Selecione ou crie uma conversa de teste.'});
+ if(waState.busy)return;
+ waState.thread.push({role:'user',text:value,at:waClock()});
+ waRenderThread();
+ await waAskAgent();
+}
+async function waOpenEditor(index){
+ const thread=el('#wa-thread');if(!thread)return;
+ const row=thread.querySelector(`[data-wa-row="${index}"]`);if(!row)return;
+ const message=waState.thread[index];if(!message)return;
+ const trigger=[...waState.thread.slice(0,index)].reverse().find(item=>item.role==='user');
+ if(!trigger)return report({message:'Esta resposta não tem uma mensagem do cliente antes dela para vincular o ajuste.'});
+ thread.querySelectorAll('.wa-editor').forEach(node=>node.remove());
+ const editor=document.createElement('div');
+ editor.className='wa-editor';
+ editor.innerHTML=`<div class="wa-editor-head"><span>✎ Ajustar resposta do agente</span><button class="wa-editor-close" type="button" data-wa-close>✕</button></div><small>O cliente disse</small><blockquote>${safe(trigger.text)}</blockquote><label>Resposta que o agente deve enviar<textarea rows="4">${safe(message.text)}</textarea></label><div class="wa-editor-actions"><button class="primary-button" data-wa-save>✓ Salvar resposta</button><button class="ghost-button" data-wa-retest>↻ Testar a mesma pergunta</button></div><p class="wa-editor-result" hidden></p>`;
+ row.insertAdjacentElement('afterend',editor);
+ const field=editor.querySelector('textarea');
+ const result=editor.querySelector('.wa-editor-result');
+ const save=editor.querySelector('[data-wa-save]');
+ editor.querySelector('[data-wa-close]').onclick=()=>editor.remove();
+ editor.querySelector('[data-wa-retest]').onclick=()=>waRepeatText(trigger.text).catch(report);
+ save.onclick=async()=>{
+  const response=String(field.value||'').trim();
+  if(!response){result.hidden=false;result.textContent='Escreva a resposta ajustada antes de salvar.';return;}
+  save.disabled=true;save.textContent='Salvando…';
+  try{
+   const saved=await call('flowTeach',{message:trigger.text,response,lead_id:waState.leadId});
+   if(!saved.applied){result.hidden=false;result.textContent=saved.reason||'A resposta já está salva para esta mensagem.';return;}
+   message.text=response;message.saved=true;message.revision=saved.revision;
+   const bubble=row.querySelector('.wa-bubble');
+   if(bubble)bubble.innerHTML=`${waBubbleBody(response)}<span class="wa-saved">✓ resposta oficial · v${safe(saved.revision)}</span><time>${safe(message.at||'')}</time>`;
+   const history=waState.thread.slice(0,index+1).map(item=>({role:item.role==='agent'?'assistant':'user',text:item.text}));
+   let applied='';
+   try{applied=String(await call('draft',{id:waState.leadId,browser_history:history})||'').trim();}catch(error){applied='';}
+   result.hidden=false;
+   if(applied&&applied!==response){
+    result.innerHTML=`<strong>Salvo na versão ${safe(saved.revision)} · regra oficial prevalece</strong><span>Esta mensagem também aciona uma regra fixa de segurança, cobrança ou atendimento humano, que continua acima do fluxo. O agente responde: ${safe(applied)}</span>`;
+   }else{
+    result.innerHTML=`<strong>Salvo na versão ${safe(saved.revision)} · aprendizado gravado</strong><span>Ao repetir “${safe(trigger.text)}”, o agente responde com a versão ajustada. Continue o diálogo normalmente.</span>`;
+   }
+   await flowRefreshState();
+   report({message:`Resposta ajustada e salva na versão ${saved.revision}.`});
+  }catch(error){report(error);}
+  finally{save.disabled=false;save.textContent='✓ Salvar resposta';}
+ };
+ field.focus();
+}
 async function operatorView(){
- const content=activatePanel('Estúdio de fluxos','Explique a mudança em português. O agente interpreta, mostra o diff e só grava na biblioteca depois da sua confirmação.');
- content.innerHTML=`<div class="flow-studio"><section class="operator-chat"><div class="studio-head"><div><p class="eyebrow">AJUSTE POR PROMPT</p><h3>Ajuste o diálogo conversando</h3><p>O agente lê a biblioteca ativa, interpreta sua instrução e propõe respostas por etapa. Cada aplicação gera uma versão reversível e um aprendizado na memória comercial.</p></div><span class="status-pill" id="studio-version">versão …</span></div><div id="operator-thread" class="operator-thread"></div><div class="example-chips"><button data-example="Quando a clínica disser que já usa outro sistema, pergunte qual é antes de falar do comparativo.">Objeção de concorrente</button><button data-example="Quando o lead perguntar sobre preço, responda que o valor depende do tamanho da equipe e pergunte quantos profissionais atendem hoje.">Objeção de preço</button><button data-example="Na etapa proposta, troque a resposta do link para explicar que os 3 meses começam após a ativação acompanhada.">Link de 3 meses</button><button data-example="Na etapa follow-up, crie uma retomada para quem não respondeu depois de 3 dias.">Follow-up</button></div><form id="operator-form" class="operator-composer"><div class="composer-top"><select name="stage">${flowStageOptions('descoberta')}</select><small>Ctrl+Enter envia</small></div><textarea name="message" required rows="4" placeholder="Ex.: quando a clínica disser que usa outro sistema, pergunte qual é antes de enviar o comparativo."></textarea><details><summary>Adicionar contexto, links ou imagens</summary><textarea name="context" rows="2" placeholder="Informações que o agente precisa considerar"></textarea><textarea name="links" rows="2" placeholder="Links oficiais"></textarea><textarea name="images" rows="2" placeholder="Imagem/poster de apoio"></textarea></details><div class="composer-row"><small>A alteração só entra na biblioteca depois de você revisar e aplicar.</small><button class="primary-button" type="submit">✦ Interpretar ajuste</button></div></form></section><aside class="studio-side"><section class="data-card" id="test-card"></section><section class="data-card" id="proposal-card"></section><section class="data-card" id="history-card"></section><section class="data-card" id="lessons-card"></section></aside></div>`;
+ const content=activatePanel('Diálogo com o agente','Converse como o cliente. Edite qualquer resposta do agente direto no balão e ela vira a resposta oficial do fluxo.');
+ content.innerHTML=`<div class="operator-tabs" role="tablist"><button class="active" data-operator-tab="chat">💬 Testar diálogo</button><button data-operator-tab="prompt">✦ Ajustar por prompt</button><span class="operator-tabs-note" id="wa-version">versão …</span></div><section class="wa-panel" id="wa-panel"><div class="wa-layout"><aside class="wa-side"><label class="wa-field">Conversa de teste<select id="wa-lead"></select></label><p class="wa-hint">Você interpreta o cliente. O agente responde com o fluxo oficial; ao editar uma resposta, ela vira a resposta validada para aquela mensagem.</p><section class="data-card"><div class="section-heading"><h3>Histórico de versões</h3><span class="status-pill" id="wa-revision">v0</span></div><div class="history-list" id="wa-history"></div></section><section class="data-card"><div class="section-heading"><h3>O que o agente aprendeu</h3><span class="status-pill" id="wa-lesson-count">0</span></div><div class="lesson-list" id="wa-lessons"></div></section></aside><div class="wa-chat"><header class="wa-head"><span class="wa-avatar" id="wa-avatar">?</span><div><strong id="wa-name">Conversa de teste</strong><small id="wa-contact">Ambiente de teste · nada é enviado ao Instagram</small></div><span class="wa-live">● testando</span></header><div class="wa-thread" id="wa-thread"></div><form class="wa-composer" id="wa-form"><textarea id="wa-input" rows="1" placeholder="Escreva como o cliente… (Enter envia, Shift+Enter quebra linha)"></textarea><button type="button" class="ghost-button" id="wa-repeat" title="Reenviar a última mensagem do cliente">↻ Repetir</button><button type="submit" class="primary-button" id="wa-send">➤ Enviar</button></form></div></div></section><section id="operator-panel" hidden></section>`;
+ const tabs=[...content.querySelectorAll('[data-operator-tab]')];
+ const showTab=async name=>{
+  tabs.forEach(tab=>tab.classList.toggle('active',tab.dataset.operatorTab===name));
+  const chat=el('#wa-panel'),prompt=el('#operator-panel');
+  if(chat)chat.hidden=name!=='chat';
+  if(prompt)prompt.hidden=name!=='prompt';
+  if(name==='prompt'&&prompt&&!prompt.dataset.ready){prompt.dataset.ready='1';await flowPromptPanel();}
+ };
+ tabs.forEach(tab=>tab.onclick=()=>showTab(tab.dataset.operatorTab).catch(report));
+ const form=el('#wa-form'),input=el('#wa-input');
+ input.onkeydown=event=>{if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();form.requestSubmit();}};
+ form.onsubmit=event=>{
+  event.preventDefault();
+  const value=String(input.value||'').trim();
+  if(!value)return;
+  input.value='';input.style.height='auto';
+  waRepeatText(value).catch(report);
+ };
+ el('#wa-repeat').onclick=()=>{
+  const last=[...waState.thread].reverse().find(message=>message.role==='user');
+  if(!last)return report({message:'Ainda não há mensagem do cliente para repetir.'});
+  waRepeatText(last.text).catch(report);
+ };
+ await flowRefreshState();
+ await waLoadLeads();
+ waRenderSide();
+}
+
+async function flowPromptPanel(){
+ const content=el('#operator-panel');if(!content)return;
+ content.innerHTML=`<div class="flow-studio"><section class="operator-chat"><div class="studio-head"><div><p class="eyebrow">AJUSTE POR PROMPT</p><h3>Ajuste o diálogo conversando</h3><p>O agente lê a biblioteca ativa, interpreta sua instrução e propõe respostas por etapa. Cada aplicação gera uma versão reversível e um aprendizado na memória comercial.</p></div><span class="status-pill" id="studio-version">versão …</span></div><div id="operator-thread" class="operator-thread"></div><div class="example-chips"><button data-example="Quando a clínica disser que já usa outro sistema, pergunte qual é antes de falar do comparativo.">Objeção de concorrente</button><button data-example="Quando o lead perguntar sobre preço, responda que o valor depende do tamanho da equipe e pergunte quantos profissionais atendem hoje.">Objeção de preço</button><button data-example="Na etapa proposta, troque a resposta do link para explicar que os 3 meses começam após a ativação acompanhada.">Link de 3 meses</button><button data-example="Na etapa follow-up, crie uma retomada para quem não respondeu depois de 3 dias.">Follow-up</button></div><form id="operator-form" class="operator-composer"><div class="composer-top"><select name="stage">${flowStageOptions('descoberta')}</select><small>Ctrl+Enter envia</small></div><textarea name="message" required rows="4" placeholder="Ex.: quando a clínica disser que usa outro sistema, pergunte qual é antes de enviar o comparativo."></textarea><details><summary>Adicionar contexto, links ou imagens</summary><textarea name="context" rows="2" placeholder="Informações que o agente precisa considerar"></textarea><textarea name="links" rows="2" placeholder="Links oficiais"></textarea><textarea name="images" rows="2" placeholder="Imagem/poster de apoio"></textarea></details><div class="composer-row"><small>A alteração só entra na biblioteca depois de você revisar e aplicar.</small><button class="primary-button" type="submit">✦ Interpretar ajuste</button></div></form></section><aside class="studio-side"><section class="data-card" id="proposal-card"></section><section class="data-card" id="history-card"></section><section class="data-card" id="lessons-card"></section></aside></div>`;
  const thread=el('#operator-thread');
  if(!flowChatLog.length)flowChatLog.push({role:'agent',text:'Olá, Denis. Descreva em português o que deve mudar no diálogo. Eu interpreto, mostro o diff e só gravo depois da sua confirmação.'});
  thread.innerHTML=flowChatLog.map(m=>`<div class="operator-message ${m.role==='operator'?'operator':'agent'}">${m.role==='operator'?safe(m.text):`<p>${safe(m.text)}</p>`}</div>`).join('');
@@ -299,8 +493,7 @@ async function operatorView(){
   }catch(error){flowAddMessage('agent',`Não consegui interpretar o ajuste: ${error.message||error}`);report(error);}
   finally{button.disabled=false;button.textContent='✦ Interpretar ajuste';thread.scrollTop=thread.scrollHeight;}
  };
- const leads=await call('leads').catch(()=>[]);
- flowRenderTest(leads);flowRenderProposal();flowRenderHistory(flowStateCache.history||[]);flowRenderLessons(flowStateCache.lessons||[]);
+ flowRenderProposal();flowRenderHistory(flowStateCache.history||[]);flowRenderLessons(flowStateCache.lessons||[]);
  await flowRefreshState();
 }
 

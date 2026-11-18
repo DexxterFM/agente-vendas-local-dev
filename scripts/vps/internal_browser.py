@@ -24,7 +24,17 @@ except ImportError:  # a unidade da VPS instala python3-websocket-client
 
 DEBUG_URL = "http://127.0.0.1:9222"
 _PRIMARY_HOSTS = {"instagram.com", "www.instagram.com"}
-_ACCESS_HOSTS = _PRIMARY_HOSTS | {"facebook.com", "www.facebook.com"}
+_ACCESS_HOSTS = _PRIMARY_HOSTS | {
+    "accounts.instagram.com", "m.instagram.com",
+    "facebook.com", "www.facebook.com", "m.facebook.com", "mbasic.facebook.com",
+}
+_VERIFICATION_PATH_MARKERS = (
+    "/challenge", "/checkpoint", "/two_factor", "/twofactor", "/verify",
+    "/verification", "/confirm", "/recover", "/identify", "/login",
+    "/auth_platform", "/oidc", "/accounts/login", "/accounts/password",
+    "/accounts/signup",
+)
+_VERIFICATION_QUERY_MARKERS = ("challenge", "twofactor", "two_factor", "verification", "confirmation_code")
 
 
 class InternalBrowserError(RuntimeError):
@@ -179,14 +189,43 @@ def _is_recovery_window(item: dict[str, Any]) -> bool:
     página inicial carregando enquanto o campo de SMS foi aberto em outra
     janela pelo próprio fluxo de acesso.
     """
+    return _is_verification_window(item)
+
+
+def _is_verification_window(item: dict[str, Any]) -> bool:
+    """Reconhece desafios de código por SMS, e-mail ou aprovação em qualquer janela Meta."""
     parsed = urllib.parse.urlparse(str(item.get("url") or ""))
-    if parsed.hostname not in {"facebook.com", "www.facebook.com"}:
+    if parsed.hostname not in _ACCESS_HOSTS:
         return False
     path = parsed.path.casefold()
-    return any(marker in path for marker in (
-        "/login", "/recover", "/identify", "/checkpoint",
-        "/two_step_verification", "/two_factor/", "/confirmemail",
-    ))
+    query = parsed.query.casefold()
+    if any(marker in path for marker in _VERIFICATION_PATH_MARKERS):
+        return True
+    return any(marker in query for marker in _VERIFICATION_QUERY_MARKERS)
+
+
+def _pin_path() -> 'pathlib.Path':
+    return __import__('pathlib').Path(os.environ.get('SALES_AGENT_DATA_DIR', '/var/lib/agente-vendas-local')) / 'internal-browser-target.id'
+
+
+def _activate(page: dict[str, Any]) -> None:
+    """Traz a janela escolhida para o primeiro plano do Xvfb.
+
+    Abas em segundo plano têm document.visibilityState == 'hidden'; o fluxo de
+    verificação do Instagram pode adiar a troca de tela e o captureScreenshot
+    devolve um quadro vazio quando a aba não está visível.
+    """
+    target_id = str(page.get("id") or "")
+    if not target_id:
+        return
+    try:
+        request = urllib.request.Request(
+            DEBUG_URL + "/json/activate/" + urllib.parse.quote(target_id, safe=""),
+            method="GET",
+        )
+        urllib.request.urlopen(request, timeout=5).close()
+    except Exception:
+        pass
 
 
 def _is_instagram_login_window(item: dict[str, Any]) -> bool:
@@ -207,25 +246,24 @@ def _target() -> dict[str, Any]:
         raise InternalBrowserError("Lista de páginas inválida")
     # O painel e o worker são processos distintos. Fixe o mesmo target por
     # identidade durável; a ordem de /json/list muda ao ativar outras abas.
-    pin = __import__('pathlib').Path(os.environ.get('SALES_AGENT_DATA_DIR', '/var/lib/agente-vendas-local')) / 'internal-browser-target.id'
+    pin = _pin_path()
     try:
         pinned = pin.read_text().strip()
     except OSError:
         pinned = ''
     windows = [item for item in pages if isinstance(item, dict) and item.get("type") == "page" and _is_access_window(item)]
-    # Prioriza a janela de recuperação aberta pelo operador. A página
-    # principal permanece disponível e volta a ser selecionada quando a
-    # recuperação termina ou é fechada.
-    # Fluxos de confirmação podem abrir várias janelas auxiliares. A mais
-    # recente é a etapa que o operador acabou de acionar e deve ser exibida
-    # pelo painel, em vez da página inicial que ficou atrás dela.
-    page = next((item for item in reversed(windows) if _is_recovery_window(item)), None)
-    # Somente uma etapa explícita de recuperação pode interromper a página
-    # persistente. Fora disso, o alvo fixado evita que uma aba recém-aberta
-    # redimensione ou substitua a sessão exibida.
-    if page is None:
-        page = next((item for item in windows if item.get('id') == pinned), None)
-    if page is None:
+    pinned_page = next((item for item in windows if item.get('id') == pinned), None)
+    # Um desafio de código por SMS costuma abrir em outra janela. A tela remota
+    # deve seguir a janela de verificação mais recente, inclusive quando a
+    # página principal continua aberta com o formulário de senha.
+    verification = [item for item in reversed(windows) if _is_verification_window(item)]
+    if pinned_page is not None and _is_verification_window(pinned_page):
+        page = pinned_page
+    elif verification:
+        page = verification[0]
+    elif pinned_page is not None:
+        page = pinned_page
+    else:
         primary = [item for item in windows if urllib.parse.urlparse(str(item.get("url") or "")).hostname in _PRIMARY_HOSTS]
         # Nunca deixa uma aba antiga de login encobrir a aba principal que já
         # foi aberta pelo operador. A página normal tem prioridade e a aba de
@@ -239,10 +277,12 @@ def _target() -> dict[str, Any]:
             pin.write_text(str(page.get('id') or ''))
         except OSError:
             pass
+        _activate(page)
         return page
     created = _http("/json/new?" + urllib.parse.quote("https://www.instagram.com/", safe="/:?=&"), method="PUT")
     if not isinstance(created, dict):
         raise InternalBrowserError("Não foi possível abrir a página interna")
+    _activate(created)
     return created
 
 
@@ -253,6 +293,44 @@ def _with_page(callback):
         return callback(ws)
     finally:
         ws.close()
+
+
+def targets() -> dict[str, Any]:
+    """Lista as janelas Meta disponíveis para o operador escolher na tela remota."""
+    pages = _http("/json/list")
+    if not isinstance(pages, list):
+        raise InternalBrowserError("Lista de páginas inválida")
+    selected = str(_target().get("id") or "")
+    result = []
+    for item in pages:
+        if not isinstance(item, dict) or item.get("type") != "page" or not _is_access_window(item):
+            continue
+        target_id = str(item.get("id") or "")
+        result.append({
+            "id": target_id,
+            "url": str(item.get("url") or ""),
+            "title": str(item.get("title") or ""),
+            "verification": _is_verification_window(item),
+            "selected": target_id == selected,
+        })
+    return {"targets": result}
+
+
+def select_target(target_id: str) -> dict[str, Any]:
+    """Fixa manualmente a janela exibida no painel (útil se o desafio abrir à parte)."""
+    pages = _http("/json/list")
+    wanted = str(target_id or "")
+    item = next((page for page in pages if isinstance(page, dict) and str(page.get("id") or "") == wanted), None)
+    if item is None or item.get("type") != "page" or not _is_access_window(item):
+        raise InternalBrowserError("Janela do navegador não autorizada")
+    pin = _pin_path()
+    try:
+        pin.parent.mkdir(parents=True, exist_ok=True)
+        pin.write_text(wanted)
+    except OSError as exc:
+        raise InternalBrowserError("Não foi possível fixar a janela") from exc
+    _activate(item)
+    return {"selected": True, "id": wanted, "url": str(item.get("url") or "")}
 
 
 def status() -> dict[str, Any]:

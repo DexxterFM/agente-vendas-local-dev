@@ -632,6 +632,12 @@ def execute(command, args):
         if command == 'internalBrowserAction':
             from scripts.vps.internal_browser import action
             return action(args)
+        if command == 'internalBrowserTargets':
+            from scripts.vps.internal_browser import targets
+            return targets()
+        if command == 'internalBrowserSelectTarget':
+            from scripts.vps.internal_browser import select_target
+            return select_target(str(args.get('id') or ''))
         if command == 'internalBrowserImportSession':
             from scripts.vps.internal_browser import import_session_cookies
             return import_session_cookies(args.get('cookies'))
