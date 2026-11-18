@@ -286,6 +286,54 @@ class BrowserDmCycleTests(unittest.TestCase):
                 self.assertIn("salvar muitas horas", answer, text)
                 self.assertIn("consultório individual", answer, text)
 
+    def test_no_after_comparison_offer_uses_previous_message_context(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}
+        ):
+            lead_id = execute("create", {"name": "Clínica teste", "contact": "clinica.teste"})
+            answer = execute("draft", {
+                "id": lead_id,
+                "browser_history": [
+                    {"role": "assistant", "text": "Entendi! Posso comparar rapidamente as funcionalidades de agenda e financeiro com o ERP Clínica TEA e, se fizer sentido para vocês, te envio o link para começar os 3 meses grátis. Quer que eu te mostre?"},
+                    {"role": "user", "text": "não"},
+                ],
+            })
+            self.assertIn("Sem problema", answer)
+            self.assertIn("comparar a agenda e o financeiro com calma depois", answer)
+            self.assertNotIn("salvar muitas horas", answer)
+            self.assertNotIn("clínica com equipe", answer)
+
+    def test_no_after_link_offer_does_not_restart_discovery(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}
+        ):
+            lead_id = execute("create", {"name": "Clínica teste", "contact": "clinica.teste"})
+            answer = execute("draft", {
+                "id": lead_id,
+                "browser_history": [
+                    {"role": "assistant", "text": "Posso enviar o link para ativar os 3 meses gratuitos?"},
+                    {"role": "user", "text": "não"},
+                ],
+            })
+            self.assertIn("Sem pressão", answer)
+            self.assertIn("Quando quiser ativar os 3 meses grátis", answer)
+            self.assertNotIn("consultório individual", answer)
+
+    def test_bare_no_without_app_usage_question_does_not_start_pitch(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}
+        ):
+            lead_id = execute("create", {"name": "Clínica teste", "contact": "clinica.teste"})
+            answer = execute("draft", {
+                "id": lead_id,
+                "browser_history": [
+                    {"role": "assistant", "text": "Tudo bem! Espero que sim 😊"},
+                    {"role": "user", "text": "não"},
+                ],
+            })
+            self.assertNotIn("salvar muitas horas", answer)
+            self.assertNotIn("clínica com equipe", answer)
+
     def test_trial_link_is_routed_by_service_profile(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(
             os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}

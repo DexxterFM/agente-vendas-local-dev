@@ -123,6 +123,41 @@ def _installation_bubbles(memory, offer, lead_id=None, lead_name=None):
     ])
     return BROWSER_BUBBLE_SEPARATOR.join(bubbles)
 
+def _asked_app_usage(text):
+    """Reconhece perguntas do agente sobre o app/programa atual do lead."""
+    return bool(re.search(
+        r'\b(?:j[aá]\s+(?:usa|usam|utiliza|utilizam|possui|possuem|tem)|'
+        r'usam?\s+algum|utiliza\s+algum|possui\s+algum|'
+        r'algum\s+(?:app|programa|sistema)|app\s+ou\s+programa|'
+        r'programa\s+para|sistema\s+para)\b',
+        str(text or ''),
+        re.I,
+    ))
+
+def _contextual_no_reply(previous_assistant):
+    """Escolhe a resposta para um 'não' curto pelo que o agente acabou de perguntar."""
+    text = str(previous_assistant or '')
+    if re.search(
+        r'\b(?:comparar|comparativo|funcionalidades de agenda e financeiro|'
+        r'quer que eu te mostre|te mostre)\b',
+        text,
+        re.I,
+    ):
+        return ('Tudo bem! Sem problema 😊'
+                + BROWSER_BUBBLE_SEPARATOR
+                + 'Se quiser comparar a agenda e o financeiro com calma depois, é só me chamar. Desejo muito sucesso para a gestão de vocês!')
+    if re.search(
+        r'\b(?:posso enviar|enviar o link|link para ativar|link de instala[cç][aã]o)\b',
+        text,
+        re.I,
+    ):
+        return ('Tudo bem! Sem pressão 😊'
+                + BROWSER_BUBBLE_SEPARATOR
+                + 'Quando quiser ativar os 3 meses grátis, é só me avisar que eu envio o link.')
+    if re.search(r'\bescolha entre\b', text, re.I):
+        return 'Tudo bem! Quando quiser escolher a versão, é só me avisar. 😊'
+    return None
+
 def _operator_assist(message, stage, context, links, images):
     text = str(message or '').strip()
     if not text:
@@ -933,6 +968,21 @@ def execute(command, args):
             approved = studio.match(latest_user, previous_assistant, custom_only=True)
             if approved:
                 return str(approved.get('response') or '').strip()
+            # Um "não" curto não é recusa universal: ele responde à última
+            # pergunta do agente. A mensagem anterior define a resposta, para
+            # que recusar um comparativo não reinicie a descoberta do produto.
+            short_no = bool(
+                latest_user
+                and re.fullmatch(
+                    r'(?:n[aã]o|nao|n[aã]o mesmo|agora n[aã]o|n[aã]o preciso|n[aã]o obrigad[oa])[.! ]*',
+                    latest_user.strip(),
+                    re.I,
+                )
+            )
+            if short_no:
+                contextual_no = _contextual_no_reply(previous_assistant)
+                if contextual_no:
+                    return contextual_no
             proposal_analysis = bool(latest_user and re.search(
                 r'\b(?:vou|vamos|iremos|preciso|precisamos).{0,45}\b(?:analis|avali|pensar|ver com (?:a |o )?(?:equipe|s[oó]ci[oa]|respons[aá]vel))',
                 latest_user,
@@ -1085,7 +1135,8 @@ def execute(command, args):
             if history and history[-1][0]=='user' and latest_user and re.fullmatch(r'(?:sim|s[ií]m)[.! ]*',latest_user,re.I):
                 return 'Que bom! Qual app ou programa vocês usam hoje para organizar a gestão da clínica?'
             no_app_answer = bool(
-                history and history[-1][0]=='user' and latest_user and (
+                _asked_app_usage(previous_assistant)
+                and history and history[-1][0]=='user' and latest_user and (
                     re.fullmatch(r'(?:n[aã]o|ainda n[aã]o|nunca|nenhum|n[aã]o usamos|n[aã]o uso)[.! ]*',latest_user,re.I)
                     or re.search(r'\b(?:estou|tava|estava) procurando\b',latest_user,re.I)
                     or re.search(r'\bj[aá] (?:usei|usamos).{0,35}\b(?:n[aã]o uso mais|n[aã]o usamos mais|parei|paramos)\b',latest_user,re.I)
