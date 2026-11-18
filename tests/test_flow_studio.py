@@ -29,7 +29,9 @@ class FlowStudioTests(unittest.TestCase):
         self.addCleanup(self.env.stop)
 
     def proposal(self, message=PROMPT, stage='descoberta'):
-        return execute('flowChat', {'message': message, 'stage': stage})
+        # Estes testes validam o roteiro determinístico de regras. Força o
+        # fallback para não depender de modelo local estar ligado na máquina.
+        return execute('flowChat', {'message': message, 'stage': stage, 'rules_only': True})
 
     def apply(self, proposal, **extra):
         args = {

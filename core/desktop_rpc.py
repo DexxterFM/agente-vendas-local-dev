@@ -1000,6 +1000,11 @@ def execute(command, args):
             return studio.state()
         if command == 'flowChat':
             studio = FlowStudio(memory)
+            kwargs = {}
+            if args.get('rules_only'):
+                # Força o roteiro determinístico de regras (sem modelo local).
+                # Usado por chamadas que precisam reproduzir o fallback exato.
+                kwargs['client'] = False
             return studio.interpret(
                 args.get('message'),
                 stage=args.get('stage'),
@@ -1007,6 +1012,7 @@ def execute(command, args):
                 links=args.get('links', ''),
                 images=args.get('images', ''),
                 history=args.get('history') if isinstance(args.get('history'), list) else [],
+                **kwargs,
             )
         if command == 'flowApply':
             studio = FlowStudio(memory)

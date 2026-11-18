@@ -28,11 +28,12 @@ _ACCESS_HOSTS = _PRIMARY_HOSTS | {
     "accounts.instagram.com", "m.instagram.com",
     "facebook.com", "www.facebook.com", "m.facebook.com", "mbasic.facebook.com",
 }
+# Somente desafios de código genuínos (SMS/e-mail/two-step) devem atrair a tela
+# remota. Formulários de entrada e redefinição de senha são janelas transitórias:
+# segui-los esconderia a página autenticada e o próprio campo de código.
 _VERIFICATION_PATH_MARKERS = (
     "/challenge", "/checkpoint", "/two_factor", "/twofactor", "/verify",
-    "/verification", "/confirm", "/recover", "/identify", "/login",
-    "/auth_platform", "/oidc", "/accounts/login", "/accounts/password",
-    "/accounts/signup",
+    "/verification", "/confirm", "/two_step_verification", "/confirmemail",
 )
 _VERIFICATION_QUERY_MARKERS = ("challenge", "twofactor", "two_factor", "verification", "confirmation_code")
 
@@ -261,14 +262,17 @@ def _target() -> dict[str, Any]:
         page = pinned_page
     elif verification:
         page = verification[0]
-    elif pinned_page is not None:
-        page = pinned_page
     else:
         primary = [item for item in windows if urllib.parse.urlparse(str(item.get("url") or "")).hostname in _PRIMARY_HOSTS]
         # Nunca deixa uma aba antiga de login encobrir a aba principal que já
         # foi aberta pelo operador. A página normal tem prioridade e a aba de
         # login só é usada quando ela é a única janela disponível.
-        page = next((item for item in reversed(primary) if not _is_instagram_login_window(item)), None)
+        clean = [item for item in reversed(primary) if not _is_instagram_login_window(item)]
+        # O pin só desempata páginas limpas; nunca força uma aba de login ou
+        # recuperação obsoleta a substituir a página autenticada.
+        page = next((item for item in clean if item.get('id') == pinned), None)
+        if page is None:
+            page = next(iter(clean), None)
         if page is None:
             page = next((item for item in reversed(primary)), None)
     if page:
