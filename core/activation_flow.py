@@ -101,10 +101,21 @@ class ActivationFlow:
     """Orquestra o cadastro e ativação de uma nova conta de teste."""
 
     SETTING_PREFIX = "sales.activation."
+    FORM_URL_SETTING = "sales.activation.form_url"
+    DEFAULT_FORM_URL = "https://erpclinicatea.com/ativacao"
 
     def __init__(self, memory: Memory):
         self.memory = memory
         self._ensure_tables()
+
+    def form_url(self) -> str:
+        """Devolve a URL do formulário de ativação configurada no banco."""
+        configured = str(self.memory.get_setting(self.FORM_URL_SETTING, "") or "").strip()
+        return configured or self.DEFAULT_FORM_URL
+
+    def set_form_url(self, url: str) -> None:
+        """Define a URL do formulário de ativação (endereço já registrado no ERP)."""
+        self.memory.set_setting(self.FORM_URL_SETTING, str(url).strip())
 
     def _ensure_tables(self) -> None:
         self.memory.db.execute(

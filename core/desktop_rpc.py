@@ -1184,12 +1184,13 @@ def execute(command, args):
             from core.trial_lifecycle import TrialLifecycle
             return TrialLifecycle(memory).confirm_payment(str(args.get('account_id') or 'default'))
         if command == 'activationConfig':
+            flow = ActivationFlow(memory)
             offer = execute('trialOffer', {})
             return {
                 'clinic_link': offer.get('clinic', {}).get('url', ''),
                 'professional_link': offer.get('professional', {}).get('url', ''),
                 'months_free': int(offer.get('months_free', 3)),
-                'form_url': 'https://erpclinicatea.com/ativacao',
+                'form_url': flow.form_url(),
                 'fields': [
                     {'id': 'company_name', 'label': 'Nome da clínica / empresa', 'type': 'text', 'required': True},
                     {'id': 'cnpj', 'label': 'CNPJ', 'type': 'text', 'required': True, 'mask': '00.000.000/0000-00'},
@@ -1204,6 +1205,10 @@ def execute(command, args):
                     'será provisionado e o perfil inicial ficará pronto para uso.'
                 ),
             }
+        if command == 'activationSetConfig':
+            flow = ActivationFlow(memory)
+            flow.set_form_url(str(args.get('form_url') or ''))
+            return {'form_url': flow.form_url(), 'ok': True}
         if command == 'activationRegister':
             flow = ActivationFlow(memory)
             req = ActivationRequest(
