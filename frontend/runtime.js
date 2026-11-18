@@ -382,8 +382,27 @@ async function waLoadLeads(preferred){
  if(!waState.thread.length||Number(waState.leadId)!==selected)await waLoadThread(selected);
  else waRenderThread();
 }
+async function waEnsureTestLead(){
+ if(waState.leadId)return waState.leadId;
+ const leads=waState.leads||[];
+ if(leads.length){
+  waState.leadId=Number(leads[0].id);
+  const select=el('#wa-lead');if(select)select.value=String(waState.leadId);
+  await waLoadThread(waState.leadId);
+  return waState.leadId;
+ }
+ const created=await call('create',{name:'Cliente de teste',contact:'teste.local',notes:'Conversa criada automaticamente para teste de diálogo livre.'});
+ await waLoadLeads(created.id);
+ waState.leadId=Number(created.id);
+ const select=el('#wa-lead');if(select)select.value=String(waState.leadId);
+ await waLoadThread(waState.leadId);
+ report({message:'Conversa de teste criada automaticamente. Você pode agora conversar livremente como o cliente.'});
+ return waState.leadId;
+}
 async function waAskAgent(){
- if(waState.busy||!waState.leadId)return;
+ if(waState.busy)return;
+ await waEnsureTestLead();
+ if(!waState.leadId)return;
  const epoch=waState.epoch;
  waState.busy=true;
  const send=el('#wa-send');if(send)send.disabled=true;
@@ -407,7 +426,7 @@ async function waAskAgent(){
 async function waRepeatText(text){
  const value=String(text||'').trim();
  if(!value)return report({message:'Escreva a mensagem do cliente antes de testar.'});
- if(!waState.leadId)return report({message:'Selecione ou crie uma conversa de teste.'});
+ await waEnsureTestLead();
  if(waState.busy)return;
  waState.thread.push({role:'user',text:value,at:waClock()});
  waRenderThread();
@@ -457,7 +476,7 @@ async function waOpenEditor(index){
 }
 async function operatorView(){
  const content=activatePanel('Diálogo com o agente','Converse como o cliente. Edite qualquer resposta do agente direto no balão e ela vira a resposta oficial do fluxo.');
- content.innerHTML=`<div class="operator-tabs" role="tablist"><button class="active" data-operator-tab="chat">💬 Testar diálogo</button><button data-operator-tab="prompt">✦ Ajustar por prompt</button><span class="operator-tabs-note" id="wa-version">versão …</span></div><section class="wa-panel" id="wa-panel"><div class="wa-layout"><aside class="wa-side"><label class="wa-field">Conversa de teste<select id="wa-lead"></select></label><p class="wa-hint">Você interpreta o cliente. O agente responde com o fluxo oficial; ao editar uma resposta, ela vira a resposta validada para aquela mensagem.</p><section class="data-card"><div class="section-heading"><h3>Histórico de versões</h3><span class="status-pill" id="wa-revision">v0</span></div><div class="history-list" id="wa-history"></div></section><section class="data-card"><div class="section-heading"><h3>O que o agente aprendeu</h3><span class="status-pill" id="wa-lesson-count">0</span></div><div class="lesson-list" id="wa-lessons"></div></section></aside><div class="wa-chat"><header class="wa-head"><span class="wa-avatar" id="wa-avatar">?</span><div><strong id="wa-name">Conversa de teste</strong><small id="wa-contact">Ambiente de teste · nada é enviado ao Instagram</small></div><span class="wa-live">● testando</span></header><div class="wa-thread" id="wa-thread"></div><form class="wa-composer" id="wa-form"><textarea id="wa-input" rows="1" placeholder="Escreva como o cliente… (Enter envia, Shift+Enter quebra linha)"></textarea><button type="button" class="ghost-button" id="wa-repeat" title="Reenviar a última mensagem do cliente">↻ Repetir</button><button type="submit" class="primary-button" id="wa-send">➤ Enviar</button></form></div></div></section><section id="operator-panel" hidden></section>`;
+ content.innerHTML=`<div class="operator-tabs" role="tablist"><button class="active" data-operator-tab="chat">💬 Testar diálogo</button><button data-operator-tab="prompt">✦ Ajustar por prompt</button><span class="operator-tabs-note" id="wa-version">versão …</span></div><section class="wa-panel" id="wa-panel"><div class="wa-layout"><aside class="wa-side"><label class="wa-field">Conversa de teste<select id="wa-lead"></select></label><p class="wa-hint">Escreva qualquer coisa como se fosse o cliente. O agente responde com o fluxo oficial; ao editar uma resposta no balão, ela vira a resposta oficial e o agente lembra da próxima vez.</p><section class="data-card"><div class="section-heading"><h3>Histórico de versões</h3><span class="status-pill" id="wa-revision">v0</span></div><div class="history-list" id="wa-history"></div></section><section class="data-card"><div class="section-heading"><h3>O que o agente aprendeu</h3><span class="status-pill" id="wa-lesson-count">0</span></div><div class="lesson-list" id="wa-lessons"></div></section></aside><div class="wa-chat"><header class="wa-head"><span class="wa-avatar" id="wa-avatar">?</span><div><strong id="wa-name">Conversa de teste</strong><small id="wa-contact">Ambiente de teste · nada é enviado ao Instagram</small></div><span class="wa-live">● testando</span></header><div class="wa-thread" id="wa-thread"></div><form class="wa-composer" id="wa-form"><textarea id="wa-input" rows="1" placeholder="Escreva como o cliente… (Enter envia, Shift+Enter quebra linha)"></textarea><button type="button" class="ghost-button" id="wa-repeat" title="Reenviar a última mensagem do cliente">↻ Repetir</button><button type="submit" class="primary-button" id="wa-send">➤ Enviar</button></form></div></div></section><section id="operator-panel" hidden></section>`;
  const tabs=[...content.querySelectorAll('[data-operator-tab]')];
  const showTab=async name=>{
   tabs.forEach(tab=>tab.classList.toggle('active',tab.dataset.operatorTab===name));
