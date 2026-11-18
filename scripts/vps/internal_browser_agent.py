@@ -1323,13 +1323,34 @@ def sweep(source: str = "scheduled") -> dict[str, Any]:
     return result
 
 
-def cycle() -> dict[str, Any]:
+def cycle(mode: str | None = None) -> dict[str, Any]:
+    """Executa somente o modo que está no turno da fila.
+
+    `sales` atende DMs/notificações e `prospecting` varre o feed. Um job
+    concluído (ou alguns ciclos sem job) devolve o turno ao outro modo.
+    """
     state = execute("agentStatus", {})
     if not state.get("active"):
         return {"active": False, "browser": "paused"}
+    mode_state = execute("browserModeStatus", {})
+    current_mode = str(mode or mode_state.get("mode") or "sales").strip().lower()
+    if current_mode not in ("sales", "prospecting"):
+        current_mode = "sales"
+
+    def done(payload: dict[str, Any], job: bool = False, detail: str = "") -> dict[str, Any]:
+        result = {"active": True, "mode": current_mode, **payload}
+        if job:
+            nxt = execute("browserModeComplete", {"mode": current_mode, "detail": detail})
+        else:
+            nxt = execute("browserModeIdle", {"mode": current_mode})
+        result["mode"] = str(nxt.get("mode") or current_mode)
+        result["next_mode"] = str(nxt.get("next_mode") or "")
+        result["idle_cycles"] = int(nxt.get("idle_cycles") or 0)
+        return result
+
     status = browser.status()
     if not status.get("running") or not status.get("ready"):
-        return {"active": True, "browser": "offline"}
+        return done({"browser": "offline"})
     snap = browser.snapshot()
     try:
         page_watchdog = browser.stalled_page_watchdog()
@@ -1342,21 +1363,15 @@ def cycle() -> dict[str, Any]:
     # a lista é atualizada. Não bloqueie o ciclo de DM nesse estado: a leitura
     # dos marcadores e das linhas continua sendo feita no mesmo documento.
     if page_watchdog.get("stalled") and not str(snap.get("url") or "").startswith("https://www.instagram.com/direct"):
-        return {"active": True, "browser": "recovering-page", "page_watchdog": page_watchdog}
+        return done({"browser": "recovering-page", "page_watchdog": page_watchdog})
     if _login_or_identity_step(str(snap.get("url") or "")) or not snap.get("authenticated"):
-        return {"active": True, "browser": "waiting-login"}
+        return done({"browser": "waiting-login"})
     try:
         frontend = browser.frontend_events(clear=True)
     except browser.InternalBrowserError:
         frontend = {"event_count": 0, "events": [], "last": None}
     url = str(snap.get("url") or "")
     open_thread_result: dict[str, Any] | None = None
-    if "/direct/t/" in url:
-        open_thread_result = _process_thread("open-thread")
-        # Uma conversa aberta não pode impedir a descoberta das demais DMs.
-        # Só permanecemos nela quando houve uma ação real neste ciclo.
-        if open_thread_result.get("replied") or open_thread_result.get("reaction_pending"):
-            return {"active": True, "browser": "thread", **open_thread_result}
     indicators = browser.metadata()
     event_rows = [item for item in frontend.get("events") or [] if isinstance(item, dict)]
     last_event = frontend.get("last") if isinstance(frontend.get("last"), dict) else {}
@@ -1368,12 +1383,26 @@ def cycle() -> dict[str, Any]:
         "frontend_events": len(event_rows),
         "frontend_unread_rows": int(last_event.get("unread_rows") or 0),
     }
-    if (urlparse(url).path.rstrip("/") in {"", "/"}
-            and bool(execute("agentStatus", {}).get("prospecting_active"))
-            and not aggregate["message_pending"] and not aggregate["notification_pending"]):
-        prospecting_result = _prospecting_cycle()
-        if prospecting_result.get("browser") not in {None, "prospecting-paced", "prospecting-no-candidate", "prospecting-scrolled", "prospecting-waiting-home"}:
-            return {"active": True, **aggregate, **prospecting_result}
+
+    if current_mode == "prospecting":
+        # Nenhuma leitura de conversa neste turno: a prospecção usa sozinha o
+        # documento autenticado e devolve a fila ao atendimento ao terminar.
+        if (urlparse(url).path.rstrip("/") in {"", "/"}
+                and bool(state.get("prospecting_active"))
+                and not aggregate["message_pending"] and not aggregate["notification_pending"]):
+            prospecting_result = _prospecting_cycle()
+            browser_state = str(prospecting_result.get("browser") or "")
+            job = browser_state in {"prospecting-sent", "prospecting-skipped"}
+            detail = f"{browser_state}:{prospecting_result.get('username', '')}"
+            return done({**aggregate, **prospecting_result}, job=job, detail=detail)
+        return done({**aggregate, "browser": "prospecting-waiting"})
+
+    if "/direct/t/" in url:
+        open_thread_result = _process_thread("open-thread")
+        # Uma conversa aberta não pode impedir a descoberta das demais DMs.
+        # Só permanecemos nela quando houve uma ação real neste ciclo.
+        if open_thread_result.get("replied") or open_thread_result.get("reaction_pending"):
+            return done({"browser": "thread", **open_thread_result}, job=True, detail="open-thread")
     # A central de notificações tem prioridade quando os dois indicadores
     # vermelhos aparecem juntos. Antes, o retorno antecipado do ramo de DMs
     # impedia esta rotina de ser alcançada indefinidamente.
@@ -1385,11 +1414,14 @@ def cycle() -> dict[str, Any]:
             and (aggregate["notification_pending"] or not aggregate["message_pending"])):
         notification_result = _capture_notification_actions()
         _mark_notification_scan()
-        return {"active": True, "browser": "notification", **aggregate, **notification_result}
+        job = any(int(notification_result.get(key) or 0) > 0
+                  for key in ("queued", "followed", "welcomed"))
+        return done({"browser": "notification", **aggregate, **notification_result},
+                    job=job, detail="notification")
     if aggregate["message_pending"]:
         if urlparse(url).path.rstrip("/") != "/direct/inbox":
             if not _open_inbox():
-                return {"active": True, "browser": "inbox-control-unavailable", **aggregate}
+                return done({"browser": "inbox-control-unavailable", **aggregate})
             _wait(.7)
         targets = _inbox_targets()
         unread = [target for target in targets if target.get("unread")]
@@ -1402,7 +1434,8 @@ def cycle() -> dict[str, Any]:
             processed = _process_thread("unread-row-metadata")
             cooldown = 300 if processed.get("reason") == "no-pending-incoming" else 60
             _RECENT_UNREAD_TARGETS[_unread_target_key(actionable[0])] = time.monotonic() + cooldown
-            return {"active": True, "browser": "message", **aggregate, **processed}
+            return done({"browser": "message", **aggregate, **processed},
+                        job=bool(processed.get("replied")), detail="message")
         # Uma resposta feita pelo celular pode marcar a conversa como lida
         # antes do próximo ciclo. Se o próprio navegador sinalizou uma nova
         # mensagem, percorremos poucas conversas recentes e só respondemos se
@@ -1414,13 +1447,17 @@ def cycle() -> dict[str, Any]:
             cooldown = 300 if processed.get("reason") == "no-pending-incoming" else 60
             _RECENT_UNREAD_TARGETS[_unread_target_key(target)] = time.monotonic() + cooldown
             if processed.get("replied") or processed.get("reason") != "no-pending-incoming":
-                return {"active": True, "browser": "message", **aggregate, **processed}
+                return done({"browser": "message", **aggregate, **processed},
+                            job=bool(processed.get("replied")), detail="message-fallback")
             _open_inbox()
             _wait(.35)
-        return {"active": True, "browser": "inbox-no-new-unread", **aggregate}
+        return done({"browser": "inbox-no-new-unread", **aggregate})
     notification_result = {}
     if _sweep_due():
-        return {"active": True, "browser": "sweep", **aggregate, **notification_result, **sweep("weekly")}
+        sweep_result = sweep("weekly")
+        job = any(int(sweep_result.get(key) or 0) > 0 for key in ("imported", "replied"))
+        return done({"browser": "sweep", **aggregate, **notification_result, **sweep_result},
+                    job=job, detail="sweep")
     if open_thread_result is not None:
-        return {"active": True, "browser": "thread", **aggregate, **notification_result, **open_thread_result}
-    return {"active": True, "browser": "ready", **aggregate, **notification_result}
+        return done({"browser": "thread", **aggregate, **notification_result, **open_thread_result})
+    return done({"browser": "ready", **aggregate, **notification_result})

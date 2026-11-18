@@ -150,6 +150,10 @@ def execute(command, args):
                 'prospecting_active': memory.get_setting('sales.agent.prospecting_active','false') == 'true',
                 'worker_heartbeat_at': heartbeat,
                 'worker_cycle': worker_cycle,
+                'job_mode': worker_cycle.get('job_mode') or {
+                    'mode': memory.get_setting('sales.agent.job_mode','sales'),
+                    'idle_cycles': int(memory.get_setting('sales.agent.job_mode_idle_cycles','0') or 0),
+                },
             }
         if command == 'setAgentActive':
             active=bool(args.get('active'))
@@ -660,6 +664,19 @@ def execute(command, args):
         if command == 'browserScreenReset':
             memory.set_setting('sales.agent.browser_screen_hash','')
             return {'reset':True}
+        if command == 'browserModeStatus':
+            from core.job_scheduler import status as job_mode_status
+            return job_mode_status(memory)
+        if command == 'browserModeSet':
+            from core.job_scheduler import force_mode
+            return force_mode(memory, args.get('mode'), actor=str(args.get('actor') or 'operator'))
+        if command == 'browserModeComplete':
+            from core.job_scheduler import complete_job
+            return complete_job(memory, args.get('mode'), str(args.get('detail') or ''),
+                                actor=str(args.get('actor') or 'worker'))
+        if command == 'browserModeIdle':
+            from core.job_scheduler import idle_tick
+            return idle_tick(memory, args.get('mode'), actor=str(args.get('actor') or 'worker'))
         if command == 'agentCycle':
             if memory.get_setting('sales.agent.active','false') != 'true': return {'active':False,'automatic_replies':False,'queued':0,'synced':0}
             synced=0

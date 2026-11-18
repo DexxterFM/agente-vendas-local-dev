@@ -13,15 +13,15 @@ DEFAULT_TRIAL_OFFER = {
     "clinic": {
         "name": "ERP Clínica TEA Multiprofissional",
         "url": (
-            "https://erpclinicatea.com/planos?utm_source=instagram"
-            "&utm_campaign=convite_tres_meses"
+            "https://erpclinicatea.com/cadastro?plano=clinica-multiprofissional"
+            "&convite=3-meses&utm_source=instagram&utm_campaign=convite_tres_meses"
         ),
     },
     "professional": {
         "name": "Clínica TEA Profissional",
         "url": (
-            "https://erpclinicatea.com/produto-profissional?convite=3-meses"
-            "&utm_source=instagram&utm_campaign=convite_tres_meses#cadastro"
+            "https://erpclinicatea.com/cadastro?plano=profissional"
+            "&convite=3-meses&utm_source=instagram&utm_campaign=convite_tres_meses"
         ),
     },
     "activation": (

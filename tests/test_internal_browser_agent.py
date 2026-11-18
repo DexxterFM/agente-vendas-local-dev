@@ -44,12 +44,12 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
         self.assertEqual(4, action.call_args_list.count(call({"kind": "key", "key": "Backspace"})))
 
     def test_composer_safe_text_percent_encodes_underscores_only_inside_urls(self):
-        text = "Link: https://erpclinicatea.com/planos?utm_source=instagram&utm_campaign=convite_tres_meses. Tudo_certo"
+        text = "Link: https://erpclinicatea.com/cadastro?plano=clinica-multiprofissional&convite=3-meses&utm_source=instagram&utm_campaign=convite_tres_meses. Tudo_certo"
 
         result = internal_browser_agent._composer_safe_text(text)
 
         self.assertEqual(
-            "Link: https://erpclinicatea.com/planos?utm%5Fsource=instagram&utm%5Fcampaign=convite%5Ftres%5Fmeses. Tudo_certo",
+            "Link: https://erpclinicatea.com/cadastro?plano=clinica-multiprofissional&convite=3-meses&utm%5Fsource=instagram&utm%5Fcampaign=convite%5Ftres%5Fmeses. Tudo_certo",
             result,
         )
 
@@ -157,7 +157,11 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
     def test_cycle_falls_back_to_recent_thread_when_phone_marked_message_as_read(
         self, execute, status, snapshot, metadata, _open_inbox, _targets, open_target, process, fallback, _wait, _sweep_due
     ):
-        execute.side_effect = [{"active": True}, {"event_count": 0, "events": [], "last": {}}]
+        execute.side_effect = [
+            {"active": True},
+            {"mode": "sales"},
+            {"mode": "prospecting", "next_mode": "sales", "idle_cycles": 0},
+        ]
         status.return_value = {"running": True, "ready": True}
         snapshot.return_value = {"url": "https://www.instagram.com/direct/inbox", "authenticated": True}
         metadata.return_value = {"message_pending": True, "notification_pending": False, "message_controls": 1, "notification_controls": 0}

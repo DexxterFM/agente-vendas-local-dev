@@ -65,14 +65,33 @@ def main() -> None:
                 result = execute("syncPostflow", {})
                 next_postflow_sync = time.monotonic() + postflow_interval
                 print(datetime.now(timezone.utc).isoformat(), "postflow_sync", result, flush=True)
-            result = execute("agentCycle", {})
+            # Fila alternada: somente o modo no turno executa neste ciclo.
+            # O agente de vendas (DM) e a prospecção ativa usam o mesmo
+            # navegador, então executá-los juntos disputava o mesmo job.
+            mode_state = execute("browserModeStatus", {})
+            mode = str(mode_state.get("mode") or "sales")
+            if mode == "sales":
+                result = execute("agentCycle", {})
+            else:
+                status = execute("agentStatus", {})
+                result = {
+                    "active": bool(status.get("active")),
+                    "automatic_replies": bool(status.get("automatic_replies")),
+                    "queued": 0,
+                    "synced": 0,
+                    "meta_sync_enabled": False,
+                    "last_sync_error": "",
+                    "sync_retry_at": "",
+                    "sync_backoff_seconds": "0",
+                }
             # O navegador interno persistente é a rota principal do agente na
             # VPS. O ciclo não toca a autenticação: só começa depois que a
             # página autenticada foi detectada e mantém a confirmação visual
             # de cada mensagem antes de gravá-la na memória.
-            browser_result = internal_browser_cycle()
-            if auto_dispatch and result.get("active"):
+            browser_result = internal_browser_cycle(mode=mode)
+            if auto_dispatch and mode == "sales" and result.get("active"):
                 execute("dispatchDue", {})
+            current_mode = execute("browserModeStatus", {})
             execute("workerHeartbeat", {
                 "active": result.get("active", False),
                 "automatic_replies": result.get("automatic_replies", False),
@@ -81,8 +100,9 @@ def main() -> None:
                 "meta_sync_enabled": result.get("meta_sync_enabled", False),
                 "postflow_sync_enabled": postflow_sync,
                 "browser": browser_result,
+                "job_mode": current_mode,
             })
-            print(datetime.now(timezone.utc).isoformat(), {**result, "browser": browser_result}, flush=True)
+            print(datetime.now(timezone.utc).isoformat(), {**result, "browser": browser_result, "job_mode": current_mode}, flush=True)
         except Exception as exc:  # systemd reinicia somente se o processo cair
             print(datetime.now(timezone.utc).isoformat(), "cycle_error", str(exc), flush=True)
             if postflow_sync:
