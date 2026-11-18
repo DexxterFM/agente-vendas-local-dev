@@ -4,6 +4,16 @@ from unittest.mock import call, patch
 from scripts.vps import internal_browser_agent
 
 
+def _repost_metadata_sequence(values):
+    """Devolve os metadados em ordem e repete o último estado no fim."""
+    values = list(values)
+
+    def next_value():
+        return values.pop(0) if len(values) > 1 else values[0]
+
+    return next_value
+
+
 class InternalBrowserAgentMetadataTests(unittest.TestCase):
     def setUp(self):
         internal_browser_agent._RECENT_UNREAD_TARGETS.clear()
@@ -416,7 +426,10 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
                 "username": "clinica.teste", "intro": "Olá! Tudo bem?",
             }},
             {"reserved": True},
+            {"allowed": True, "reason": ""},
             {"id": 7, "state": "sent"},
+            {"id": 7, "step": "dm", "result": "confirmed"},
+            {"username": "clinica.teste", "kind": "clinic_multi"},
         ]
         _page.side_effect = [
             "https://www.instagram.com/",
@@ -431,7 +444,7 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
         send_overlay.assert_called_once_with("Olá! Tudo bem?")
         action.assert_not_called()
         self.assertIn(
-            call("campaignConfirm", {"id": 7, "state": "sent", "note": "Interações confirmadas pela sessão interna"}),
+            call("campaignConfirm", {"id": 7, "state": "sent", "note": "Interações medidas: dm=ok"}),
             execute.call_args_list,
         )
 
@@ -459,7 +472,7 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
         execute.side_effect = [
             {"active": True, "prospecting_active": True},
             {"ready": True},
-            {"created": []},
+            {"created": [{"id": 9}]},
             {"claimed": True, "id": 9, "stage": "", "payload": {"username": "erpclinicatea"}},
             {"id": 9, "state": "skipped"},
         ]
@@ -486,9 +499,10 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
         execute.side_effect = [
             {"active": True, "prospecting_active": True},
             {"ready": True},
-            {"created": []},
+            {"created": [{"id": 11}]},
             {"claimed": True, "id": 11, "stage": "dm", "payload": {"username": "sem.dm"}},
             {"reserved": True},
+            {"allowed": True, "reason": ""},
             {"id": 11, "state": "skipped"},
         ]
         _page.side_effect = [
@@ -509,57 +523,29 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
     @patch("scripts.vps.internal_browser_agent._wait")
     @patch("scripts.vps.internal_browser_agent._own_username", return_value="erpclinicatea")
     @patch("scripts.vps.internal_browser_agent._open_home", return_value=True)
-    @patch("scripts.vps.internal_browser_agent._send_overlay_bubble")
+    @patch("scripts.vps.internal_browser_agent._send_overlay_bubble", return_value={"sent": True})
     @patch(
         "scripts.vps.internal_browser_agent._open_profile_dm",
         return_value={"mode": "overlay", "url": "https://www.instagram.com/clinica.teste/"},
     )
-    @patch("scripts.vps.internal_browser_agent.browser.action")
+    @patch("scripts.vps.internal_browser_agent._engage_repost", return_value=(True, {"repost_state": "reposted"}))
+    @patch("scripts.vps.internal_browser_agent._engage_comment", return_value=(True, {"comment_present": True}))
     @patch(
-        "scripts.vps.internal_browser_agent._engagement_metadata",
+        "scripts.vps.internal_browser_agent._engage_step",
         side_effect=[
-            {
-                "follow": {"x": 900.0, "y": 120.0},
-                "post": {"x": 640.0, "y": 300.0},
-                "like": None,
-                "comment": None,
-                "comment_field": None,
-                "share": None,
-                "repost": None,
-            },
-            {
-                "follow": None,
-                "post": None,
-                "like": {"x": 700.0, "y": 600.0},
-                "comment": {"x": 760.0, "y": 600.0},
-                "comment_field": {"x": 640.0, "y": 740.0},
-                "share": {"x": 820.0, "y": 600.0},
-                "repost": None,
-            },
-            {
-                "follow": None,
-                "post": None,
-                "like": None,
-                "comment": None,
-                "comment_field": {"x": 640.0, "y": 740.0},
-                "share": {"x": 820.0, "y": 600.0},
-                "repost": None,
-            },
-            {
-                "follow": None,
-                "post": None,
-                "like": None,
-                "comment": None,
-                "comment_field": None,
-                "share": None,
-                "repost": {"x": 640.0, "y": 420.0},
-            },
+            (True, {"follow_state": "following", "post": {"x": 640.0, "y": 300.0}}),
+            (True, {"like_state": "liked"}),
         ],
     )
+    @patch("scripts.vps.internal_browser_agent._engagement_metadata", return_value={"post": {"x": 640.0, "y": 300.0}})
+    @patch("scripts.vps.internal_browser_agent._wait_post_controls", return_value=(True, {"like_state": "not_liked", "comment": {"x": 785.0, "y": 525.0}}))
+    @patch("scripts.vps.internal_browser_agent._wait_page_ready", return_value=True)
+    @patch("scripts.vps.internal_browser_agent.browser.action")
     @patch("scripts.vps.internal_browser_agent._page")
     @patch("scripts.vps.internal_browser_agent.execute")
     def test_prospecting_engages_and_sends_approved_profile_intro(
-        self, execute, _page, engagement, action, open_dm, send_overlay, _home, _own, _wait
+        self, execute, _page, action, ready, post_controls, metadata, engage_step, engage_comment, engage_repost,
+        open_dm, send_overlay, _home, _own, _wait
     ):
         execute.side_effect = [
             {"active": True, "prospecting_active": True},
@@ -569,7 +555,10 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
             {"reserved": True},
             {"username": "clinica.teste", "segment": "clinic_multi", "intro": "Saudação aprovada para clínica"},
             {"id": 3, "stage": "dm"},
+            {"allowed": True, "reason": ""},
             {"id": 3, "state": "sent"},
+            {"id": 3, "step": "dm", "result": "confirmed"},
+            {"username": "clinica.teste", "kind": "clinic_multi"},
         ]
         _page.side_effect = [
             "https://www.instagram.com/",
@@ -580,20 +569,255 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
         result = internal_browser_agent._prospecting_cycle()
 
         self.assertEqual("prospecting-sent", result["browser"])
-        self.assertIn(call({"kind": "click", "x": 900.0, "y": 120.0}), action.call_args_list)
-        self.assertIn(call({"kind": "click", "x": 700.0, "y": 600.0}), action.call_args_list)
-        self.assertIn(call({"kind": "click", "x": 820.0, "y": 600.0}), action.call_args_list)
-        self.assertIn(call({"kind": "click", "x": 640.0, "y": 420.0}), action.call_args_list)
-        self.assertIn(call({"kind": "type", "text": "Muito bonito o trabalho de vocês! 😊"}), action.call_args_list)
+        self.assertEqual(
+            {"follow": True, "like": True, "comment": True, "repost": True, "dm": True},
+            result["actions"],
+        )
+        self.assertIn(call({"kind": "click", "x": 640.0, "y": 300.0}), action.call_args_list)
+        engage_step.assert_any_call(3, "follow", "follow", "follow_state", "following")
+        engage_step.assert_any_call(3, "like", "like", "like_state", "liked")
+        engage_comment.assert_called_once_with(3)
+        engage_repost.assert_called_once_with(3)
+        self.assertGreaterEqual(ready.call_count, 2)
+        send_overlay.assert_called_once_with("Saudação aprovada para clínica")
         self.assertIn(
             call("campaignProfileIntro", {"username": "clinica.teste", "text": "Clínica TEA atendimento infantil equipe multidisciplinar"}),
             execute.call_args_list,
         )
-        send_overlay.assert_called_once_with("Saudação aprovada para clínica")
         self.assertIn(
-            call("campaignStage", {"id": 3, "stage": "dm"}),
+            call("campaignConfirm", {
+                "id": 3, "state": "sent",
+                "note": "Interações medidas: follow=ok, like=ok, comment=ok, repost=ok, dm=ok",
+            }),
             execute.call_args_list,
         )
+
+
+class EngagementConfirmationTests(unittest.TestCase):
+    """Cada clique só é considerado feito quando os metadados confirmam."""
+
+    @patch("scripts.vps.internal_browser_agent._wait")
+    @patch("scripts.vps.internal_browser_agent.execute")
+    @patch("scripts.vps.internal_browser_agent.browser.action")
+    @patch(
+        "scripts.vps.internal_browser_agent._engagement_metadata",
+        side_effect=[
+            {"follow": {"x": 900.0, "y": 120.0}, "follow_state": "not_following"},
+            {"follow": None, "follow_state": "following"},
+        ],
+    )
+    def test_engage_step_confirms_after_metadata_state_changes(self, metadata, action, execute, _wait):
+        confirmed, observed = internal_browser_agent._engage_step(
+            55, "follow", "follow", "follow_state", "following"
+        )
+
+        self.assertTrue(confirmed)
+        self.assertEqual("following", observed["follow_state"])
+        action.assert_called_once_with({"kind": "click", "x": 900.0, "y": 120.0})
+        self.assertIn(
+            call("campaignActionAudit", {
+                "id": 55, "step": "follow", "result": "confirmed",
+                "detail": "attempt=1; follow_state=following",
+            }),
+            execute.call_args_list,
+        )
+
+    @patch("scripts.vps.internal_browser_agent._wait")
+    @patch("scripts.vps.internal_browser_agent.execute")
+    @patch("scripts.vps.internal_browser_agent.browser.action")
+    @patch(
+        "scripts.vps.internal_browser_agent._engagement_metadata",
+        return_value={"follow": {"x": 900.0, "y": 120.0}, "follow_state": "not_following"},
+    )
+    def test_engage_step_reports_unconfirmed_after_all_attempts(self, metadata, action, execute, _wait):
+        confirmed, _ = internal_browser_agent._engage_step(
+            56, "follow", "follow", "follow_state", "following"
+        )
+
+        self.assertFalse(confirmed)
+        self.assertEqual(3, action.call_count)
+        self.assertIn(
+            call("campaignActionAudit", {
+                "id": 56, "step": "follow", "result": "unconfirmed",
+                "detail": "attempts=3; follow_state=not_following",
+            }),
+            execute.call_args_list,
+        )
+
+    @patch("scripts.vps.internal_browser_agent._wait")
+    @patch("scripts.vps.internal_browser_agent.execute")
+    @patch("scripts.vps.internal_browser_agent.browser.action")
+    @patch(
+        "scripts.vps.internal_browser_agent._engagement_metadata",
+        side_effect=[
+            {"comment": {"x": 760.0, "y": 600.0}},
+            {"comment": None, "comment_field": {"x": 640.0, "y": 740.0},
+             "comment_post": {"x": 957.0, "y": 596.0}},
+            {"comment_post": {"x": 957.0, "y": 596.0}},
+            {"comment_present": True, "comment_count": 1},
+        ],
+    )
+    def test_engage_comment_waits_for_field_and_confirms_text(self, metadata, action, execute, _wait):
+        confirmed, _ = internal_browser_agent._engage_comment(57)
+
+        self.assertTrue(confirmed)
+        self.assertIn(call({"kind": "click", "x": 760.0, "y": 600.0}), action.call_args_list)
+        self.assertIn(call({"kind": "click", "x": 640.0, "y": 740.0}), action.call_args_list)
+        self.assertIn(call({"kind": "key", "key": "SelectAll"}), action.call_args_list)
+        self.assertIn(
+            call({"kind": "type", "text": "Muito bonito o trabalho de vocês! 😊"}),
+            action.call_args_list,
+        )
+        self.assertIn(call({"kind": "click", "x": 957.0, "y": 596.0}), action.call_args_list)
+        self.assertNotIn(call({"kind": "key", "key": "Enter"}), action.call_args_list)
+        self.assertIn(
+            call("campaignActionAudit", {
+                "id": 57, "step": "comment", "result": "confirmed",
+                "detail": "attempt=1; comment_present=True",
+            }),
+            execute.call_args_list,
+        )
+
+    @patch("scripts.vps.internal_browser_agent._wait")
+    @patch("scripts.vps.internal_browser_agent.execute")
+    @patch("scripts.vps.internal_browser_agent.browser.action")
+    @patch(
+        "scripts.vps.internal_browser_agent._engagement_metadata",
+        side_effect=[
+            {"comment": {"x": 760.0, "y": 600.0}},
+            {"comment_field": {"x": 640.0, "y": 740.0}},
+            {},
+            {"comment_present": True, "comment_count": 1},
+        ],
+    )
+    def test_engage_comment_falls_back_to_enter_without_post_button(self, metadata, action, execute, _wait):
+        confirmed, _ = internal_browser_agent._engage_comment(59)
+
+        self.assertTrue(confirmed)
+        self.assertIn(call({"kind": "key", "key": "Enter"}), action.call_args_list)
+
+    @patch("scripts.vps.internal_browser_agent._wait")
+    @patch("scripts.vps.internal_browser_agent.execute")
+    @patch("scripts.vps.internal_browser_agent.browser.action")
+    @patch(
+        "scripts.vps.internal_browser_agent._engagement_metadata",
+        side_effect=_repost_metadata_sequence([
+            {"repost": {"x": 825.0, "y": 525.0}, "repost_state": "not_reposted"},
+            {"repost_state": "not_reposted"},
+            {"repost_confirm": {"x": 237.0, "y": 557.0}, "repost_state": "not_reposted"},
+            {"repost_confirm": {"x": 237.0, "y": 557.0}, "repost_state": "not_reposted"},
+            {"repost_confirm": {"x": 237.0, "y": 557.0}, "repost_state": "not_reposted"},
+            {"repost_confirm": {"x": 237.0, "y": 557.0}, "repost_state": "not_reposted"},
+            {"repost_state": "reposted"},
+        ]),
+    )
+    def test_engage_repost_clicks_control_and_confirms_state(self, metadata, action, execute, _wait):
+        confirmed, _ = internal_browser_agent._engage_repost(58)
+
+        self.assertTrue(confirmed)
+        self.assertIn(call({"kind": "click", "x": 825.0, "y": 525.0}), action.call_args_list)
+        self.assertIn(call({"kind": "click", "x": 237.0, "y": 557.0}), action.call_args_list)
+        self.assertIn(call({"kind": "key", "key": "Escape"}), action.call_args_list)
+        self.assertIn(
+            call("campaignActionAudit", {
+                "id": 58, "step": "repost", "result": "confirmed",
+                "detail": "attempt=1; repost_state=reposted",
+            }),
+            execute.call_args_list,
+        )
+
+    @patch("scripts.vps.internal_browser_agent._wait")
+    @patch("scripts.vps.internal_browser_agent.execute")
+    @patch("scripts.vps.internal_browser_agent.browser.action")
+    @patch(
+        "scripts.vps.internal_browser_agent._engagement_metadata",
+        side_effect=_repost_metadata_sequence([
+            {"repost": None, "repost_confirm": {"x": 237.0, "y": 557.0}, "repost_state": "unknown"},
+            {"repost_confirm": {"x": 237.0, "y": 557.0}, "repost_state": "unknown"},
+            {"repost_confirm": {"x": 237.0, "y": 557.0}, "repost_state": "unknown"},
+            {"repost_confirm": {"x": 237.0, "y": 557.0}, "repost_state": "unknown"},
+            {"repost_state": "reposted"},
+        ]),
+    )
+    def test_engage_repost_confirms_already_open_sheet(self, metadata, action, execute, _wait):
+        """Sheet aberto por tentativa anterior: clicar direto no botão roxo."""
+        confirmed, _ = internal_browser_agent._engage_repost(60)
+
+        self.assertTrue(confirmed)
+        self.assertIn(call({"kind": "click", "x": 237.0, "y": 557.0}), action.call_args_list)
+        self.assertNotIn(call({"kind": "click", "x": 825.0, "y": 525.0}), action.call_args_list)
+        self.assertIn(call({"kind": "key", "key": "Escape"}), action.call_args_list)
+
+    @patch("scripts.vps.internal_browser_agent._wait")
+    @patch(
+        "scripts.vps.internal_browser_agent._engagement_metadata",
+        side_effect=[
+            {"like_state": "unknown", "comment": None},
+            {"like_state": "not_liked", "comment": {"x": 785.0, "y": 525.0}},
+        ],
+    )
+    def test_wait_post_controls_polls_until_modal_is_ready(self, metadata, _wait):
+        ready, observed = internal_browser_agent._wait_post_controls(timeout=3)
+
+        self.assertTrue(ready)
+        self.assertEqual("not_liked", observed["like_state"])
+
+    @patch("scripts.vps.internal_browser_agent._wait")
+    @patch(
+        "scripts.vps.internal_browser_agent._page",
+        side_effect=[False, False, True],
+    )
+    def test_wait_page_ready_polls_until_page_has_content(self, page, _wait):
+        self.assertTrue(internal_browser_agent._wait_page_ready(timeout=3))
+        self.assertEqual(3, page.call_count)
+
+
+class ProspectingDiscoveryTests(unittest.TestCase):
+    """O feed precisa continuar sendo explorado quando nada é descoberto."""
+
+    @patch("scripts.vps.internal_browser_agent._scroll_feed")
+    @patch("scripts.vps.internal_browser_agent._own_username", return_value="erpclinicatea")
+    @patch("scripts.vps.internal_browser_agent._page")
+    @patch("scripts.vps.internal_browser_agent.execute")
+    def test_empty_discovery_scrolls_feed_instead_of_stalling(self, execute, page, _own, scroll):
+        execute.side_effect = [
+            {"active": True, "prospecting_active": True},
+            {"ready": True},
+            {"created": [], "reviewed": 21},
+            {"claimed": False},
+        ]
+        page.side_effect = [
+            "https://www.instagram.com/",
+            [{"username": "clinica.atypica", "text": "Clinica atypica equipe", "following": True}],
+        ]
+
+        result = internal_browser_agent._prospecting_cycle()
+
+        self.assertEqual("prospecting-scrolled", result["browser"])
+        self.assertEqual(0, result["discovered"])
+        scroll.assert_called_once_with()
+
+    @patch("scripts.vps.internal_browser_agent._scroll_feed")
+    @patch("scripts.vps.internal_browser_agent._own_username", return_value="erpclinicatea")
+    @patch("scripts.vps.internal_browser_agent._page")
+    @patch("scripts.vps.internal_browser_agent.execute")
+    def test_discovery_with_new_lead_does_not_scroll(self, execute, page, _own, scroll):
+        execute.side_effect = [
+            {"active": True, "prospecting_active": True},
+            {"ready": True},
+            {"created": [{"id": 9}], "reviewed": 21},
+            {"claimed": False},
+        ]
+        page.side_effect = [
+            "https://www.instagram.com/",
+            [{"username": "clinica.nova", "text": "Clinica nova equipe", "following": False}],
+        ]
+
+        result = internal_browser_agent._prospecting_cycle()
+
+        self.assertEqual("prospecting-no-candidate", result["browser"])
+        self.assertEqual(1, result["discovered"])
+        scroll.assert_not_called()
 
 
 if __name__ == "__main__":

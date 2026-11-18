@@ -123,6 +123,7 @@ class InternalBrowserTests(unittest.TestCase):
             "like": {"x": 700, "y": 600},
             "comment": {"x": 760, "y": 600},
             "comment_field": {"x": 640, "y": 740},
+            "comment_post": {"x": 957, "y": 740},
             "share": {"x": 820, "y": 600},
             "repost": {"x": 640, "y": 420},
             "private_text": "não pode sair",
@@ -132,6 +133,7 @@ class InternalBrowserTests(unittest.TestCase):
 
         self.assertEqual("/p/abc123/", result["path"])
         self.assertEqual({"x": 700.0, "y": 600.0}, result["like"])
+        self.assertEqual({"x": 957.0, "y": 740.0}, result["comment_post"])
         self.assertEqual({"x": 820.0, "y": 600.0}, result["share"])
         self.assertEqual({"x": 640.0, "y": 420.0}, result["repost"])
         self.assertNotIn("private_text", result)
@@ -150,6 +152,50 @@ class InternalBrowserTests(unittest.TestCase):
         self.assertIsNone(result["like"])
         self.assertIsNone(result["share"])
         self.assertIsNone(result["comment"])
+
+    @patch("scripts.vps.internal_browser.evaluate")
+    def test_engagement_metadata_exposes_confirmable_states(self, evaluate):
+        evaluate.return_value = {
+            "path": "/p/abc123/",
+            "ready": True,
+            "viewport": {"width": 1280, "height": 800},
+            "follow_state": "following",
+            "like_state": "liked",
+            "repost_state": "reposted",
+            "comment_present": True,
+            "comment_count": 2,
+            "like": {"x": 700.0, "y": 600.0},
+            "repost_confirm": {"x": 237.0, "y": 557.0},
+        }
+
+        result = internal_browser.engagement_metadata()
+
+        self.assertTrue(result["ready"])
+        self.assertEqual({"width": 1280, "height": 800}, result["viewport"])
+        self.assertEqual("following", result["follow_state"])
+        self.assertEqual("liked", result["like_state"])
+        self.assertEqual("reposted", result["repost_state"])
+        self.assertEqual({"x": 237.0, "y": 557.0}, result["repost_confirm"])
+        self.assertTrue(result["comment_present"])
+        self.assertEqual(2, result["comment_count"])
+
+    @patch("scripts.vps.internal_browser.evaluate")
+    def test_engagement_metadata_normalizes_invalid_states(self, evaluate):
+        evaluate.return_value = {
+            "follow_state": "queryset([danger])",
+            "like_state": 123,
+            "repost_state": None,
+            "comment_count": "muitos",
+            "viewport": {"width": "largo", "height": -5},
+        }
+
+        result = internal_browser.engagement_metadata()
+
+        self.assertEqual("unknown", result["follow_state"])
+        self.assertEqual("unknown", result["like_state"])
+        self.assertEqual("unknown", result["repost_state"])
+        self.assertEqual(0, result["comment_count"])
+        self.assertEqual({"width": 0, "height": 0}, result["viewport"])
 
     @patch("scripts.vps.internal_browser.evaluate")
     def test_frontend_events_expose_only_structural_status(self, evaluate):

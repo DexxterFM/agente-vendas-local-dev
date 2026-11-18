@@ -24,6 +24,9 @@ from scripts.vps import internal_browser as browser
 INBOX_URL = "https://www.instagram.com/direct/inbox/"
 HOME_URL = "https://www.instagram.com/"
 WEEKLY_SWEEP = timedelta(days=7)
+COMMENT_TEXT = "Muito bonito o trabalho de vocês! 😊"
+ENGAGEMENT_ATTEMPTS = 3
+BUBBLE_SPLIT = re.compile(r'\s*\[\[AGENT_BUBBLE\]\]\s*')
 _RECENT_UNREAD_TARGETS: dict[str, float] = {}
 _LAST_NOTIFICATION_SCAN = 0.0
 NOTIFICATION_SCAN_COOLDOWN_SECONDS = 90
@@ -166,6 +169,12 @@ def _open_home() -> bool:
     return _click_surface("/", ("página inicial", "home"))
 
 
+def _scroll_feed() -> None:
+    """Rola a tela interna para revelar novos perfis no feed autenticado."""
+    _page("window.scrollBy({top:Math.max(560,innerHeight*.82),behavior:'smooth'});true")
+    _wait(.9)
+
+
 def _prospecting_point(expression: str) -> dict[str, float] | None:
     value = _page(expression)
     if not isinstance(value, dict):
@@ -183,6 +192,231 @@ def _engagement_metadata() -> dict[str, Any]:
     except browser.InternalBrowserError:
         return {}
     return value if isinstance(value, dict) else {}
+
+
+def _wait_page_ready(timeout: float = 15.0) -> bool:
+    """Só devolve quando a página carregou e tem conteúdo verificável."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            if _page("document.readyState==='complete' && !!document.body && (document.body.innerText||'').length>40"):
+                return True
+        except browser.InternalBrowserError:
+            pass
+        _wait(0.35)
+    return False
+
+
+def _wait_post_controls(timeout: float = 15.0) -> tuple[bool, dict[str, Any]]:
+    """Espera o modal do post terminar de montar curtida/comentário/repost."""
+    deadline = time.monotonic() + timeout
+    metadata: dict[str, Any] = {}
+    while time.monotonic() < deadline:
+        metadata = _engagement_metadata()
+        if metadata.get("like_state") != "unknown" and metadata.get("comment"):
+            return True, metadata
+        _wait(0.35)
+    return False, metadata
+
+
+def _wait_for_state(key: str, expected: Any, timeout: float = 9.0) -> tuple[bool, dict[str, Any]]:
+    """Faz polling dos metadados até o estado esperado ser observado."""
+    deadline = time.monotonic() + timeout
+    observed: dict[str, Any] = {}
+    while time.monotonic() < deadline:
+        observed = _engagement_metadata()
+        if observed.get(key) == expected:
+            return True, observed
+        _wait(0.35)
+    return False, observed
+
+
+def _open_post() -> tuple[bool, dict[str, Any]]:
+    """Abre a publicação do perfil e confirma que os controles apareceram.
+
+    O clique no primeiro post pode ser perdido durante a animação da página;
+    nesse caso like, comentário e repost ficam como ``unknown``. Retentar a
+    abertura evita registrar três falhas que na verdade foram um clique perdido.
+    """
+    for attempt in range(1, ENGAGEMENT_ATTEMPTS + 1):
+        metadata = _engagement_metadata()
+        post = metadata.get("post")
+        if post:
+            browser.action({"kind": "click", **post})
+            ready, observed = _wait_post_controls()
+            if ready:
+                return True, observed
+        _wait(0.5)
+    return False, _engagement_metadata()
+
+
+def _audit_action(action_id: int, step: str, result: str, detail: str) -> None:
+    """Grava o resultado medido de uma interação individual."""
+    try:
+        execute("campaignActionAudit", {
+            "id": action_id, "step": step, "result": result, "detail": detail[:400],
+        })
+    except Exception:
+        pass
+
+
+def _engage_step(
+    action_id: int,
+    step: str,
+    point_key: str,
+    state_key: str,
+    expected: Any,
+) -> tuple[bool, dict[str, Any]]:
+    """Localiza o alvo, clica e confirma pelo estado devolvido nos metadados."""
+    metadata = _engagement_metadata()
+    # Se o estado já é o desejado, clicar inverteria a ação (deixaria de seguir
+    # ou descurtiria). Uma retentativa deve ser idempotente: medir e seguir.
+    if metadata.get(state_key) == expected:
+        _audit_action(action_id, step, "confirmed", f"already={state_key}={expected}")
+        return True, metadata
+    for attempt in range(1, ENGAGEMENT_ATTEMPTS + 1):
+        point = metadata.get(point_key)
+        if point:
+            browser.action({"kind": "click", **point})
+            confirmed, observed = _wait_for_state(state_key, expected)
+            if confirmed:
+                _audit_action(action_id, step, "confirmed", f"attempt={attempt}; {state_key}={expected}")
+                return True, observed
+        metadata = _engagement_metadata()
+        if metadata.get(state_key) == expected:
+            _audit_action(action_id, step, "confirmed", f"already={state_key}={expected}; after-attempt={attempt}")
+            return True, metadata
+        _wait(0.5)
+    _audit_action(action_id, step, "unconfirmed", f"attempts={ENGAGEMENT_ATTEMPTS}; {state_key}={metadata.get(state_key)}")
+    return False, metadata
+
+
+def _engage_comment(action_id: int) -> tuple[bool, dict[str, Any]]:
+    """Abre o balão, espera o campo real e confirma o comentário na página."""
+    metadata = _engagement_metadata()
+    # Não comentar duas vezes no mesmo post quando a ação já foi confirmada.
+    if metadata.get("comment_present"):
+        _audit_action(action_id, "comment", "confirmed", "already-commented")
+        return True, metadata
+    for attempt in range(1, ENGAGEMENT_ATTEMPTS + 1):
+        point = metadata.get("comment")
+        if point:
+            browser.action({"kind": "click", **point})
+            deadline = time.monotonic() + 8.0
+            while time.monotonic() < deadline:
+                metadata = _engagement_metadata()
+                field = metadata.get("comment_field")
+                if field:
+                    break
+                _wait(0.35)
+            else:
+                field = None
+            if field:
+                browser.action({"kind": "click", **field})
+                browser.action({"kind": "key", "key": "SelectAll"})
+                browser.action({"kind": "type", "text": COMMENT_TEXT})
+                # A tela atual só envia o comentário quando o botão "Post" ao
+                # lado do campo é clicado; Enter deixa o rascunho digitado.
+                typed = _engagement_metadata()
+                submit = typed.get("comment_post") or metadata.get("comment_post")
+                if submit:
+                    browser.action({"kind": "click", **submit})
+                else:
+                    browser.action({"kind": "key", "key": "Enter"})
+                confirmed, observed = _wait_for_state("comment_present", True, timeout=10.0)
+                if confirmed:
+                    _audit_action(action_id, "comment", "confirmed", f"attempt={attempt}; comment_present=True")
+                    return True, observed
+        metadata = _engagement_metadata()
+        _wait(0.5)
+    _audit_action(action_id, "comment", "unconfirmed", f"attempts={ENGAGEMENT_ATTEMPTS}; comment_present={metadata.get('comment_present')}")
+    return False, metadata
+
+
+def _stable_point(key: str, *, tolerance: float = 4.0) -> dict[str, Any] | None:
+    """Espera o botão do sheet parar de se mover antes de clicar.
+
+    O sheet do repost entra com animação: o centro do botão roxo muda alguns
+    pixels a cada quadro e um clique na primeira leitura cai no vazio. Só
+    devolver o ponto depois de duas letras consecutivas estáveis.
+    """
+    previous: dict[str, Any] | None = None
+    stable = 0
+    last: dict[str, Any] | None = None
+    deadline = time.monotonic() + 4.0
+    while time.monotonic() < deadline:
+        current = (_engagement_metadata() or {}).get(key)
+        if not current:
+            return None
+        if previous and (abs(float(current["x"]) - float(previous["x"])) <= tolerance
+                         and abs(float(current["y"]) - float(previous["y"])) <= tolerance):
+            stable += 1
+            if stable >= 2:
+                return current
+        else:
+            stable = 0
+        previous = current
+        last = current
+        _wait(0.25)
+    return last
+
+
+def _engage_repost(action_id: int) -> tuple[bool, dict[str, Any]]:
+    """Executa o repost e confirma pelo estado final da página.
+
+    O Instagram atual exige duas etapas: o ícone da barra de ações abre um
+    sheet e o botão roxo "Repost" dentro dele confirma. O primeiro clique
+    sozinho não muda o estado; por isso o segundo ponto é obrigatório antes
+    de medir ``repost_state``.
+    """
+    def confirm_sheet(attempt: int) -> tuple[bool, dict[str, Any]] | None:
+        """Clica no botão roxo do sheet e confirma o estado final."""
+        confirm = _stable_point("repost_confirm")
+        if not confirm:
+            return None
+        browser.action({"kind": "click", **confirm})
+        done, final = _wait_for_state("repost_state", "reposted", timeout=10.0)
+        if done:
+            _audit_action(action_id, "repost", "confirmed", f"attempt={attempt}; repost_state=reposted")
+            try:
+                browser.action({"kind": "key", "key": "Escape"})
+            except browser.InternalBrowserError:
+                pass
+            return True, final
+        return None
+
+    metadata = _engagement_metadata()
+    if metadata.get("repost_state") == "reposted":
+        _audit_action(action_id, "repost", "confirmed", "already-reposted")
+        return True, metadata
+    for attempt in range(1, ENGAGEMENT_ATTEMPTS + 1):
+        # Uma tentativa anterior pode ter aberto o sheet sem clicar no botão
+        # roxo: nesse estado o ícone da barra some (repost=None) e o estado
+        # vira "unknown". Clicar direto no confirm evita o clique no ícone.
+        result = confirm_sheet(attempt)
+        if result:
+            return result
+        point = metadata.get("repost") or metadata.get("share")
+        if point:
+            browser.action({"kind": "click", **point})
+            # O sheet com o botão roxo aparece em menos de 1s e pode sumir
+            # rápido; fazer polling até o ponto existir ou o estado mudar.
+            deadline = time.monotonic() + 6.0
+            while time.monotonic() < deadline:
+                observed = _engagement_metadata()
+                if observed.get("repost_state") == "reposted":
+                    _audit_action(action_id, "repost", "confirmed", f"attempt={attempt}; repost_state=reposted")
+                    return True, observed
+                if observed.get("repost_confirm"):
+                    break
+                _wait(0.2)
+            result = confirm_sheet(attempt)
+            if result:
+                return result
+        metadata = _engagement_metadata()
+        _wait(0.5)
+    _audit_action(action_id, "repost", "unconfirmed", f"attempts={ENGAGEMENT_ATTEMPTS}; repost_state={metadata.get('repost_state')}")
+    return False, metadata
 
 
 class _ProspectSkip(RuntimeError):
@@ -366,13 +600,21 @@ def _prospecting_cycle() -> dict[str, Any]:
       return out.slice(0,30);
     })()'''.replace("__OWN__", repr(_own_username())))
     if not isinstance(profiles, list) or not profiles:
-        _page("window.scrollBy({top:Math.max(560,innerHeight*.82),behavior:'smooth'});true")
-        _wait(.9)
+        _scroll_feed()
         return {"prospecting": True, "browser": "prospecting-scrolled", "discovered": 0}
     discovered = execute("campaignDiscover", {"profiles": profiles})
+    created = discovered.get("created", [])
+    created = created if isinstance(created, list) else []
+    if not created:
+        # Perfis já seguidos ou descartados pelo segmento não geram lead. Rolar
+        # o feed é a única forma de revelar novos candidatos; sem isto o worker
+        # fica preso em "no-candidate" forever enquanto há feed não explorado.
+        _scroll_feed()
     claim = execute("campaignClaim", {})
     if not claim.get("claimed"):
-        return {"prospecting": True, "browser": "prospecting-no-candidate", "discovered": len(discovered.get("created", []))}
+        if not created:
+            return {"prospecting": True, "browser": "prospecting-scrolled", "discovered": 0}
+        return {"prospecting": True, "browser": "prospecting-no-candidate", "discovered": len(created)}
     payload = claim.get("payload") or {}
     username = str(payload.get("username") or "").strip().lower()
     action_id = int(claim.get("id") or 0)
@@ -386,41 +628,27 @@ def _prospecting_cycle() -> dict[str, Any]:
         return {"prospecting": True, "browser": "prospecting-paced", "wait_seconds": reserved.get("wait_seconds", 0)}
     try:
         intro = str(payload.get('intro') or 'Olá! Muito legal o trabalho de vocês ❤️')
+        profile_text = str(payload.get('profile_text') or '')
+        actions: dict[str, bool] = {}
         if stage != "dm":
             browser.action({"kind": "navigate", "url": f"https://www.instagram.com/{username}/"})
-            _wait(1.8)
-            # Metadados de localização: o agente clica nos pontos reais dos
-            # controles (seguir, curtir, comentar, recompartilhar), nunca em
-            # texto da página. Um controle ausente não bloqueia a DM.
+            _wait_page_ready()
             engagement = _engagement_metadata()
-            follow = engagement.get("follow")
-            if follow: browser.action({"kind": "click", **follow}); _wait(.8)
-            post = engagement.get("post")
-            if post:
-                browser.action({"kind": "click", **post}); _wait(1.3)
-                engagement = _engagement_metadata()
-            like = engagement.get("like")
-            if like: browser.action({"kind": "click", **like}); _wait(.8)
-            comment = engagement.get("comment")
-            if comment:
-                # O balão de comentários abre o campo; a localização do campo
-                # é lida de novo porque a interface se reorganiza ao abrir.
-                browser.action({"kind": "click", **comment}); _wait(.6)
-                engagement = _engagement_metadata()
-            field = engagement.get("comment_field") or comment
-            if field:
-                browser.action({"kind": "click", **field})
-                browser.action({"kind": "type", "text": "Muito bonito o trabalho de vocês! 😊"})
-                browser.action({"kind": "key", "key": "Enter"}); _wait(1.0)
-            share = engagement.get("share")
-            if share:
-                browser.action({"kind": "click", **share}); _wait(.7)
-                repost = _engagement_metadata().get("repost")
-                if repost: browser.action({"kind": "click", **repost}); _wait(.8)
+            actions["follow"], engagement = _engage_step(
+                action_id, "follow", "follow", "follow_state", "following"
+            )
+            controls_ready, engagement = _open_post()
+            if not controls_ready:
+                _audit_action(action_id, "post", "unconfirmed", "controles de post ausentes apos abrir publicacao")
+            actions["like"], engagement = _engage_step(
+                action_id, "like", "like", "like_state", "liked"
+            )
+            actions["comment"], engagement = _engage_comment(action_id)
+            actions["repost"], engagement = _engage_repost(action_id)
             # Entra no perfil que recebeu as ações, lê nome+bio e escolhe a
             # saudação já aprovada nos fluxos para clínica ou profissional.
             browser.action({"kind": "navigate", "url": f"https://www.instagram.com/{username}/"})
-            _wait(1.5)
+            _wait_page_ready(timeout=10.0)
             profile_text = str(_page(r'''(()=>{
               const scope=document.querySelector('header section')||document.querySelector('header')||document.body;
               return (scope.innerText||'').replace(/\s+/g,' ').trim().slice(0,4000);
@@ -430,12 +658,45 @@ def _prospecting_cycle() -> dict[str, Any]:
             # A partir daqui a retentativa não repete follow/curtida/comentário/
             # repost: apenas reabre a DM do mesmo perfil.
             execute("campaignStage", {"id": action_id, "stage": "dm"})
+        # O cadastro persistente decide se esta mensagem já foi aplicada a este
+        # perfil. Sem esta barreira a retentativa reenvia a mesma saudação.
+        guard = execute("campaignMessageGuard", {"username": username, "text": intro})
+        if not guard.get("allowed", True):
+            reason = str(guard.get("reason") or "duplicate-message")
+            execute("campaignConfirm", {
+                "id": action_id, "state": "skipped",
+                "note": "Mensagem repetida bloqueada pelo cadastro: " + reason,
+            })
+            _audit_action(action_id, "dm", "skipped", reason)
+            execute("campaignProfileObserve", {
+                "username": username, "text": profile_text, "actions": actions, "stage": "dm",
+            })
+            try:
+                _open_home()
+            except browser.InternalBrowserError:
+                pass
+            return {
+                "prospecting": True, "browser": "prospecting-duplicate",
+                "username": username, "reason": reason,
+            }
         surface = _open_profile_dm(username)
         if surface.get("mode") == "thread" and surface.get("url"):
-            _send_bubble(intro, str(surface["url"]))
+            send_result = _send_bubble(intro, str(surface["url"]))
         else:
-            _send_overlay_bubble(intro)
-        execute("campaignConfirm", {"id": action_id, "state": "sent", "note": "Interações confirmadas pela sessão interna"})
+            send_result = _send_overlay_bubble(intro)
+        actions["dm"] = bool(send_result.get("sent")) if isinstance(send_result, dict) else True
+        measured = ", ".join(f"{name}={'ok' if value else 'falha'}" for name, value in actions.items())
+        note = "Interações medidas: " + measured
+        execute("campaignConfirm", {"id": action_id, "state": "sent", "note": note[:1000]})
+        _audit_action(action_id, "dm", "confirmed" if actions["dm"] else "unconfirmed", note[:400])
+        execute("campaignProfileObserve", {
+            "username": username,
+            "text": profile_text,
+            "actions": actions,
+            "message": intro,
+            "sent": bool(actions["dm"]),
+            "stage": "dm",
+        })
         try:
             _open_home()
         except browser.InternalBrowserError:
@@ -446,6 +707,7 @@ def _prospecting_cycle() -> dict[str, Any]:
             "username": username,
             "action_id": action_id,
             "mode": surface.get("mode"),
+            "actions": actions,
         }
     except _ProspectSkip as exc:
         execute("campaignConfirm", {"id": action_id, "state": "skipped", "note": str(exc)[:500]})
@@ -869,12 +1131,10 @@ def _process_thread(source: str) -> dict[str, Any]:
     if str(_page("location.href") or "") != snap["url"]:
         return {"processed": True, "replied": False, "reason": "conversation-changed"}
     sent = []
-    for index, bubble in enumerate(str(cycle["text"]).split("\n[[AGENT_BUBBLE]]\n")):
-        bubble = bubble.strip()
-        if not bubble:
-            continue
+    bubbles = [item.strip() for item in BUBBLE_SPLIT.split(str(cycle["text"])) if item.strip()]
+    for index, bubble in enumerate(bubbles):
         sent.append(_send_bubble(bubble, snap["url"]))
-        if index + 1 < len(str(cycle["text"]).split("\n[[AGENT_BUBBLE]]\n")):
+        if index + 1 < len(bubbles):
             _wait(.7 + random.random() * 1.9)
     execute("browserScreenConfirm", {"message_key": cycle["message_key"], "lead_id": cycle["lead_id"], "text": cycle["text"], "thread_id": snap["thread_id"]})
     return {"processed": True, "replied": True, "source": source, "thread_id": snap["thread_id"], "sent": len(sent)}
@@ -1015,7 +1275,7 @@ def _capture_notification_actions() -> dict[str, int]:
             if plan.get('new_follower') and welcomed < 1:
                 try:
                     surface = _open_profile_dm(username)
-                    for bubble in str(plan.get('text') or '').split('\n[[AGENT_BUBBLE]]\n'):
+                    for bubble in BUBBLE_SPLIT.split(str(plan.get('text') or '')):
                         bubble = bubble.strip()
                         if not bubble:
                             continue

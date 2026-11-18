@@ -111,6 +111,40 @@ class FlowStudioTests(unittest.TestCase):
         self.assertTrue(removed['applied'])
         self.assertNotIn('existing-app', {item['id'] for item in execute('responseLibrary', {})})
 
+    def test_follow_intro_phrases_survive_an_existing_library(self):
+        execute('saveResponseTemplate', {'template': {
+            'id': 'custom-library-entry', 'stage': 'acolhimento',
+            'question': 'Pergunta de teste', 'response': 'Resposta de teste',
+        }})
+        ids = {item['id'] for item in execute('responseLibrary', {})}
+        self.assertTrue({
+            'intro-follow-clinic',
+            'intro-follow-professional',
+            'intro-follow-community',
+        }.issubset(ids))
+
+    def test_installation_followups_survive_and_can_be_edited(self):
+        execute('saveResponseTemplate', {'template': {
+            'id': 'custom-library-entry', 'stage': 'acolhimento',
+            'question': 'Pergunta de teste', 'response': 'Resposta de teste',
+        }})
+        templates = {item['id']: item for item in execute('responseLibrary', {})}
+        self.assertTrue({
+            'install-validity', 'install-security', 'install-support',
+        }.issubset(templates))
+        self.assertIn('3 dias', templates['install-validity']['response'])
+        self.assertIn('criptografados', templates['install-security']['response'])
+        self.assertIn('51 8054-2244', templates['install-support']['response'])
+
+        edited = execute('saveResponseTemplate', {'template': {
+            'id': 'install-validity', 'stage': 'proposta',
+            'question': 'Validade', 'response': 'Link valido por 3 dias.',
+        }})
+        self.assertEqual('install-validity', edited['id'])
+        self.assertEqual('Link valido por 3 dias.', edited['response'])
+        current = {item['id']: item for item in execute('responseLibrary', {})}
+        self.assertEqual('Link valido por 3 dias.', current['install-validity']['response'])
+
     def test_revert_restores_previous_snapshot(self):
         lead_id = execute('create', {'name': 'Clínica Teste', 'contact': 'clinica.teste'})
         proposal = self.proposal()

@@ -576,36 +576,112 @@ def metadata() -> dict[str, Any]:
 
 
 def engagement_metadata() -> dict[str, Any]:
-    """Localizações dos controles de engajamento da postagem/perfil abertos.
+    """Localização e estado confirmável dos controles de engajamento.
 
-    São devolvidas somente coordenadas e indicadores estruturais. Nenhum texto
-    da postagem ou do perfil sai do navegador: o operador e o agente recebem
-    apenas os pontos onde o clique nativo deve ser entregue.
+    O navegador devolve somente coordenadas, estados estruturais e a presença
+    do comentário da campanha. Nenhum texto privado de conversa sai da página.
+    Cada ponto só é aceito se estiver dentro da viewport, porque um clique em
+    elemento fora da tela nunca chega ao controle desejado.
     """
     expression = r'''(()=>{
       const norm=value=>String(value||'').replace(/\s+/g,' ').trim();
-      const visible=element=>{const r=element.getBoundingClientRect();return r.width>0&&r.height>0};
-      const point=element=>{const r=element.getBoundingClientRect();return {x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)}};
-      const all=[...document.querySelectorAll('button,[role="button"],a,[aria-label]')].filter(visible);
-      const find=pattern=>all.find(element=>pattern.test(norm([element.getAttribute('aria-label'),element.innerText].filter(Boolean).join(' '))));
-      const like=find(/^(?:curtir|like)$/i);
-      const comment=find(/^(?:comentar|coment[aá]rio|comment)$/i);
-      const share=find(/^(?:compartilhar|share|repost|recompartilhar)$/i);
-      const repost=find(/^(?:repost|recompartilhar|compartilhar no feed|share to feed)$/i);
-      const follow=find(/^(?:seguir|follow)$/i);
-      const post=[...document.querySelectorAll('a[href]')].find(element=>{
+      const box=element=>element.getBoundingClientRect();
+      const visible=element=>{const r=box(element);return r.right>0&&r.left<innerWidth&&r.bottom>0&&r.top<innerHeight};
+      // O centro de um elemento grande pode estar fora da janela. Recortar o
+      // retângulo antes de calcular o ponto garante que o clique caia no alvo.
+      const point=element=>{
+        const r=box(element);
+        const left=Math.max(0,r.left),right=Math.min(innerWidth,r.right);
+        const top=Math.max(0,r.top),bottom=Math.min(innerHeight,r.bottom);
+        if(right<=left||bottom<=top)return null;
+        return {x:Math.round((left+right)/2),y:Math.round((top+bottom)/2)};
+      };
+      // O próprio post aberto é um [role="dialog"]: excluir todo dialog
+      // removeria curtida, comentário e repost. Somente o compositor
+      // secundário ("Add a thought") deve ficar de fora da medição.
+      const inSecondaryDialog=element=>{
+        const dialog=element.closest('[role="dialog"]');
+        if(!dialog)return false;
+        return /add a thought|adicionar um pensamento/i.test(norm(dialog.innerText||''));
+      };
+      const all=[...document.querySelectorAll('button,[role="button"],a,[aria-label],[title]')].filter(element=>visible(element)&&!inSecondaryDialog(element));
+      const label=element=>norm([element.getAttribute('aria-label'),element.getAttribute('title'),element.innerText].filter(Boolean).join(' '));
+      const find=pattern=>all.find(element=>pattern.test(label(element)));
+      // A barra de ações tem vários rótulos iguais ("Like" nos comentários,
+      // por exemplo). Alinhar pela linha do botão de comentar evita clicar em
+      // uma curtida de comentário em vez da curtida da publicação.
+      const findAligned=(pattern,reference)=>{
+        const list=all.filter(element=>pattern.test(label(element)));
+        if(!list.length)return null;
+        const ref=reference?point(reference):null;
+        if(!ref)return list[0];
+        let best=list[0],distance=Infinity;
+        for(const element of list){
+          const at=point(element);if(!at)continue;
+          const gap=Math.abs(at.y-ref.y);
+          if(gap<distance){best=element;distance=gap}
+        }
+        return best;
+      };
+      const commentButton=find(/^(?:comentar|coment[aá]rio|comment)$/i);
+      const followPending=find(/^(?:seguir|follow)$/i);
+      const followDone=find(/^(?:seguindo|following)$/i);
+      const likePending=findAligned(/^(?:curtir|like)$/i,commentButton);
+      const likeDone=findAligned(/^(?:descurtir|unlike)$/i,commentButton);
+      const shareButton=findAligned(/^(?:compartilhar|share|share post)$/i,commentButton);
+      const repostPending=findAligned(/^(?:repost|recompartilhar|compartilhar no feed|share to feed)$/i,commentButton);
+      const repostDone=findAligned(/^(?:repostado|reposted|remover repost|remove repost|desfazer repost|undo repost)$/i,commentButton);
+      // O repost do Instagram tem duas etapas: clicar no ícone da barra abre
+      // um sheet com o botão roxo "Repost" (svg com círculo #7638FA). Só esse
+      // segundo clique confirma a ação. Localizar esse botão pelo preenchimento
+      // distingue ele do ícone comum da barra (fill="currentColor").
+      const repostConfirmSvg=[...document.querySelectorAll('svg[aria-label="Repost"],svg[aria-label="Repostado"]')]
+        .filter(element=>visible(element))
+        .find(element=>{
+          // O ícone da barra nunca tem o círculo roxo; qualquer svg que o
+          // tenha é o botão de confirmar, independente da posição do sheet.
+          if(!element.querySelector('circle[fill="#7638FA"]'))return false;
+          return Boolean(point(element));
+        });
+      const repostConfirm=repostConfirmSvg?point(repostConfirmSvg):null;
+      const bodyText=norm(document.body.innerText).slice(0,20000);
+      const repostText=/\byou reposted this\b|\brepostado\b|\brecompartilhado\b/i.test(bodyText);
+      const fields=[...document.querySelectorAll('textarea,input,[contenteditable="true"],[role="textbox"]')]
+        .filter(element=>visible(element)&&!inSecondaryDialog(element))
+        .filter(element=>/coment|comment|adicionar/i.test(norm((element.getAttribute('placeholder')||'')+' '+(element.getAttribute('aria-label')||''))));
+      const field=fields[0]||null;
+      const fieldPoint=field?point(field):null;
+      // O Instagram confirma o comentário com um botão "Post" ao lado do
+      // campo; teclar Enter deixa o texto digitado sem enviar.
+      const submitCandidates=[...document.querySelectorAll('button,[role="button"],div[role="button"],div')]
+        .filter(element=>visible(element)&&!inSecondaryDialog(element))
+        .filter(element=>/^(?:post|publicar)$/i.test(norm(element.getAttribute('aria-label')||element.innerText)))
+        .map(element=>({element,at:point(element)}))
+        .filter(item=>item.at&&fieldPoint&&item.at.x>=fieldPoint.x-20&&Math.abs(item.at.y-fieldPoint.y)<40);
+      submitCandidates.sort((a,b)=>a.at.x-b.at.x);
+      const commentSubmit=submitCandidates.length?submitCandidates[submitCandidates.length-1].element:null;
+      const post=[...document.querySelectorAll('a[href]')].filter(visible).find(element=>{
         try{return /\/(?:p|reel)\/[A-Za-z0-9_-]+/.test(new URL(element.href,location.href).pathname)}catch{return false}
       });
-      const field=[...document.querySelectorAll('textarea,input,[contenteditable="true"],[role="textbox"]')].filter(visible).find(element=>/coment|comment|adicionar/i.test(norm((element.getAttribute('placeholder')||'')+' '+(element.getAttribute('aria-label')||''))));
+      const commentMatches=bodyText.match(/Muito bonito o trabalho de vocês/gi)||[];
       return {
         path:location.pathname,
+        ready:document.readyState==='complete'&&Boolean(document.body)&&bodyText.length>40,
+        viewport:{width:innerWidth,height:innerHeight},
         post:post?point(post):null,
-        follow:follow?point(follow):null,
-        like:like?point(like):null,
-        comment:comment?point(comment):null,
+        follow:followPending?point(followPending):null,
+        like:likePending?point(likePending):null,
+        comment:commentButton?point(commentButton):null,
         comment_field:field?point(field):null,
-        share:share?point(share):null,
-        repost:repost?point(repost):null,
+        comment_post:commentSubmit?point(commentSubmit):null,
+        share:shareButton?point(shareButton):null,
+        repost:repostPending?point(repostPending):null,
+        repost_confirm:repostConfirm,
+        follow_state:followDone?'following':(followPending?'not_following':'unknown'),
+        like_state:likeDone?'liked':(likePending?'not_liked':'unknown'),
+        repost_state:(repostDone||repostText)?'reposted':(repostPending?'not_reposted':'unknown'),
+        comment_present:commentMatches.length>0,
+        comment_count:commentMatches.length,
       };
     })()'''
     value = evaluate(expression)
@@ -623,15 +699,41 @@ def engagement_metadata() -> dict[str, Any]:
             return None
         return {"x": x, "y": y}
 
+    def clean_state(key: str, allowed: tuple[str, ...]) -> str:
+        state = str(value.get(key) or "").strip().lower()
+        return state if state in allowed else "unknown"
+
+    def clean_int(item: Any, low: int, high: int) -> int:
+        try:
+            return max(low, min(high, int(item)))
+        except (TypeError, ValueError):
+            return low
+
+    viewport = value.get("viewport") if isinstance(value.get("viewport"), dict) else {}
+    try:
+        width = max(0, min(4096, int(viewport.get("width") or 0)))
+        height = max(0, min(4096, int(viewport.get("height") or 0)))
+    except (TypeError, ValueError):
+        width, height = 0, 0
+
     return {
         "path": str(value.get("path") or "")[:240],
+        "ready": bool(value.get("ready")),
+        "viewport": {"width": width, "height": height},
         "post": clean_point(value.get("post")),
         "follow": clean_point(value.get("follow")),
         "like": clean_point(value.get("like")),
         "comment": clean_point(value.get("comment")),
         "comment_field": clean_point(value.get("comment_field")),
+        "comment_post": clean_point(value.get("comment_post")),
         "share": clean_point(value.get("share")),
         "repost": clean_point(value.get("repost")),
+        "repost_confirm": clean_point(value.get("repost_confirm")),
+        "follow_state": clean_state("follow_state", ("following", "not_following")),
+        "like_state": clean_state("like_state", ("liked", "not_liked")),
+        "repost_state": clean_state("repost_state", ("reposted", "not_reposted")),
+        "comment_present": bool(value.get("comment_present")),
+        "comment_count": clean_int(value.get("comment_count"), 0, 20),
     }
 
 

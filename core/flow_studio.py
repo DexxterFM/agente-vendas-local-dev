@@ -46,7 +46,60 @@ FIELD_LIMITS = {
     'match': 400,
 }
 
+# Frases enviadas como primeiro contato depois que o perfil seguiu a conta.
+# IDs fixos permitem que o editor altere o texto sem mudar a campanha.
+FOLLOW_INTRO_TEMPLATES = [
+    {'id': 'intro-follow-clinic', 'stage': 'acolhimento', 'question': 'Agradecimento por seguir · clínica ou equipe multidisciplinar', 'response': 'Obrigado por seguir! Parabéns pelo trabalho da clínica! Tenho um presente para a sua equipe. Diga “eu quero” que te mando para você. 😊', 'context': 'Primeiro balão da prospecção. Não revele a oferta antes do “eu quero”.', 'links': '', 'images': '', 'match': 'agradecimento por seguir | obrigado por seguir | clínica'},
+    {'id': 'intro-follow-professional', 'stage': 'acolhimento', 'question': 'Agradecimento por seguir · profissional individual', 'response': 'Obrigado por seguir! Parabéns pelo seu trabalho! Tenho um presente para você. Diga “eu quero” que te mando para você. 😊', 'context': 'Primeiro balão da prospecção. Use para psicólogos, fonoaudiologistas, terapeutas e educadores.', 'links': '', 'images': '', 'match': 'agradecimento por seguir | obrigado por seguir | profissional'},
+    {'id': 'intro-follow-community', 'stage': 'acolhimento', 'question': 'Agradecimento por seguir · comunidade ou perfil sem segmento', 'response': 'Obrigado por seguir! Curta nossos conteúdos e compartilhe com amigos para ajudar! 😊', 'context': 'Primeiro balão para perfis que não indicam clínica nem profissional.', 'links': '', 'images': '', 'match': 'agradecimento por seguir | obrigado por seguir | comunidade'},
+]
+
+# Resposta enviada assim que a pessoa responde ao primeiro balão ("eu quero").
+# ID fixo mantém a frase editável pela biblioteca sem alterar o roteiro.
+PRIZE_CHOICE_TEMPLATE = {
+    'id': 'prize-choice',
+    'stage': 'proposta',
+    'question': 'Parabéns pelo prêmio e escolha da versão do app',
+    'response': '! Parabéns voce ganhou 3 meses gratis do nosso app Premium. Escolha entre o Clinica TEA multiprofissional ou a versão para um profissional.',
+    'context': 'Enviar quando a pessoa responder ao balão inicial de agradecimento por seguir.',
+    'links': '',
+    'images': '',
+    'match': 'eu quero | parabéns voce ganhou | 3 meses gratis | escolha',
+}
+
+# Balões enviados depois que a pessoa escolhe a versão do app. O link vem de
+# trial_offer; os três textos fixos ficam editáveis na biblioteca com IDs estáveis.
+INSTALL_FOLLOWUP_TEMPLATES = [
+    {
+        'id': 'install-validity', 'stage': 'proposta',
+        'question': 'Aviso de validade do link de instalação',
+        'response': 'Aviso esse link é valido por 3 dias. Caso não seja ativado voce perde o premios 😢',
+        'context': 'Segundo balão, logo após o link de instalação da versão escolhida.',
+        'links': '', 'images': '',
+        'match': 'valido por 3 dias | validade do link | perde o premio',
+    },
+    {
+        'id': 'install-security', 'stage': 'proposta',
+        'question': 'Aviso de ativação segura e proteção de dados',
+        'response': 'Essa é uma tivação segura seus dados saõ criptografados e possuimos um sitema demonitormento. Sem uso de dados bancarios e sem uso de cartão.',
+        'context': 'Terceiro balão, logo após o aviso de validade.',
+        'links': '', 'images': '',
+        'match': 'ativação segura | dados criptografados | sem cartao | sem dados bancarios',
+    },
+    {
+        'id': 'install-support', 'stage': 'follow-up',
+        'question': 'Suporte para dúvidas na instalação e WhatsApp de assistência',
+        'response': 'A intalação pode receber suporte para duvidas. o tempo de resposta pode varia de acordo com o fluxo de atendimentos. whatsapp assintencia 51 8054-2244',
+        'context': 'Quarto e último balão da sequência de instalação.',
+        'links': '', 'images': '',
+        'match': 'suporte para duvidas | whatsapp assintencia | 51 8054-2244',
+    },
+]
+
 BUILTIN_TEMPLATES = [
+    *FOLLOW_INTRO_TEMPLATES,
+    PRIZE_CHOICE_TEMPLATE,
+    *INSTALL_FOLLOWUP_TEMPLATES,
     {'id': 'welcome-app', 'stage': 'acolhimento', 'question': 'A pessoa agradeceu o elogio', 'response': 'Você merece! Me conta: já possui algum app para a gestão da sua clínica? 😊', 'context': 'Use depois de um agradecimento simples; não diga que a pessoa compartilhou algo.', 'links': '', 'images': '', 'match': 'obrigado | obrigada | agradeceu | valeu'},
     {'id': 'qualified-greeting', 'stage': 'descoberta', 'question': 'Lead qualificado responde apenas com oi, olá ou uma saudação', 'response': 'Tudo bem! Espero que sim 😊 Por acaso já utiliza algum app ou programa para administrar sua clínica? Se já usa, qual?', 'context': 'Trate a saudação como continuidade da conversa; não reinicie a apresentação do ERP.', 'links': '', 'images': '', 'match': 'oi | olá | bom dia | boa tarde | boa noite'},
     {'id': 'no-app', 'stage': 'apresentação', 'question': 'A pessoa diz que ainda não usa app', 'response': 'Então chegou o momento de conhecer algo que pode salvar muitas horas do seu dia e deixar mais tempo para cuidar dos pacientes. Quer que eu mostre como funciona? 😊', 'context': 'Apresente benefícios antes de falar do período de teste.', 'links': '', 'images': '', 'match': 'não uso | ainda não | nunca usei | não usamos'},
@@ -233,14 +286,23 @@ class FlowStudio:
     # ------------------------------------------------------------------ estado
     def templates(self) -> list:
         raw = self.memory.get_setting(LIBRARY_KEY, '')
+        stored = []
         if raw:
             try:
                 data = json.loads(raw)
                 if isinstance(data, list):
-                    return [item for item in data if isinstance(item, dict)]
+                    stored = [item for item in data if isinstance(item, dict)]
             except (TypeError, ValueError):
                 pass
-        return [dict(item) for item in BUILTIN_TEMPLATES]
+        if not stored:
+            stored = [dict(item) for item in BUILTIN_TEMPLATES]
+        # Instalações que já salvaram a biblioteca também precisam enxergar as
+        # frases de agradecimento por seguir; a versão salva sempre prevalece.
+        known = {str(item.get('id') or '') for item in stored}
+        for required in (*FOLLOW_INTRO_TEMPLATES, PRIZE_CHOICE_TEMPLATE, *INSTALL_FOLLOWUP_TEMPLATES):
+            if required['id'] not in known:
+                stored.append(dict(required))
+        return stored
 
     def revision(self) -> int:
         try:

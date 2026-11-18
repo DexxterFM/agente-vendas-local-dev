@@ -82,6 +82,42 @@ class BrowserDmCycleTests(unittest.TestCase):
             "messages": messages,
         }
 
+    def test_browser_cycle_keeps_separate_bubbles_until_sending(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}
+        ):
+            execute("setAgentActive", {"active": True})
+            prize = (
+                "! Parabéns voce ganhou 3 meses gratis do nosso app Premium. "
+                "Escolha entre o Clinica TEA multiprofissional ou a versão para um profissional."
+            )
+            messages = [
+                {"id": "a" * 64, "direction": "outgoing", "text": "Obrigado por seguir! Diga eu quero"},
+                {"id": "b" * 64, "direction": "incoming", "text": "Eu quero"},
+                {"id": "c" * 64, "direction": "outgoing", "text": prize},
+                {"id": "d" * 64, "direction": "incoming", "text": "Clínica multiprofissional"},
+            ]
+            cycle = execute("browserScreenCycle", self._payload(messages))
+            self.assertTrue(cycle["new_message"])
+            self.assertIn(BROWSER_BUBBLE_SEPARATOR, cycle["text"])
+            bubbles = cycle["text"].split(BROWSER_BUBBLE_SEPARATOR)
+            self.assertEqual(5, len(bubbles))
+            for bubble in bubbles:
+                self.assertNotIn("[[AGENT_BUBBLE]]", bubble)
+            self.assertIn("convite_tres_meses", bubbles[1])
+            self.assertIn("51 8054-2244", bubbles[4])
+
+            execute("browserScreenConfirm", {
+                "message_key": cycle["message_key"],
+                "lead_id": cycle["lead_id"],
+                "text": cycle["text"],
+                "thread_id": "123456",
+            })
+            with Memory(Path(folder) / "agent.sqlite3") as memory:
+                saved = [row[1] for row in reversed(memory.list_conversations(cycle["lead_id"], 40))
+                         if row[0] == "assistant"]
+            self.assertEqual(bubbles, saved[-5:])
+
     def test_full_visible_history_drives_reply_and_is_idempotent(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(
             os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}
@@ -274,10 +310,16 @@ class BrowserDmCycleTests(unittest.TestCase):
             self.assertEqual(2, len(clinic.split(BROWSER_BUBBLE_SEPARATOR)))
             self.assertIn("erpclinicatea.com/planos", clinic_link)
             self.assertIn("convite_tres_meses", clinic_link)
-            self.assertEqual(3, len(clinic_link.split(BROWSER_BUBBLE_SEPARATOR)))
+            clinic_parts = clinic_link.split(BROWSER_BUBBLE_SEPARATOR)
+            self.assertEqual(5, len(clinic_parts))
+            self.assertIn("convite_tres_meses", clinic_parts[1])
+            self.assertIn("3 dias", clinic_parts[2])
+            self.assertIn("dados saõ criptografados", clinic_parts[3])
+            self.assertIn("51 8054-2244", clinic_parts[4])
             self.assertIn("Posso enviar o link", individual)
             self.assertIn("produto-profissional?convite=3-meses", individual_link)
             self.assertIn("3 meses grátis", individual_link)
+            self.assertEqual(5, len(individual_link.split(BROWSER_BUBBLE_SEPARATOR)))
 
     def test_persona_answers_name_and_location(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(
@@ -471,7 +513,7 @@ class BrowserDmCycleTests(unittest.TestCase):
             self.assertFalse(sent["new_follower"])
             self.assertEqual(sent["status"], "sent")
 
-    def test_follower_gift_is_split_from_the_trial_link_and_expiry(self):
+    def test_follower_gift_offers_version_choice_then_sends_link(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(
             os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}
         ):
@@ -485,19 +527,44 @@ class BrowserDmCycleTests(unittest.TestCase):
             })
             with Memory(Path(folder) / "agent.sqlite3") as memory:
                 lead_id = next(row[0] for row in memory.list_leads() if row[2] == "clinica.nova")
-            answer = execute("draft", {
+            prize = execute("draft", {
                 "id": lead_id,
                 "browser_history": [
                     {"role": "assistant", "text": greeting["text"]},
                     {"role": "user", "text": "Eu quero"},
                 ],
             })
+            self.assertEqual(
+                "! Parabéns voce ganhou 3 meses gratis do nosso app Premium. "
+                "Escolha entre o Clinica TEA multiprofissional ou a versão para um profissional.",
+                prize,
+            )
+            answer = execute("draft", {
+                "id": lead_id,
+                "browser_history": [
+                    {"role": "assistant", "text": greeting["text"]},
+                    {"role": "user", "text": "Eu quero"},
+                    {"role": "assistant", "text": prize},
+                    {"role": "user", "text": "Clínica multiprofissional"},
+                ],
+            })
             parts = answer.split(BROWSER_BUBBLE_SEPARATOR)
-            self.assertEqual(len(parts), 3)
-            self.assertIn("3 meses grátis", parts[0])
+            self.assertEqual(len(parts), 5)
+            self.assertIn("Multiprofissional", parts[0])
             self.assertNotIn("erpclinicatea.com/planos", parts[0])
             self.assertIn("erpclinicatea.com/planos", parts[1])
-            self.assertIn("2 dias", parts[2])
+            self.assertEqual(
+                'Aviso esse link é valido por 3 dias. Caso não seja ativado voce perde o premios 😢',
+                parts[2],
+            )
+            self.assertEqual(
+                'Essa é uma tivação segura seus dados saõ criptografados e possuimos um sitema demonitormento. Sem uso de dados bancarios e sem uso de cartão.',
+                parts[3],
+            )
+            self.assertEqual(
+                'A intalação pode receber suporte para duvidas. o tempo de resposta pode varia de acordo com o fluxo de atendimentos. whatsapp assintencia 51 8054-2244',
+                parts[4],
+            )
 
     def test_follower_profile_selects_pro_or_community_message(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(
