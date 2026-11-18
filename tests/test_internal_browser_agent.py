@@ -44,12 +44,12 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
         self.assertEqual(4, action.call_args_list.count(call({"kind": "key", "key": "Backspace"})))
 
     def test_composer_safe_text_percent_encodes_underscores_only_inside_urls(self):
-        text = "Link: https://erpclinicatea.com/cadastro?plano=clinica-multiprofissional&convite=3-meses&utm_source=instagram&utm_campaign=convite_tres_meses. Tudo_certo"
+        text = "Link: https://erpclinicatea.com/planos?plano=clinica-multiprofissional&convite=3-meses&utm_source=instagram&utm_campaign=convite_tres_meses. Tudo_certo"
 
         result = internal_browser_agent._composer_safe_text(text)
 
         self.assertEqual(
-            "Link: https://erpclinicatea.com/cadastro?plano=clinica-multiprofissional&convite=3-meses&utm%5Fsource=instagram&utm%5Fcampaign=convite%5Ftres%5Fmeses. Tudo_certo",
+            "Link: https://erpclinicatea.com/planos?plano=clinica-multiprofissional&convite=3-meses&utm%5Fsource=instagram&utm%5Fcampaign=convite%5Ftres%5Fmeses. Tudo_certo",
             result,
         )
 

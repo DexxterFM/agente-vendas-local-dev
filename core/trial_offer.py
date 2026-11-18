@@ -13,14 +13,14 @@ DEFAULT_TRIAL_OFFER = {
     "clinic": {
         "name": "ERP Clínica TEA Multiprofissional",
         "url": (
-            "https://erpclinicatea.com/cadastro?plano=clinica-multiprofissional"
+            "https://erpclinicatea.com/planos?plano=clinica-multiprofissional"
             "&convite=3-meses&utm_source=instagram&utm_campaign=convite_tres_meses"
         ),
     },
     "professional": {
         "name": "Clínica TEA Profissional",
         "url": (
-            "https://erpclinicatea.com/cadastro?plano=profissional"
+            "https://erpclinicatea.com/planos?plano=profissional"
             "&convite=3-meses&utm_source=instagram&utm_campaign=convite_tres_meses"
         ),
     },
