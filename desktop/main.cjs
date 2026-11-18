@@ -137,6 +137,20 @@ function metaVaultEnv(){
 }
 const backendAllowed=['leads','create','messages','message','draft','queue','pause','followup','knowledge','saveKnowledge','responseLibrary','saveResponseTemplate','saveTrialOffer','browserImportThread','classifyImportedHistory','campaignDiscover','campaignClaim','campaignConfirm','followupRecords','completeFollowup','status','records','syncHistory','syncPostflow','analytics','saveDocument','ragContext','comparison','competitorCatalog','competitorMatch','competitorSeed','research','personality','probabilities','trial','outcome','installation','approveReply','dispatchDue','agentCycle','agentStatus','setAgentActive','setProspectingActive','prospectingPacing','followerCycle','followerConfirm','followerReset','startServices','browserScreenCycle','browserScreenConfirm','browserScreenReset','browserModeStatus','browserModeSet','browserModeComplete','browserModeIdle','replyDelay','postflowStatus','postflowIngestionStatus','metaStatus','metaOAuthUrl','metaOAuthExchange','browserHealth','browserTools','browserSnapshot','browserAct','browserInstagramInbox','browserRead','internalBrowserStatus','internalBrowserSnapshot','internalBrowserVisualState','internalBrowserScreenshot','internalBrowserAction','internalBrowserTargets','internalBrowserSelectTarget','internalBrowserLoginState'];
 backendAllowed.push('internalBrowserImportSession','internalBrowserMetadata','internalBrowserEngagementMetadata','campaignProfileIntro','campaignActionAudit','followIntroTemplates','campaignProfileObserve','campaignProfileMemory','campaignMessageGuard','browserNotificationCandidate','activationConfig','activationRegister','activationStatus','activationList','activationSetConfig','activationTokenRegister','activationTokenStats','activationTokenList','flowTeach','flowState','flowHistory','flowLessons','flowChat','flowApply','flowRevert','trialOffer','operatorAssist','setAutomaticReplies','workerHeartbeat','instagramTarget','importMetaEnvironment','campaignStage','campaignFail','trialLifecycleStart','trialLifecycleStatus','trialLifecycleContinue','trialLifecyclePaymentConfirmed');
+const COMMENT_TEXTS=[
+  'Muito bonito o trabalho de vocês! 😊',
+  '❤️❤️❤️',
+  '👏👏👏',
+  'Já vou seguir! ❤️❤️',
+  'Vou seguir para acompanhar mais esse trabalho !! ❤️❤️',
+];
+let lastCommentText='';
+function nextCommentText(){
+  const choices=COMMENT_TEXTS.filter(text=>text!==lastCommentText);
+  const chosen=choices[Math.floor(Math.random()*choices.length)]||COMMENT_TEXTS[0];
+  lastCommentText=chosen;
+  return chosen;
+}
 function ensureBackend(){
   if(backendChild&&!backendChild.killed)return backendChild;
   const root=path.join(__dirname,'..');
@@ -1092,7 +1106,7 @@ async function engageWithProfilePost(contents,username){
     if(!field)return false;field.focus();return document.activeElement===field;
   })()`,true);
   if(commentReady){
-    await typeWithVirtualKeyboard(contents,'Muito bonito o trabalho de vocês! 😊','campaign-comment');
+    await typeWithVirtualKeyboard(contents,nextCommentText(),'campaign-comment');
     contents.sendInputEvent({type:'keyDown',keyCode:'ENTER'});contents.sendInputEvent({type:'keyUp',keyCode:'ENTER'});
     result.commented=true;await naturalInteractionPause('campaign-comment',1200,3200);
   }

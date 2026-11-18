@@ -1,7 +1,11 @@
+import os
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import call, patch
 
 from scripts.vps import internal_browser_agent
+from scripts.vps.internal_browser import COMMENT_TEXTS
 
 
 def _repost_metadata_sequence(values):
@@ -648,6 +652,7 @@ class EngagementConfirmationTests(unittest.TestCase):
             execute.call_args_list,
         )
 
+    @patch("scripts.vps.internal_browser_agent.next_comment_text", return_value=COMMENT_TEXTS[0])
     @patch("scripts.vps.internal_browser_agent._wait")
     @patch("scripts.vps.internal_browser_agent.execute")
     @patch("scripts.vps.internal_browser_agent.browser.action")
@@ -661,7 +666,7 @@ class EngagementConfirmationTests(unittest.TestCase):
             {"comment_present": True, "comment_count": 1},
         ],
     )
-    def test_engage_comment_waits_for_field_and_confirms_text(self, metadata, action, execute, _wait):
+    def test_engage_comment_waits_for_field_and_confirms_text(self, metadata, action, execute, _wait, _next_text):
         confirmed, _ = internal_browser_agent._engage_comment(57)
 
         self.assertTrue(confirmed)
@@ -677,11 +682,12 @@ class EngagementConfirmationTests(unittest.TestCase):
         self.assertIn(
             call("campaignActionAudit", {
                 "id": 57, "step": "comment", "result": "confirmed",
-                "detail": "attempt=1; comment_present=True",
+                "detail": "attempt=1; comment_present=True; text=" + COMMENT_TEXTS[0][:60],
             }),
             execute.call_args_list,
         )
 
+    @patch("scripts.vps.internal_browser_agent.next_comment_text", return_value=COMMENT_TEXTS[1])
     @patch("scripts.vps.internal_browser_agent._wait")
     @patch("scripts.vps.internal_browser_agent.execute")
     @patch("scripts.vps.internal_browser_agent.browser.action")
@@ -694,11 +700,23 @@ class EngagementConfirmationTests(unittest.TestCase):
             {"comment_present": True, "comment_count": 1},
         ],
     )
-    def test_engage_comment_falls_back_to_enter_without_post_button(self, metadata, action, execute, _wait):
+    def test_engage_comment_falls_back_to_enter_without_post_button(self, metadata, action, execute, _wait, _next_text):
         confirmed, _ = internal_browser_agent._engage_comment(59)
 
         self.assertTrue(confirmed)
         self.assertIn(call({"kind": "key", "key": "Enter"}), action.call_args_list)
+
+    def test_next_comment_text_rotates_without_repeating(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}
+        ):
+            seen = [internal_browser_agent.next_comment_text() for _ in range(len(COMMENT_TEXTS) * 3)]
+            self.assertTrue(all(first != second for first, second in zip(seen, seen[1:])))
+            self.assertEqual(set(COMMENT_TEXTS), set(seen))
+            self.assertIn("❤️❤️❤️", COMMENT_TEXTS)
+            self.assertIn("👏👏👏", COMMENT_TEXTS)
+            self.assertIn("Já vou seguir! ❤️❤️", COMMENT_TEXTS)
+            self.assertIn("Vou seguir para acompanhar mais esse trabalho !! ❤️❤️", COMMENT_TEXTS)
 
     @patch("scripts.vps.internal_browser_agent._wait")
     @patch("scripts.vps.internal_browser_agent.execute")

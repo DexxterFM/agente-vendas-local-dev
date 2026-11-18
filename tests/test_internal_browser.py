@@ -1,9 +1,11 @@
 import unittest
 import base64
+import re
 import struct
 from unittest.mock import patch
 
 from scripts.vps import internal_browser
+from scripts.vps.internal_browser import COMMENT_TEXTS
 
 
 class InternalBrowserTests(unittest.TestCase):
@@ -178,6 +180,17 @@ class InternalBrowserTests(unittest.TestCase):
         self.assertEqual({"x": 237.0, "y": 557.0}, result["repost_confirm"])
         self.assertTrue(result["comment_present"])
         self.assertEqual(2, result["comment_count"])
+
+    @patch("scripts.vps.internal_browser.evaluate")
+    def test_engagement_metadata_detects_every_approved_comment_variant(self, evaluate):
+        evaluate.return_value = {"comment_present": False, "comment_count": 0}
+
+        internal_browser.engagement_metadata()
+
+        expression = evaluate.call_args.args[0]
+        for text in COMMENT_TEXTS:
+            self.assertIn(re.escape(text), expression)
+        self.assertNotIn("__COMMENT_MARKERS__", expression)
 
     @patch("scripts.vps.internal_browser.evaluate")
     def test_engagement_metadata_normalizes_invalid_states(self, evaluate):

@@ -19,12 +19,13 @@ from core.config import load_config
 from core.desktop_rpc import execute
 from core.memory import Memory
 from scripts.vps import internal_browser as browser
+from scripts.vps.internal_browser import COMMENT_TEXTS
 
 
 INBOX_URL = "https://www.instagram.com/direct/inbox/"
 HOME_URL = "https://www.instagram.com/"
 WEEKLY_SWEEP = timedelta(days=7)
-COMMENT_TEXT = "Muito bonito o trabalho de vocês! 😊"
+COMMENT_LAST_KEY = 'sales.agent.campaign.comment.last'
 ENGAGEMENT_ATTEMPTS = 3
 BUBBLE_SPLIT = re.compile(r'\s*\[\[AGENT_BUBBLE\]\]\s*')
 _RECENT_UNREAD_TARGETS: dict[str, float] = {}
@@ -291,8 +292,22 @@ def _engage_step(
     return False, metadata
 
 
+def next_comment_text() -> str:
+    """Escolhe uma variante de comentário sem repetir a última utilizada."""
+    try:
+        with Memory(load_config().db_path) as memory:
+            last = str(memory.get_setting(COMMENT_LAST_KEY, '') or '')
+            choices = [text for text in COMMENT_TEXTS if text != last] or list(COMMENT_TEXTS)
+            chosen = random.choice(choices)
+            memory.set_setting(COMMENT_LAST_KEY, chosen)
+            return chosen
+    except Exception:
+        return random.choice(COMMENT_TEXTS)
+
+
 def _engage_comment(action_id: int) -> tuple[bool, dict[str, Any]]:
     """Abre o balão, espera o campo real e confirma o comentário na página."""
+    comment_text = next_comment_text()
     metadata = _engagement_metadata()
     # Não comentar duas vezes no mesmo post quando a ação já foi confirmada.
     if metadata.get("comment_present"):
@@ -314,7 +329,7 @@ def _engage_comment(action_id: int) -> tuple[bool, dict[str, Any]]:
             if field:
                 browser.action({"kind": "click", **field})
                 browser.action({"kind": "key", "key": "SelectAll"})
-                browser.action({"kind": "type", "text": COMMENT_TEXT})
+                browser.action({"kind": "type", "text": comment_text})
                 # A tela atual só envia o comentário quando o botão "Post" ao
                 # lado do campo é clicado; Enter deixa o rascunho digitado.
                 typed = _engagement_metadata()
@@ -325,11 +340,11 @@ def _engage_comment(action_id: int) -> tuple[bool, dict[str, Any]]:
                     browser.action({"kind": "key", "key": "Enter"})
                 confirmed, observed = _wait_for_state("comment_present", True, timeout=10.0)
                 if confirmed:
-                    _audit_action(action_id, "comment", "confirmed", f"attempt={attempt}; comment_present=True")
+                    _audit_action(action_id, "comment", "confirmed", f"attempt={attempt}; comment_present=True; text={comment_text[:60]}")
                     return True, observed
         metadata = _engagement_metadata()
         _wait(0.5)
-    _audit_action(action_id, "comment", "unconfirmed", f"attempts={ENGAGEMENT_ATTEMPTS}; comment_present={metadata.get('comment_present')}")
+    _audit_action(action_id, "comment", "unconfirmed", f"attempts={ENGAGEMENT_ATTEMPTS}; comment_present={metadata.get('comment_present')}; text={comment_text[:60]}")
     return False, metadata
 
 

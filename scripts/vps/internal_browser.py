@@ -8,6 +8,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import socket
 import struct
 import time
@@ -37,6 +38,17 @@ _VERIFICATION_PATH_MARKERS = (
     "/verification", "/confirm", "/two_step_verification", "/confirmemail",
 )
 _VERIFICATION_QUERY_MARKERS = ("challenge", "twofactor", "two_factor", "verification", "confirmation_code")
+
+# Comentários aprovados para a prospecção. A detecção na página usa as mesmas
+# variantes para confirmar que o texto digitado realmente apareceu no post.
+COMMENT_TEXTS = (
+    "Muito bonito o trabalho de vocês! 😊",
+    "❤️❤️❤️",
+    "👏👏👏",
+    "Já vou seguir! ❤️❤️",
+    "Vou seguir para acompanhar mais esse trabalho !! ❤️❤️",
+)
+_COMMENT_MARKERS = "|".join(re.escape(text) for text in COMMENT_TEXTS)
 
 
 class InternalBrowserError(RuntimeError):
@@ -663,7 +675,7 @@ def engagement_metadata() -> dict[str, Any]:
       const post=[...document.querySelectorAll('a[href]')].filter(visible).find(element=>{
         try{return /\/(?:p|reel)\/[A-Za-z0-9_-]+/.test(new URL(element.href,location.href).pathname)}catch{return false}
       });
-      const commentMatches=bodyText.match(/Muito bonito o trabalho de vocês/gi)||[];
+      const commentMatches=bodyText.match(/__COMMENT_MARKERS__/gi)||[];
       return {
         path:location.pathname,
         ready:document.readyState==='complete'&&Boolean(document.body)&&bodyText.length>40,
@@ -683,7 +695,7 @@ def engagement_metadata() -> dict[str, Any]:
         comment_present:commentMatches.length>0,
         comment_count:commentMatches.length,
       };
-    })()'''
+    })()'''.replace('__COMMENT_MARKERS__', _COMMENT_MARKERS)
     value = evaluate(expression)
     if not isinstance(value, dict):
         raise InternalBrowserError("Metadados de engajamento inválidos")
