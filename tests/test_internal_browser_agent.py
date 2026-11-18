@@ -147,6 +147,7 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
 
         self.assertEqual([row], internal_browser_agent._pending_message_fallback_targets([row]))
 
+    @patch("scripts.vps.internal_browser_agent._open_home", return_value=True)
     @patch("scripts.vps.internal_browser_agent._sweep_due", return_value=False)
     @patch("scripts.vps.internal_browser_agent._wait")
     @patch("scripts.vps.internal_browser_agent._pending_message_fallback_targets")
@@ -159,7 +160,7 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
     @patch("scripts.vps.internal_browser_agent.browser.status")
     @patch("scripts.vps.internal_browser_agent.execute")
     def test_cycle_falls_back_to_recent_thread_when_phone_marked_message_as_read(
-        self, execute, status, snapshot, metadata, _open_inbox, _targets, open_target, process, fallback, _wait, _sweep_due
+        self, execute, status, snapshot, metadata, _open_inbox, _targets, open_target, process, fallback, _wait, _sweep_due, _home
     ):
         execute.side_effect = [
             {"active": True},
@@ -177,6 +178,8 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
         self.assertEqual("message", result["browser"])
         self.assertTrue(result["replied"])
         open_target.assert_called_once_with(fallback.return_value[0])
+        _home.assert_called_once_with()
+        self.assertTrue(result["returned_home"])
 
     @patch("scripts.vps.internal_browser_agent._wait")
     @patch("scripts.vps.internal_browser_agent._page")
@@ -239,6 +242,19 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
         self.assertTrue(opened)
         click_surface.assert_called_once()
         action.assert_called_once_with({"kind": "navigate", "url": internal_browser_agent.INBOX_URL})
+
+    @patch("scripts.vps.internal_browser_agent._wait")
+    @patch("scripts.vps.internal_browser_agent._click_surface", return_value=False)
+    @patch("scripts.vps.internal_browser_agent._page")
+    @patch("scripts.vps.internal_browser_agent.browser.action")
+    def test_open_home_navigates_when_thread_has_no_clickable_home_link(self, action, page, click_surface, _wait):
+        page.side_effect = ["https://www.instagram.com/direct/t/123/", "https://www.instagram.com/"]
+
+        opened = internal_browser_agent._open_home()
+
+        self.assertTrue(opened)
+        click_surface.assert_called_once()
+        action.assert_called_once_with({"kind": "navigate", "url": internal_browser_agent.HOME_URL})
 
     @patch("scripts.vps.internal_browser_agent._sweep_due", return_value=False)
     @patch("scripts.vps.internal_browser_agent._capture_notification_actions")
@@ -630,6 +646,10 @@ class EngagementConfirmationTests(unittest.TestCase):
             execute.call_args_list,
         )
 
+    @patch(
+        "scripts.vps.internal_browser_agent._wait_for_state",
+        return_value=(False, {"follow_state": "not_following"}),
+    )
     @patch("scripts.vps.internal_browser_agent._wait")
     @patch("scripts.vps.internal_browser_agent.execute")
     @patch("scripts.vps.internal_browser_agent.browser.action")
@@ -637,7 +657,7 @@ class EngagementConfirmationTests(unittest.TestCase):
         "scripts.vps.internal_browser_agent._engagement_metadata",
         return_value={"follow": {"x": 900.0, "y": 120.0}, "follow_state": "not_following"},
     )
-    def test_engage_step_reports_unconfirmed_after_all_attempts(self, metadata, action, execute, _wait):
+    def test_engage_step_reports_unconfirmed_after_all_attempts(self, metadata, action, execute, _wait, _wait_state):
         confirmed, _ = internal_browser_agent._engage_step(
             56, "follow", "follow", "follow_state", "following"
         )

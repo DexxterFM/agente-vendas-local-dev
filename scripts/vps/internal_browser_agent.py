@@ -167,7 +167,18 @@ def _open_home() -> bool:
     current = urlparse(str(_page("location.href") or "")).path.rstrip("/") or "/"
     if current == "/":
         return True
-    return _click_surface("/", ("página inicial", "home"))
+    if _click_surface("/", ("página inicial", "home")):
+        return True
+    # Uma conversa aberta ou a central de notificações podem esconder o link
+    # da home. A navegação interna preserva a sessão e devolve a tela de
+    # referência, onde o agente lê os indicadores globais no próximo ciclo.
+    browser.action({"kind": "navigate", "url": HOME_URL})
+    for _ in range(12):
+        _wait(.35)
+        path = urlparse(str(_page("location.href") or "")).path.rstrip("/") or "/"
+        if path == "/":
+            return True
+    return False
 
 
 def _scroll_feed() -> None:
@@ -1358,9 +1369,19 @@ def cycle(mode: str | None = None) -> dict[str, Any]:
             nxt = execute("browserModeComplete", {"mode": current_mode, "detail": detail})
         else:
             nxt = execute("browserModeIdle", {"mode": current_mode})
-        result["mode"] = str(nxt.get("mode") or current_mode)
+        new_mode = str(nxt.get("mode") or current_mode)
+        result["mode"] = new_mode
         result["next_mode"] = str(nxt.get("next_mode") or "")
         result["idle_cycles"] = int(nxt.get("idle_cycles") or 0)
+        # A troca de turno marca o fim da tarefa (ou o timeout de ociosidade).
+        # Voltar para a home devolve a tela de referência ao agente, que passa
+        # a ler os indicadores globais sem ficar preso em DM, notificações ou
+        # perfil de prospecção até o próximo ciclo do outro modo.
+        if new_mode != current_mode:
+            try:
+                result["returned_home"] = bool(_open_home())
+            except browser.InternalBrowserError:
+                result["returned_home"] = False
         return result
 
     status = browser.status()

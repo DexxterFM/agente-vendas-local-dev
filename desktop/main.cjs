@@ -910,6 +910,12 @@ const browserTimer=setInterval(async()=>{
     if(new URL(url).pathname.startsWith('/direct/inbox')){await openUnreadConversation(activeView);return;}
     const result=await processCurrentBrowserThread(activeView,{source:'open-thread'});
     fs.appendFileSync(path.join(app.getPath('userData'),'browser-send.log'),`${new Date().toISOString()} open-thread ${JSON.stringify(result)}\n`);
+    // A conversa concluída não deve prender a tela: volta para a home, que é
+    // a referência usada pela leitura de indicadores no próximo ciclo.
+    if(result.processed){
+      const current=activeView.webContents.getURL()||'';
+      if(current.includes('instagram.com/direct/t/'))await activeView.webContents.loadURL('https://www.instagram.com/').catch(()=>null);
+    }
   }catch(error){try{fs.mkdirSync(app.getPath('userData'),{recursive:true});fs.appendFileSync(path.join(app.getPath('userData'),'browser-send.log'),`${new Date().toISOString()} error ${error.message}\n`);}catch{}} finally{browserProcessing=false;}
 },15000);
 browserTimer.unref();
