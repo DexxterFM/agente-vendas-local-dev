@@ -33,6 +33,7 @@ class TokenInfo:
     used_at: str | None
     expires_at: str
     created_at: str
+    edition: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -54,10 +55,16 @@ class ActivationTokenManager:
                 used_by text,
                 used_at text,
                 expires_at text not null,
-                created_at text not null
+                created_at text not null,
+                edition text
             )
             """
         )
+        try:
+            self.memory.db.execute("alter table activation_tokens add column edition text")
+            self.memory.db.commit()
+        except Exception:
+            pass
         self.memory.db.execute(
             "create index if not exists idx_activation_tokens_used on activation_tokens(used)"
         )
@@ -75,7 +82,7 @@ class ActivationTokenManager:
             return token
         return TOKEN_PREFIX + token
 
-    def register_tokens(self, tokens: list[str]) -> dict[str, Any]:
+    def register_tokens(self, tokens: list[str], edition: str | None = None) -> dict[str, Any]:
         """Registra uma lista de tokens no banco. Retorna resumo."""
         now = _utc_now()
         expires_at = (datetime.now(timezone.utc) + timedelta(days=EXPIRY_DAYS)).isoformat()
@@ -96,10 +103,10 @@ class ActivationTokenManager:
             self.memory.db.execute(
                 """
                 insert into activation_tokens
-                (code, used, used_by, used_at, expires_at, created_at)
-                values (?, 0, NULL, NULL, ?, ?)
+                (code, used, used_by, used_at, expires_at, created_at, edition)
+                values (?, 0, NULL, NULL, ?, ?, ?)
                 """,
-                (token, expires_at, now),
+                (token, expires_at, now, edition),
             )
             registered += 1
         self.memory.db.commit()
@@ -183,13 +190,13 @@ class ActivationTokenManager:
         self._cleanup_expired()
         rows = self.memory.db.execute(
             """
-            select code, used, used_by, used_at, expires_at, created_at
+            select code, used, used_by, used_at, expires_at, created_at, edition
             from activation_tokens
             order by created_at asc
             """
         ).fetchall()
         columns = [d[0] for d in self.memory.db.execute(
-            "select code, used, used_by, used_at, expires_at, created_at "
+            "select code, used, used_by, used_at, expires_at, created_at, edition "
             "from activation_tokens limit 1"
         ).description]
         return [dict(zip(columns, row)) for row in rows]

@@ -122,7 +122,9 @@ def _installation_bubbles(memory, offer, lead_id=None, lead_name=None):
             # Registra e consome localmente para auditoria e não repetição.
             try:
                 token_mgr = ActivationTokenManager(memory)
-                token_mgr.register_tokens([token_code])
+                offer_url = str(offer.get('url') or '')
+                edition = 'multiprofessional' if 'clinica-multiprofissional' in offer_url else 'professional'
+                token_mgr.register_tokens([token_code], edition=edition)
                 token_mgr.consume_token(int(lead_id), lead_name)
             except Exception:
                 pass
@@ -1418,6 +1420,14 @@ def execute(command, args):
                 redeem_within_days=int(args.get('redeem_within_days') or 30),
             )
             if generated:
+                # Registra localmente para rastreamento na lista de tokens.
+                try:
+                    mgr = ActivationTokenManager(memory)
+                    plan_slug = str(args.get('plan_slug') or 'professional')
+                    edition = 'multiprofessional' if plan_slug == 'enterprise' else 'professional'
+                    mgr.register_tokens([generated.get('token')], edition=edition)
+                except Exception:
+                    pass
                 return {'generated': True, **generated}
             return {'generated': False}
         if command == 'activationTokenStats':
