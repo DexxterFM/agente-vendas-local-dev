@@ -1,0 +1,7 @@
+{
+  "enabled": false,
+  "sshHost": "",
+  "localPort": 8787,
+  "remotePort": 8787,
+  "sshOptions": "-o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3"
+}

@@ -12,8 +12,8 @@ if (-not (Test-Port 11434) -and $ollama) {
   Start-Process -FilePath $ollama -ArgumentList "serve" -WindowStyle Hidden
 }
 
-$browserServer = "C:\Users\denis\AppData\Local\BrowserClaw\Application\155.0.8318.26\BrowserClawServer\default\resources\bin\browseros-claw-server.exe"
-$browserConfig = "C:\Users\denis\AppData\Local\BrowserClaw\User Data\.browseros\config.json"
+$browserServer = if ($env:BROWSEROS_SERVER) { $env:BROWSEROS_SERVER } else { "C:\Users\denis\AppData\Local\BrowserClaw\Application\155.0.8318.26\BrowserClawServer\default\resources\bin\browseros-claw-server.exe" }
+$browserConfig = if ($env:BROWSEROS_CONFIG) { $env:BROWSEROS_CONFIG } else { "C:\Users\denis\AppData\Local\BrowserClaw\User Data\.browseros\config.json" }
 if (-not (Test-Port 9210) -and (Test-Path $browserServer) -and (Test-Path $browserConfig)) {
   Start-Process -FilePath $browserServer -ArgumentList "--config `"$browserConfig`"" -WindowStyle Hidden
 }

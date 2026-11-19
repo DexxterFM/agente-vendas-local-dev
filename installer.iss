@@ -1,5 +1,5 @@
 #define AppName "Agente de Vendas Local"
-#define AppVersion "0.9.0"
+#include "version.iss"
 #define AppPublisher "Agente de Vendas Local"
 #define AppExe "AgenteVendasLocal.exe"
 
