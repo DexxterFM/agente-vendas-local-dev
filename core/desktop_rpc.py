@@ -103,17 +103,37 @@ def _installation_bubbles(memory, offer, lead_id=None, lead_name=None):
     def phrase(template_id):
         return (saved.get(template_id) or defaults[template_id])[:1200]
     bubbles = [f'Seu link de instalação: {offer["url"]}']
-    # Consome um token de ativação de uso único para este lead.
+    # Gera um token novo no ERP para este lead, com validade de 3 meses. O
+    # token gerado entra no próprio balão enviado ao cliente.
     token_code = None
     if lead_id is not None:
         try:
-            token_mgr = ActivationTokenManager(memory)
-            consumed = token_mgr.consume_token(int(lead_id), lead_name)
-            if consumed and consumed.get('consumed'):
-                token_code = consumed.get('token')
+            from core.erp_token_client import generate_demo_token, plan_slug_for_url
+            generated = generate_demo_token(
+                plan_slug=plan_slug_for_url(offer.get('url')),
+                user_name=str(lead_name or f"lead:{lead_id}"),
+            )
+            if generated:
+                token_code = generated.get('token')
         except Exception:
-            # Sem tokens disponíveis não bloqueia o envio do link.
             token_code = None
+        if token_code:
+            # Registra e consome localmente para auditoria e não repetição.
+            try:
+                token_mgr = ActivationTokenManager(memory)
+                token_mgr.register_tokens([token_code])
+                token_mgr.consume_token(int(lead_id), lead_name)
+            except Exception:
+                pass
+        if not token_code:
+            # Fallback: token local pré-registrado quando o ERP não responde.
+            try:
+                token_mgr = ActivationTokenManager(memory)
+                consumed = token_mgr.consume_token(int(lead_id), lead_name)
+                if consumed and consumed.get('consumed'):
+                    token_code = consumed.get('token')
+            except Exception:
+                token_code = None
     if token_code:
         bubbles.append(f'Seu código de ativação: {token_code}')
     bubbles.extend([
@@ -1377,6 +1397,17 @@ def execute(command, args):
             if isinstance(tokens, str):
                 tokens = [t.strip() for t in tokens.split(',') if t.strip()]
             return mgr.register_tokens(tokens)
+        if command == 'activationTokenGenerate':
+            from core.erp_token_client import generate_demo_token
+            generated = generate_demo_token(
+                plan_slug=str(args.get('plan_slug') or 'professional'),
+                duration_code=str(args.get('duration_code') or '3m'),
+                user_name=str(args.get('user_name') or 'Agente de Vendas'),
+                redeem_within_days=int(args.get('redeem_within_days') or 30),
+            )
+            if generated:
+                return {'generated': True, **generated}
+            return {'generated': False}
         if command == 'activationTokenStats':
             mgr = ActivationTokenManager(memory)
             return mgr.stats()

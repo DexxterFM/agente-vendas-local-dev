@@ -304,16 +304,19 @@ def _engage_step(
 
 
 def next_comment_text() -> str:
-    """Escolhe uma variante de comentário sem repetir a última utilizada."""
+    """Escolhe a próxima variante em rotação, sem repetir a última utilizada."""
     try:
         with Memory(load_config().db_path) as memory:
             last = str(memory.get_setting(COMMENT_LAST_KEY, '') or '')
-            choices = [text for text in COMMENT_TEXTS if text != last] or list(COMMENT_TEXTS)
-            chosen = random.choice(choices)
+            try:
+                index = COMMENT_TEXTS.index(last)
+            except ValueError:
+                index = -1
+            chosen = COMMENT_TEXTS[(index + 1) % len(COMMENT_TEXTS)]
             memory.set_setting(COMMENT_LAST_KEY, chosen)
             return chosen
     except Exception:
-        return random.choice(COMMENT_TEXTS)
+        return COMMENT_TEXTS[0]
 
 
 def _engage_comment(action_id: int) -> tuple[bool, dict[str, Any]]:

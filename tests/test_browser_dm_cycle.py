@@ -398,6 +398,36 @@ class BrowserDmCycleTests(unittest.TestCase):
             self.assertIn("erpclinicatea.com/login/admin", answer)
             self.assertIn("Aviso esse link é valido por 3 dias", answer)
 
+    def test_installation_bubbles_include_generated_erp_token(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}
+        ):
+            lead_id = execute("create", {"name": "Clínica teste", "contact": "clinica.teste"})
+            offer = execute("draft", {
+                "id": lead_id,
+                "browser_history": [
+                    {"role": "assistant", "text": "Vocês já usam algum app ou programa para a gestão?"},
+                    {"role": "user", "text": "Usamos um gratuito"},
+                ],
+            })
+            token = "ERPDEMO-31DA0F4C95-abcdefghijklmnopqrstuvwxyzABCDEFG"
+            generated = {"ok": True, "token": token, "durationCode": "3m", "planSlug": "enterprise"}
+            with patch("core.erp_token_client.generate_demo_token", return_value=generated) as gen:
+                answer = execute("draft", {
+                    "id": lead_id,
+                    "browser_history": [
+                        {"role": "assistant", "text": offer},
+                        {"role": "user", "text": "Oi Vou aceitar"},
+                    ],
+                })
+            gen.assert_called_once()
+            self.assertIn(f"Seu código de ativação: {token}", answer)
+            parts = answer.split(BROWSER_BUBBLE_SEPARATOR)
+            self.assertTrue(any("Seu código de ativação" in p for p in parts))
+            # Token gerado é de uso único: estatística local registra o consumo.
+            stats = execute("activationTokenStats", {})
+            self.assertGreaterEqual(int(stats.get("used", 0) or 0), 1)
+
     def test_free_app_greeting_pending_asks_for_confirmation(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(
             os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}
