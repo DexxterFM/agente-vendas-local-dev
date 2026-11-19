@@ -300,7 +300,7 @@ class InternalBrowserTests(unittest.TestCase):
 
     @patch("scripts.vps.internal_browser.time.sleep")
     @patch("scripts.vps.internal_browser._with_page")
-    def test_action_types_each_character_through_native_text_input(self, with_page, _sleep):
+    def test_action_types_each_character_through_accessibility_keyboard(self, with_page, _sleep):
         calls = []
 
         class Page:
@@ -313,9 +313,18 @@ class InternalBrowserTests(unittest.TestCase):
         result = internal_browser.action({"kind": "type", "text": "Ab"})
 
         self.assertEqual({"ok": True}, result)
-        self.assertEqual(["Input.insertText", "Input.insertText"], [method for method, _ in calls])
+        # Duas letras x par real de teclado (keyDown, keyUp), sem evento char.
+        self.assertEqual(["Input.dispatchKeyEvent"] * 4, [method for method, _ in calls])
+        self.assertEqual(
+            [["keyDown", "keyUp"], ["keyDown", "keyUp"]],
+            [[calls[i][1]["type"] for i in range(index, index + 2)] for index in (0, 2)],
+        )
         self.assertEqual("A", calls[0][1]["text"])
-        self.assertEqual("b", calls[1][1]["text"])
+        self.assertEqual("A", calls[0][1]["unmodifiedText"])
+        self.assertEqual("b", calls[2][1]["text"])
+        self.assertEqual("KeyA", calls[0][1]["code"])
+        self.assertEqual("KeyB", calls[2][1]["code"])
+        self.assertNotIn("Input.insertText", [method for method, _ in calls])
 
     @patch("scripts.vps.internal_browser._with_page")
     def test_action_navigates_back_through_internal_history(self, with_page):

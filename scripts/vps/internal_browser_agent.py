@@ -26,6 +26,7 @@ INBOX_URL = "https://www.instagram.com/direct/inbox/"
 HOME_URL = "https://www.instagram.com/"
 WEEKLY_SWEEP = timedelta(days=7)
 COMMENT_LAST_KEY = 'sales.agent.campaign.comment.last'
+COMMENT_POST_KEY_PREFIX = 'sales.agent.campaign.comment.post.'
 ENGAGEMENT_ATTEMPTS = 3
 BUBBLE_SPLIT = re.compile(r'\s*\[\[AGENT_BUBBLE\]\]\s*')
 _RECENT_UNREAD_TARGETS: dict[str, float] = {}
@@ -303,29 +304,65 @@ def _engage_step(
     return False, metadata
 
 
-def next_comment_text() -> str:
-    """Escolhe a próxima variante em rotação, sem repetir a última utilizada."""
+def _comment_post_key(post_url: str, text: str) -> str:
+    """Identifica um texto já usado em um post específico."""
+    digest = hashlib.sha256(f"{post_url}\0{text}".encode("utf-8")).hexdigest()[:24]
+    return f"{COMMENT_POST_KEY_PREFIX}{digest}"
+
+
+def _comment_texts_used_in_post(post_url: str) -> tuple[str, ...]:
+    """Textos aprovados que já foram publicados neste post."""
+    if not post_url:
+        return ()
+    with Memory(load_config().db_path) as memory:
+        return tuple(
+            text for text in COMMENT_TEXTS
+            if str(memory.get_setting(_comment_post_key(post_url, text), '') or '') == '1'
+        )
+
+
+def _record_comment_text_in_post(post_url: str, text: str) -> None:
+    if not post_url or not text:
+        return
+    with Memory(load_config().db_path) as memory:
+        memory.set_setting(_comment_post_key(post_url, text), '1')
+
+
+def next_comment_text(exclude: tuple[str, ...] = ()) -> str:
+    """Próxima variante em rotação, sem repetir a última nem textos do post."""
     try:
         with Memory(load_config().db_path) as memory:
             last = str(memory.get_setting(COMMENT_LAST_KEY, '') or '')
             try:
-                index = COMMENT_TEXTS.index(last)
+                start = COMMENT_TEXTS.index(last) + 1
             except ValueError:
-                index = -1
-            chosen = COMMENT_TEXTS[(index + 1) % len(COMMENT_TEXTS)]
-            memory.set_setting(COMMENT_LAST_KEY, chosen)
-            return chosen
+                start = 0
+            blocked = set(exclude or ())
+            for offset in range(len(COMMENT_TEXTS)):
+                chosen = COMMENT_TEXTS[(start + offset) % len(COMMENT_TEXTS)]
+                if chosen not in blocked:
+                    memory.set_setting(COMMENT_LAST_KEY, chosen)
+                    return chosen
+            return ''
     except Exception:
-        return COMMENT_TEXTS[0]
+        return next((text for text in COMMENT_TEXTS if text not in (exclude or ())), '')
 
 
 def _engage_comment(action_id: int) -> tuple[bool, dict[str, Any]]:
-    """Abre o balão, espera o campo real e confirma o comentário na página."""
-    comment_text = next_comment_text()
+    """Abre o balão, digita pelo teclado e envia com Enter, sem clique em Post."""
+    try:
+        post_url = str(_page("location.href") or "")
+    except Exception:
+        post_url = ""
+    used = _comment_texts_used_in_post(post_url)
+    comment_text = next_comment_text(exclude=used)
     metadata = _engagement_metadata()
     # Não comentar duas vezes no mesmo post quando a ação já foi confirmada.
     if metadata.get("comment_present"):
         _audit_action(action_id, "comment", "confirmed", "already-commented")
+        return True, metadata
+    if not comment_text:
+        _audit_action(action_id, "comment", "confirmed", "all-approved-variants-already-used")
         return True, metadata
     for attempt in range(1, ENGAGEMENT_ATTEMPTS + 1):
         point = metadata.get("comment")
@@ -343,18 +380,23 @@ def _engage_comment(action_id: int) -> tuple[bool, dict[str, Any]]:
             if field:
                 browser.action({"kind": "click", **field})
                 browser.action({"kind": "key", "key": "SelectAll"})
+                # Digitação exclusivamente pelo teclado de acessibilidade.
                 browser.action({"kind": "type", "text": comment_text})
-                # A tela atual só envia o comentário quando o botão "Post" ao
-                # lado do campo é clicado; Enter deixa o rascunho digitado.
-                typed = _engagement_metadata()
-                submit = typed.get("comment_post") or metadata.get("comment_post")
-                if submit:
-                    browser.action({"kind": "click", **submit})
-                else:
-                    browser.action({"kind": "key", "key": "Enter"})
+                # Envio pela tecla Enter: nenhum clique no botão de publicar.
+                browser.action({"kind": "key", "key": "Enter"})
+                _wait(0.3)
                 confirmed, observed = _wait_for_state("comment_present", True, timeout=10.0)
                 if confirmed:
-                    _audit_action(action_id, "comment", "confirmed", f"attempt={attempt}; comment_present=True; text={comment_text[:60]}")
+                    _record_comment_text_in_post(post_url, comment_text)
+                    _audit_action(action_id, "comment", "confirmed", f"attempt={attempt}; comment_present=True; text={comment_text[:60]}; submit=Enter")
+                    return True, observed
+                # Enter não confirmou: repete a tecla antes de desistir, sem
+                # recorrer ao clique no botão da interface.
+                browser.action({"kind": "key", "key": "Enter"})
+                confirmed, observed = _wait_for_state("comment_present", True, timeout=6.0)
+                if confirmed:
+                    _record_comment_text_in_post(post_url, comment_text)
+                    _audit_action(action_id, "comment", "confirmed", f"attempt={attempt}; comment_present=True; text={comment_text[:60]}; submit=Enter-retry")
                     return True, observed
         metadata = _engagement_metadata()
         _wait(0.5)
@@ -576,14 +618,12 @@ def _send_overlay_bubble(text: str) -> dict[str, Any]:
         raise browser.InternalBrowserError("Texto não foi inserido no campo da conversa")
     if str(_page("location.href") or "") != url:
         raise browser.InternalBrowserError("Conversa mudou antes do envio")
-    send_point = _send_button_center()
-    if send_point:
-        browser.action({"kind": "click", **send_point})
-        _wait(.28)
-        still_draft = _page("(()=>{const e=document.activeElement;return (e?.value||e?.innerText||e?.textContent||'').trim()})()")
-        if str(still_draft or "").strip() == composer_text:
-            browser.action({"kind": "key", "key": "Enter"})
-    else:
+    # Envio apenas pela tecla Enter do teclado de acessibilidade: nenhum
+    # clique no botão visual de enviar.
+    browser.action({"kind": "key", "key": "Enter"})
+    _wait(.28)
+    still_draft = _page("(()=>{const e=document.activeElement;return (e?.value||e?.innerText||e?.textContent||'').trim()})()")
+    if str(still_draft or "").strip() == composer_text:
         browser.action({"kind": "key", "key": "Enter"})
     for _ in range(12):
         _wait(.5)
@@ -591,10 +631,10 @@ def _send_overlay_bubble(text: str) -> dict[str, Any]:
             raise browser.InternalBrowserError("Conversa mudou antes da confirmação")
         state = _overlay_state(composer_text)
         if state["count"] > before:
-            return {"sent": True, "method": "overlay-visible-bubble"}
+            return {"sent": True, "method": "overlay-keyboard-enter"}
         draft = _page("(()=>{const e=document.activeElement;return (e?.value||e?.innerText||e?.textContent||'').trim()})()")
         if not str(draft or "").strip() and state["panel_text"]:
-            return {"sent": True, "method": "overlay-cleared-bubble"}
+            return {"sent": True, "method": "overlay-keyboard-enter-cleared"}
     raise browser.InternalBrowserError("Mensagem não apareceu na conversa para confirmação")
 
 
@@ -1101,27 +1141,24 @@ def _send_bubble(text: str, expected_url: str) -> dict[str, Any]:
         raise browser.InternalBrowserError("Texto não foi inserido no campo da conversa")
     if str(_page("location.href") or "") != expected_url:
         raise browser.InternalBrowserError("Conversa mudou antes do envio")
-    send_point = _send_button_center()
-    if send_point:
-        browser.action({"kind": "click", **send_point})
-        # A interface pode aceitar o clique visual mas perder o primeiro
-        # evento durante a reidratação. Se o próprio compositor ainda contém
-        # exatamente o texto digitado, Enter é a segunda rota nativa de envio.
-        _wait(.28)
-        still_draft = _page("(()=>{const e=document.activeElement;return (e?.value||e?.innerText||e?.textContent||'').trim()})()")
-        if str(still_draft or "").strip() == composer_text:
-            browser.action({"kind": "key", "key": "Enter"})
-    else:
+    # Envio apenas pela tecla Enter do teclado de acessibilidade: nenhum
+    # clique no botão visual de enviar.
+    browser.action({"kind": "key", "key": "Enter"})
+    _wait(.28)
+    still_draft = _page("(()=>{const e=document.activeElement;return (e?.value||e?.innerText||e?.textContent||'').trim()})()")
+    if str(still_draft or "").strip() == composer_text:
+        # Reidratação da interface pode perder o primeiro Enter. Repete a
+        # tecla antes de considerar o envio como falho.
         browser.action({"kind": "key", "key": "Enter"})
     for _ in range(12):
         _wait(.5)
         if str(_page("location.href") or "") != expected_url:
             raise browser.InternalBrowserError("Conversa mudou antes da confirmação")
         if _message_count(composer_text) > before:
-            return {"sent": True, "method": "mouse-virtual-keyboard-send"}
+            return {"sent": True, "method": "keyboard-enter-send"}
     after = _thread_snapshot().get("messages") or []
     if after and after[-1].get("direction") == "outgoing" and after[-1].get("text") == composer_text:
-        return {"sent": True, "method": "virtual-keyboard-visible-bubble"}
+        return {"sent": True, "method": "keyboard-enter-visible-bubble"}
     raise browser.InternalBrowserError("Mensagem não apareceu na conversa para confirmação")
 
 

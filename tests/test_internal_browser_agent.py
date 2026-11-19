@@ -64,7 +64,7 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
     @patch("scripts.vps.internal_browser_agent._page")
     @patch("scripts.vps.internal_browser_agent._composer_center", return_value={"x": 700.0, "y": 835.0})
     @patch("scripts.vps.internal_browser_agent.browser.action")
-    def test_send_bubble_clears_stale_draft_and_clicks_send_with_native_mouse(
+    def test_send_bubble_clears_stale_draft_and_submits_with_keyboard_enter(
         self, action, _composer, page, _count, clear, _send, _wait
     ):
         expected = "https://www.instagram.com/direct/t/123/"
@@ -73,13 +73,18 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
         result = internal_browser_agent._send_bubble("novo link", expected)
 
         self.assertTrue(result["sent"])
+        self.assertEqual("keyboard-enter-send", result["method"])
         clear.assert_called_once_with()
         self.assertEqual([
             call({"kind": "click", "x": 700.0, "y": 835.0}),
             call({"kind": "click", "x": 700.0, "y": 835.0}),
             call({"kind": "type", "text": "novo link"}),
-            call({"kind": "click", "x": 1100.0, "y": 835.0}),
+            call({"kind": "key", "key": "Enter"}),
         ], action.call_args_list)
+        self.assertNotIn(
+            call({"kind": "click", "x": 1100.0, "y": 835.0}),
+            action.call_args_list,
+        )
 
     @patch("scripts.vps.internal_browser_agent._wait")
     @patch("scripts.vps.internal_browser_agent._send_button_center", return_value={"x": 1100.0, "y": 835.0})
@@ -429,8 +434,13 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
         result = internal_browser_agent._send_overlay_bubble("texto")
 
         self.assertTrue(result["sent"])
+        self.assertEqual("overlay-keyboard-enter", result["method"])
         self.assertIn(call({"kind": "type", "text": "texto"}), action.call_args_list)
-        self.assertIn(call({"kind": "click", "x": 1195.0, "y": 751.0}), action.call_args_list)
+        self.assertIn(call({"kind": "key", "key": "Enter"}), action.call_args_list)
+        self.assertNotIn(
+            call({"kind": "click", "x": 1195.0, "y": 751.0}),
+            action.call_args_list,
+        )
 
     @patch("scripts.vps.internal_browser_agent._own_username", return_value="erpclinicatea")
     @patch("scripts.vps.internal_browser_agent._open_home", return_value=True)
@@ -697,12 +707,12 @@ class EngagementConfirmationTests(unittest.TestCase):
             call({"kind": "type", "text": "Muito bonito o trabalho de vocês! 😊"}),
             action.call_args_list,
         )
-        self.assertIn(call({"kind": "click", "x": 957.0, "y": 596.0}), action.call_args_list)
-        self.assertNotIn(call({"kind": "key", "key": "Enter"}), action.call_args_list)
+        self.assertIn(call({"kind": "key", "key": "Enter"}), action.call_args_list)
+        self.assertNotIn(call({"kind": "click", "x": 957.0, "y": 596.0}), action.call_args_list)
         self.assertIn(
             call("campaignActionAudit", {
                 "id": 57, "step": "comment", "result": "confirmed",
-                "detail": "attempt=1; comment_present=True; text=" + COMMENT_TEXTS[0][:60],
+                "detail": "attempt=1; comment_present=True; text=" + COMMENT_TEXTS[0][:60] + "; submit=Enter",
             }),
             execute.call_args_list,
         )
@@ -737,6 +747,33 @@ class EngagementConfirmationTests(unittest.TestCase):
             self.assertIn("👏👏👏", COMMENT_TEXTS)
             self.assertIn("Já vou seguir! ❤️❤️", COMMENT_TEXTS)
             self.assertIn("Vou seguir para acompanhar mais esse trabalho !! ❤️❤️", COMMENT_TEXTS)
+
+    def test_comment_variants_are_tracked_per_post(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}
+        ):
+            post_a = "https://www.instagram.com/p/AAA/"
+            post_b = "https://www.instagram.com/p/BBB/"
+            internal_browser_agent._record_comment_text_in_post(post_a, COMMENT_TEXTS[0])
+            internal_browser_agent._record_comment_text_in_post(post_a, COMMENT_TEXTS[1])
+
+            used_a = internal_browser_agent._comment_texts_used_in_post(post_a)
+            used_b = internal_browser_agent._comment_texts_used_in_post(post_b)
+            self.assertEqual((COMMENT_TEXTS[0], COMMENT_TEXTS[1]), used_a)
+            self.assertEqual((), used_b)
+
+            chosen = internal_browser_agent.next_comment_text(exclude=used_a)
+            self.assertIn(chosen, COMMENT_TEXTS)
+            self.assertNotIn(chosen, used_a)
+
+            internal_browser_agent._record_comment_text_in_post(post_a, COMMENT_TEXTS[2])
+            internal_browser_agent._record_comment_text_in_post(post_a, COMMENT_TEXTS[3])
+            internal_browser_agent._record_comment_text_in_post(post_a, COMMENT_TEXTS[4])
+            self.assertEqual(
+                set(COMMENT_TEXTS),
+                set(internal_browser_agent._comment_texts_used_in_post(post_a)),
+            )
+            self.assertEqual("", internal_browser_agent.next_comment_text(exclude=COMMENT_TEXTS))
 
     @patch("scripts.vps.internal_browser_agent._wait")
     @patch("scripts.vps.internal_browser_agent.execute")

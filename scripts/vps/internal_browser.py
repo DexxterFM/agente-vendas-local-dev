@@ -917,11 +917,69 @@ def screenshot() -> dict[str, Any]:
     return _with_page(run)
 
 
+_PUNCTUATION_KEYS = {
+    " ": (" ", "Space", 32),
+    ".": (".", "Period", 190),
+    ",": (",", "Comma", 188),
+    "/": ("/", "Slash", 191),
+    ";": (";", "Semicolon", 186),
+    "'": ("'", "Quote", 222),
+    "[": ("[", "BracketLeft", 219),
+    "]": ("]", "BracketRight", 221),
+    "\\": ("\\", "Backslash", 220),
+    "-": ("-", "Minus", 189),
+    "=": ("=", "Equal", 187),
+    "`": ("`", "Backquote", 192),
+}
+
+
+def _character_key(character: str) -> dict[str, Any]:
+    """Descreve a tecla física correspondente a um caractere."""
+    if character == "\n":
+        return {"key": "Enter", "code": "Enter", "windowsVirtualKeyCode": 13, "nativeVirtualKeyCode": 13}
+    if character == "\t":
+        return {"key": "Tab", "code": "Tab", "windowsVirtualKeyCode": 9, "nativeVirtualKeyCode": 9}
+    lower = character.lower()
+    if len(character) == 1 and "a" <= lower <= "z":
+        virtual = ord(lower.upper())
+        return {"key": lower, "code": f"Key{lower.upper()}", "windowsVirtualKeyCode": virtual, "nativeVirtualKeyCode": virtual}
+    if len(character) == 1 and "0" <= character <= "9":
+        virtual = ord(character)
+        return {"key": character, "code": f"Digit{character}", "windowsVirtualKeyCode": virtual, "nativeVirtualKeyCode": virtual}
+    if character in _PUNCTUATION_KEYS:
+        key, code, virtual = _PUNCTUATION_KEYS[character]
+        return {"key": key, "code": code, "windowsVirtualKeyCode": virtual, "nativeVirtualKeyCode": virtual}
+    # Acentos, emoji e símbolos fora do layout usam a tecla de processo do CDP.
+    return {"key": character, "code": "Unidentified", "windowsVirtualKeyCode": 229, "nativeVirtualKeyCode": 229}
+
+
+def type_with_accessibility_keyboard(page: DevTools, text: str) -> None:
+    """Digita via teclado de acessibilidade exposto pelo motor do navegador.
+
+    Cada caractere gera um par real ``keyDown``/``keyUp`` com o texto na origem
+    do evento. O evento ``char`` é omitido porque o motor já insere o caractere
+    no ``keyDown`` e duplicaria a entrada. Não usa área de transferência, não
+    escreve ``value``/``innerText`` no DOM e não recorre a ``Input.insertText``.
+    """
+    import random
+    for character in text:
+        descriptor = _character_key(character)
+        page.call("Input.dispatchKeyEvent", {
+            "type": "keyDown",
+            "text": character,
+            "unmodifiedText": character,
+            **descriptor,
+        })
+        page.call("Input.dispatchKeyEvent", {"type": "keyUp", **descriptor})
+        time.sleep((18 + random.randint(0, 42)) / 1000)
+
+
 def action(payload: dict[str, Any]) -> dict[str, Any]:
     """Executa uma interação explícita na sessão interna persistente.
 
-    O painel remoto só envia coordenadas, texto digitado ou uma tecla. Não há
-    execução arbitrária de JavaScript vinda do operador.
+    O painel remoto só envia coordenadas, texto digitado ou uma tecla. A
+    digitação passa pelo teclado de acessibilidade do motor; não há execução
+    arbitrária de JavaScript vinda do operador.
     """
     if not isinstance(payload, dict):
         raise ValueError("Interação inválida")
@@ -942,18 +1000,9 @@ def action(payload: dict[str, Any]) -> dict[str, Any]:
             text = str(payload.get("text") or "")
             if not text or len(text) > 512:
                 raise ValueError("Texto de entrada inválido")
-            # A digitação do agente passa pelo teclado virtual do navegador.
-            # Não usa área de transferência nem injeta o texto no DOM: cada
-            # caractere é entregue ao campo que o operador/agente selecionou.
-            # A pequena variação reproduz o ritmo já validado no desktop.
-            import random
-            for character in text:
-                # O editor contenteditable da DM ignora eventos char e pares
-                # keyDown/keyUp sintetizados. Input.insertText é a primitiva
-                # nativa de edição do motor: dispara beforeinput/input no
-                # campo focado, sem clipboard e sem modificar o DOM por script.
-                page.call("Input.insertText", {"text": character})
-                time.sleep((18 + random.randint(0, 42)) / 1000)
+            # Teclado de acessibilidade exposto pelo motor: eventos reais de
+            # tecla, sem clipboard, sem Input.insertText e sem tocar no DOM.
+            type_with_accessibility_keyboard(page, text)
         elif kind == "key":
             key = str(payload.get("key") or "")
             if key == "SelectAll":
