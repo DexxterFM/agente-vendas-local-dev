@@ -31,7 +31,7 @@ ENGAGEMENT_ATTEMPTS = 3
 BUBBLE_SPLIT = re.compile(r'\s*\[\[AGENT_BUBBLE\]\]\s*')
 _RECENT_UNREAD_TARGETS: dict[str, float] = {}
 _LAST_NOTIFICATION_SCAN = 0.0
-NOTIFICATION_SCAN_COOLDOWN_SECONDS = 90
+NOTIFICATION_SCAN_COOLDOWN_SECONDS = 300
 
 
 def _now() -> datetime:
@@ -1225,6 +1225,8 @@ def _mark_sweep() -> None:
 def _notification_candidates() -> list[dict[str, Any]]:
     """Lê somente perfis associados explicitamente a novo seguidor."""
     opened = _open_notifications()
+    if opened:
+        _wait(0.5)
     if not opened:
         # Algumas versões deixam os eventos da central renderizados na página
         # inicial e o ícone não muda a rota. Se já há botões Follow Back
@@ -1232,7 +1234,7 @@ def _notification_candidates() -> list[dict[str, Any]]:
         available = _page(r'''(()=>[...document.querySelectorAll('button,[role="button"]')].some(e=>/seguir(?:\s+de)?\s+volta|follow\s+back/i.test(String(e.getAttribute('aria-label')||e.innerText||''))))()''')
         if not available:
             return []
-    _wait(1.4)
+    _wait(0.5)
     value = _page(r'''(()=>{
       const reserved=new Set(['accounts','direct','explore','reels','stories','about','developer','legal','privacy','web']);
       const follower=/(?:começou|passou|acabou)(?:\s+de)? a seguir(?: você|te)?|(?:segue|seguiu|está seguindo)(?: você|te)?|started following you|follows you/i;
@@ -1353,10 +1355,17 @@ def _capture_notification_actions() -> dict[str, int]:
                     welcomed += 1
                 except Exception:
                     continue
+    # Garante que a central de notificações seja fechada e a home carregue.
     try:
-        _open_home()
+        if not _open_home():
+            browser.action({"kind": "navigate", "url": HOME_URL})
+            _wait(1.0)
     except browser.InternalBrowserError:
-        pass
+        try:
+            browser.action({"kind": "navigate", "url": HOME_URL})
+            _wait(1.0)
+        except browser.InternalBrowserError:
+            pass
     return {"notification_candidates": len(candidates), "notification_queued": queued, "notification_followed": followed, "notification_welcomed": welcomed}
 
 
