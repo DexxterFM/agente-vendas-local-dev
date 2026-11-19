@@ -984,7 +984,17 @@ def execute(command, args):
                 content=' '.join(str(item.get('text','')).split())[:3500]
                 if role in ('user','assistant') and content:
                     screen_rows.append((role,content,'browser'))
-            history=screen_rows or context['history']
+            # Mescla histórico visível do navegador com histórico persistido para
+            # manter o contexto completo da conversa, evitando respostas que
+            # ignoram mensagens anteriores.
+            merged_history=list(screen_rows)
+            seen_pairs={(str(row[0]),' '.join(str(row[1]).split())) for row in merged_history}
+            for row in context['history']:
+                pair=(str(row[0]),' '.join(str(row[1]).split()))
+                if pair not in seen_pairs:
+                    merged_history.append(row)
+                    seen_pairs.add(pair)
+            history=merged_history or context['history']
             latest_user=next((str(row[1]).strip() for row in reversed(history)
                               if row[0]=='user' and str(row[1]).strip()),'')
             latest_user_index=next((index for index in range(len(history)-1,-1,-1)

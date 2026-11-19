@@ -845,11 +845,12 @@ def _thread_snapshot() -> dict[str, Any]:
       }).find(Boolean)||'';
       const profile=labeledProfile||fallbackProfile;
       const width=innerWidth||1280, seen=new Map();
-      const nodes=[...document.querySelectorAll('[role="message"],[role="article"],[role="row"],[role="listitem"]')];
+      const scrollRoot=[...document.querySelectorAll('div')].find(e=>{const s=getComputedStyle(e);return (s.overflowY==='auto'||s.overflowY==='scroll')&&e.scrollHeight>e.clientHeight+40&&e.getBoundingClientRect().width>200})||null;if(scrollRoot){try{scrollRoot.scrollTop=0;}catch(e){}}const roleNodes=[...document.querySelectorAll('[role="message"],[role="article"],[role="row"],[role="listitem"]')];const containerNodes=scrollRoot?[...scrollRoot.children]:[];const nodes=[...new Set([...roleNodes,...containerNodes])];
       const messages=[];
       for(const node of nodes){
         const text=normalize(node.innerText);
         if(!text||text.length>3500)continue;
+        if(/^(?:ativo agora|active now|visto por último|seen|digitando|typing|hoje|today|ontem|yesterday)$/i.test(text))continue;
         const rect=node.getBoundingClientRect();
         if(!rect.width||!rect.height)continue;
         const painted=[node,...node.querySelectorAll('div,span')].map(element=>getComputedStyle(element).backgroundColor)
@@ -861,6 +862,7 @@ def _thread_snapshot() -> dict[str, Any]:
         seen.set(signature,ordinal);
         messages.push({text,direction,ordinal});
       }
+      if(scrollRoot){try{scrollRoot.scrollTop=scrollRoot.scrollHeight;}catch(e){}}
       return {url:location.href,thread_id:threadId,username:String(profile).replace(/^@/,'').toLowerCase(),messages:messages.slice(-40)};
     })()''')
     if not isinstance(value, dict):
