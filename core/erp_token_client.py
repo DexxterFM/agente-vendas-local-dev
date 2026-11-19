@@ -13,7 +13,28 @@ import urllib.request
 from typing import Any
 
 DEFAULT_BASE_URL = "https://erpclinicatea.com"
+PROFESSIONAL_BASE_URL = "https://profissional.erpclinicatea.com"
 TOKEN_PATH = "/api/internal/demo-token"
+
+def base_url_for_plan(plan_slug: str | None = None) -> str:
+    """URL base do ERP conforme o plano escolhido.
+
+    O ERP profissional atende os planos ``professional`` e ``starter``; o
+    multiprofissional atende ``enterprise``. Pode ser sobrescrito por variáveis
+    de ambiente específicas de cada edição.
+    """
+    slug = str(plan_slug or "").strip().lower()
+    if slug in {"professional", "starter", "profissional"}:
+        return str(
+            os.getenv("ERP_CLINICATEA_PROFESSIONAL_API_BASE_URL")
+            or os.getenv("ERP_CLINICATEA_API_BASE_URL")
+            or PROFESSIONAL_BASE_URL
+        ).strip().rstrip("/")
+    return str(
+        os.getenv("ERP_CLINICATEA_MULTIPROFESSIONAL_API_BASE_URL")
+        or os.getenv("ERP_CLINICATEA_API_BASE_URL")
+        or DEFAULT_BASE_URL
+    ).strip().rstrip("/")
 
 
 def plan_slug_for_url(url: str | None) -> str:

@@ -108,9 +108,10 @@ def _installation_bubbles(memory, offer, lead_id=None, lead_name=None):
     token_code = None
     if lead_id is not None:
         try:
-            from core.erp_token_client import generate_demo_token, plan_slug_for_url
+            from core.erp_token_client import base_url_for_plan, generate_demo_token, plan_slug_for_url
             generated = generate_demo_token(
                 plan_slug=plan_slug_for_url(offer.get('url')),
+                base_url=base_url_for_plan(plan_slug_for_url(offer.get('url'))),
                 user_name=str(lead_name or f"lead:{lead_id}"),
             )
             if generated:
@@ -1398,9 +1399,20 @@ def execute(command, args):
                 tokens = [t.strip() for t in tokens.split(',') if t.strip()]
             return mgr.register_tokens(tokens)
         if command == 'activationTokenGenerate':
-            from core.erp_token_client import generate_demo_token
+            from core.erp_token_client import base_url_for_plan, generate_demo_token
+            plan_slug = str(args.get('plan_slug') or 'professional')
+            base_url = args.get('base_url')
+            if not base_url:
+                edition = str(args.get('edition') or '').strip().lower()
+                if edition in {'professional', 'profissional'}:
+                    base_url = base_url_for_plan('professional')
+                elif edition in {'multiprofessional', 'enterprise'}:
+                    base_url = base_url_for_plan('enterprise')
+                else:
+                    base_url = base_url_for_plan(plan_slug)
             generated = generate_demo_token(
-                plan_slug=str(args.get('plan_slug') or 'professional'),
+                plan_slug=plan_slug,
+                base_url=str(base_url),
                 duration_code=str(args.get('duration_code') or '3m'),
                 user_name=str(args.get('user_name') or 'Agente de Vendas'),
                 redeem_within_days=int(args.get('redeem_within_days') or 30),
