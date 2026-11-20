@@ -71,6 +71,11 @@ class Memory:
             "create table if not exists settings (key text primary key, value text not null, updated_at text not null)",
             "create table if not exists style_samples (id integer primary key, text text not null, source text not null default 'manual', created_at text not null)",
             "create table if not exists knowledge (id integer primary key, title text not null, content text not null, tags text, active integer not null default 1, created_at text not null)",
+            # Memória dedicada de perfis do Instagram e do fluxo de diálogo.
+            # Cada mensagem enviada é um passo do fluxo, registrada pelo hash do
+            # texto normalizado para impedir reenvio (risco de denúncia por spam).
+            "create table if not exists instagram_profiles (id integer primary key, username text not null unique, kind text not null default '', segment text not null default '', specialties text not null default '[]', thread_id text not null default '', stage text not null default '', created_at text not null, updated_at text not null)",
+            "create table if not exists instagram_profile_messages (id integer primary key, profile_id integer not null, flow_step text not null default '', hash text not null, text text not null default '', direction text not null default 'outgoing', thread_id text not null default '', created_at text not null, unique(profile_id, hash))",
         )
         for statement in statements:
             self.db.execute(statement)
@@ -107,6 +112,9 @@ class Memory:
         self.db.execute("create index if not exists idx_pending_status on pending_actions(status, id)")
         self.db.execute("create index if not exists idx_style_samples on style_samples(id)")
         self.db.execute("create index if not exists idx_knowledge_active on knowledge(active, id)")
+        self.db.execute("create index if not exists idx_ig_profiles_username on instagram_profiles(username)")
+        self.db.execute("create index if not exists idx_ig_profile_messages on instagram_profile_messages(profile_id, id)")
+        self.db.execute("create index if not exists idx_ig_profile_messages_hash on instagram_profile_messages(profile_id, hash)")
 
     # --------------------------------------------------------------- mensagens
     def add(self, role: str, content: str) -> None:

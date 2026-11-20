@@ -76,7 +76,16 @@ def can_send(memory, lead_id, username, proposed, screen_history=None, *, requir
         if normalize(item.get('text', '')) == proposed_norm:
             return False, 'duplicate-on-screen'
 
-    # 2) Reenvio exato: mensagem já está no histórico persistido do lead.
+    # 2) Reenvio exato: mensagem já está no banco dedicado de perfil do Instagram.
+    #    Esta é a fonte de verdade anti-spam: toda mensagem enviada é um passo do
+    #    fluxo registrado por perfil. Nunca reenviamos um passo já postado.
+    if username:
+        from core.instagram_profile_memory import InstagramProfileMemory
+        profile_allowed, profile_reason = InstagramProfileMemory(memory).can_send(username, proposed)
+        if not profile_allowed:
+            return False, profile_reason
+
+    # 3) Reenvio exato: mensagem já está no histórico persistido do lead.
     db_history = []
     if lead_id:
         db_history = list(reversed(memory.list_conversations(int(lead_id), 200)))
@@ -84,12 +93,12 @@ def can_send(memory, lead_id, username, proposed, screen_history=None, *, requir
             if normalize(text) == proposed_norm:
                 return False, 'duplicate-in-history'
 
-    # 3) Mensagem de abertura em conversa já iniciada.
+    # 4) Mensagem de abertura em conversa já iniciada.
     combined = list(screen_history or []) + list(db_history)
     if is_opening(proposed) and has_prior_exchange(combined):
         return False, 'opening-in-existing-conversation'
 
-    # 4) Prospecção sem histórico visível: não reinicie uma conversa existente.
+    # 5) Prospecção sem histórico visível: não reinicie uma conversa existente.
     if require_history and not combined and is_opening(proposed):
         return False, 'opening-without-history'
 

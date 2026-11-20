@@ -22,6 +22,15 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
     def setUp(self):
         internal_browser_agent._RECENT_UNREAD_TARGETS.clear()
         internal_browser_agent._LAST_NOTIFICATION_SCAN = 0.0
+        # Isola o banco de memória dedicada do Instagram para que mensagens
+        # registradas por um teste não bloqueiem o envio em outro.
+        self._ig_folder = tempfile.TemporaryDirectory()
+        self.addCleanup(self._ig_folder.cleanup)
+        self._ig_env = patch.dict(
+            os.environ, {"SALES_AGENT_DB": str(Path(self._ig_folder.name) / "agent.sqlite3")}
+        )
+        self._ig_env.start()
+        self.addCleanup(self._ig_env.stop)
 
     @patch("scripts.vps.internal_browser_agent._wait")
     @patch("scripts.vps.internal_browser_agent._composer_center", return_value={"x": 700.0, "y": 835.0})

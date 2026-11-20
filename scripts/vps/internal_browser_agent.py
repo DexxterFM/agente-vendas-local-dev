@@ -19,6 +19,7 @@ from core.config import load_config
 from core.desktop_rpc import execute
 from core.memory import Memory
 from core.profile_memory import ProfileMemory
+from core.instagram_profile_memory import InstagramProfileMemory, infer_flow_step
 from scripts.vps import internal_browser as browser
 from scripts.vps.internal_browser import COMMENT_TEXTS
 
@@ -758,13 +759,25 @@ def _prospecting_cycle() -> dict[str, Any]:
         bubbles = [item.strip() for item in BUBBLE_SPLIT.split(intro_with_question) if item.strip()]
         surface = _open_profile_dm(username)
         sent_results = []
-        for index, bubble in enumerate(bubbles):
-            if surface.get("mode") == "thread" and surface.get("url"):
-                sent_results.append(_send_bubble(bubble, str(surface["url"])))
-            else:
-                sent_results.append(_send_overlay_bubble(bubble))
-            if index + 1 < len(bubbles):
-                _wait(.7 + random.random() * 1.9)
+        config = load_config()
+        with Memory(config.db_path) as _profile_mem:
+            flow = InstagramProfileMemory(_profile_mem)
+            for index, bubble in enumerate(bubbles):
+                # Nunca reenvia um passo já postado para este perfil.
+                allowed, _reason = flow.can_send(username, bubble)
+                if not allowed:
+                    continue
+                if surface.get("mode") == "thread" and surface.get("url"):
+                    sent_results.append(_send_bubble(bubble, str(surface["url"])))
+                else:
+                    sent_results.append(_send_overlay_bubble(bubble))
+                flow.record_sent(
+                    username, bubble,
+                    flow_step=infer_flow_step(bubble),
+                    thread_id=str(surface.get("url") or ""),
+                )
+                if index + 1 < len(bubbles):
+                    _wait(.7 + random.random() * 1.9)
         actions["dm"] = bool(sent_results and all(
             bool(result.get("sent")) if isinstance(result, dict) else True
             for result in sent_results
@@ -1233,6 +1246,16 @@ def _process_thread(source: str) -> dict[str, Any]:
         bubbles = [item.strip() for item in BUBBLE_SPLIT.split(str(cycle["text"])) if item.strip()]
         for index, bubble in enumerate(bubbles):
             sent.append(_send_bubble(bubble, snap["url"]))
+            # Cada bolha é um passo do fluxo no banco dedicado do perfil.
+            try:
+                from core.instagram_profile_memory import infer_flow_step
+                InstagramProfileMemory(_mem).record_sent(
+                    snap["username"], bubble,
+                    flow_step=infer_flow_step(bubble),
+                    thread_id=snap["thread_id"],
+                )
+            except Exception:
+                pass
             if index + 1 < len(bubbles):
                 _wait(.7 + random.random() * 1.9)
         # Registra na memória do perfil que a mensagem foi enviada, respeitando o contexto aprovado.

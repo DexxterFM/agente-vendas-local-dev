@@ -600,6 +600,25 @@ def execute(command, args):
             if not username:
                 return {'profiles':ProfileMemory(memory).all()}
             return ProfileMemory(memory).get(username)
+        if command == 'profileFlow':
+            # Banco dedicado: perfil + histórico de mensagens como passos do fluxo.
+            from core.instagram_profile_memory import InstagramProfileMemory
+            username=str(args.get('username','')).strip().lstrip('@').lower()
+            if not username:
+                return {'error':'Informe o usuário'}
+            flow=InstagramProfileMemory(memory)
+            profile=flow.get_profile(username)
+            return {
+                'profile':profile,
+                'messages':flow.sent_messages(username),
+                'last_step':flow.last_step(username),
+                'steps_taken':flow.steps_taken(username),
+            }
+        if command == 'profileFlowCanSend':
+            from core.instagram_profile_memory import InstagramProfileMemory
+            username=str(args.get('username','')).strip().lstrip('@').lower()
+            allowed,reason=InstagramProfileMemory(memory).can_send(username,str(args.get('text') or ''))
+            return {'allowed':allowed,'reason':reason}
         if command == 'campaignMessageGuard':
             from core.profile_memory import ProfileMemory
             username=str(args.get('username','')).strip().lstrip('@').lower()
