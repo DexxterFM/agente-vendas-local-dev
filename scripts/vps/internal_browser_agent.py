@@ -1509,6 +1509,31 @@ def cycle(mode: str | None = None) -> dict[str, Any]:
                   for key in ("queued", "followed", "welcomed"))
         return done({"browser": "notification", **aggregate, **notification_result},
                     job=job, detail="notification")
+    # Fallback: mesmo sem indicador vermelho, em modo sales varre conversas
+    # recentes para encontrar respostas como "eu quero" que já foram lidas.
+    if (not aggregate["message_pending"] and current_mode == "sales"
+            and urlparse(url).path.rstrip("/") in {"", "/"}):
+        if _open_inbox():
+            _wait(.5)
+            targets = _inbox_targets()
+            for target in (targets or [])[:3]:
+                if _open_target(target):
+                    _wait(.5)
+                    processed = _process_thread("recent-scan")
+                    if processed.get("replied"):
+                        try:
+                            _open_home()
+                        except browser.InternalBrowserError:
+                            pass
+                        return done({"browser": "message", **aggregate, **processed},
+                                    job=True, detail="message")
+                    _open_inbox()
+                    _wait(.3)
+            try:
+                _open_home()
+            except browser.InternalBrowserError:
+                pass
+            _wait(.3)
     if aggregate["message_pending"]:
         if urlparse(url).path.rstrip("/") != "/direct/inbox":
             if not _open_inbox():
