@@ -69,14 +69,26 @@ Para não testar a conexão neste momento, use `-SkipConnectionTest`.
 
 ### 4.1. Abrir o painel
 
-Clique no atalho `Agente de Vendas - Controle VPS`. O Electron abre dois túneis:
+Clique no atalho `Agente de Vendas - Controle VPS`. O Electron abre o túnel:
 
 - `-L 8787:127.0.0.1:8787` — traz o RPC da VPS para o navegador local.
-- `-R 127.0.0.1:1080` — permite que o navegador interno da VPS saia pela sua
-  conexão (necessário para o Instagram).
 
-Não abra outro túnel manualmente; o painel já mantém os dois vivos e os reinicia
-quando caem.
+O navegador interno da VPS usa a **internet direta da própria VPS** (não depende
+mais de um túnel SOCKS vindo do computador). Isso é importante: se o agente
+dependesse de um túnel `-R` aberto pelo PC, ele pararia de funcionar quando o
+computador entrasse em repouso, pois a conexão cairia.
+
+> **Nota histórica:** o navegador já usou `--proxy-server=socks5://127.0.0.1:1080`
+> (túnel reverso do PC). Esse proxy foi removido para que o agente funcione 24/7
+> independentemente do estado do computador. Se um deploy reapresentar o proxy,
+> execute no VPS:
+>
+> ```bash
+> bash /opt/agente-vendas-local/app/scripts/vps/ensure_browser_no_proxy.sh
+> ```
+
+Não abra outro túnel manualmente; o painel já mantém o túnel RPC vivo e o
+reinicia quando cai.
 
 ### 4.2. Controles na interface
 
@@ -180,6 +192,6 @@ Nunca versionar `.env`, `.meta-vault\` ou `dist\`.
 | `Controle remoto indisponível` | Rode `configurar-conexao.ps1` e confira `desktop.log`. |
 | `Permission denied (publickey)` | A chave pública do operador não está autorizada na VPS. |
 | Painel abre mas não lista leads | Verifique `operar-painel.ps1 -Action status` e o `journalctl` do worker. |
-| Instagram sem carregar no navegador da VPS | Confira se o túnel `-R 127.0.0.1:1080` está ativo em `desktop.log`. |
+| Instagram sem carregar no navegador da VPS | Confira a internet direta da VPS (`curl -I https://www.instagram.com/`) e se o proxy foi reapresentado no service; rode `bash /opt/agente-vendas-local/app/scripts/vps/ensure_browser_no_proxy.sh`. |
 | Sessão do Instagram perdida | Exporte a sessão com `--export-vps-session=<arquivo>` no painel local e importe na VPS. |
 | Barras duplicadas ao digitar | A versão atual usa apenas `keyDown`/`keyUp`; reinstale se ainda houver `Input.insertText` no log. |

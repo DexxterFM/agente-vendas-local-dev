@@ -21,7 +21,6 @@ let backendSequence=0;
 const backendPending=new Map();
 let localLlmChild=null;
 let remoteTunnelChild=null;
-let remoteSocksChild=null;
 let remoteTunnelStartedAt=0;
 const localLlmPort=11535;
 function persistentAgentDataDir(){
@@ -67,21 +66,10 @@ function startRemoteTunnel(){
     try{fs.appendFileSync(path.join(app.getPath('userData'),'desktop.log'),`${new Date().toISOString()} remote-tunnel-closed code=${code}\n`);}catch{}
     remoteTunnelChild=null;
   });
-  // A VPS está com o IP bloqueado pelo Instagram. O navegador interno da VPS
-  // sai pela conexão desta máquina via um proxy SOCKS reverso (127.0.0.1:1080
-  // na VPS). Mantemos o túnel vivo junto com o túnel RPC; se ele cair, o
-  // Chromium da VPS perde acesso ao Instagram.
-  if(!remoteSocksChild||remoteSocksChild.killed){
-    remoteSocksChild=spawn(executable,['-N','-o','BatchMode=yes','-o','ExitOnForwardFailure=yes','-o','ServerAliveInterval=30','-o','ServerAliveCountMax=3','-R','127.0.0.1:1080',remoteControl.sshHost],{windowsHide:true,stdio:['ignore','ignore','pipe']});
-    remoteSocksChild.stderr?.on('data',data=>{
-      try{fs.appendFileSync(path.join(app.getPath('userData'),'desktop.log'),`${new Date().toISOString()} remote-socks ${String(data).slice(0,800)}\n`);}catch{}
-    });
-    remoteSocksChild.on('error',error=>{try{fs.appendFileSync(path.join(app.getPath('userData'),'desktop.log'),`${new Date().toISOString()} remote-socks-error ${error.message}\n`);}catch{}});
-    remoteSocksChild.on('close',code=>{
-      try{fs.appendFileSync(path.join(app.getPath('userData'),'desktop.log'),`${new Date().toISOString()} remote-socks-closed code=${code}\n`);}catch{}
-      remoteSocksChild=null;
-    });
-  }
+  // O navegador interno da VPS usa a internet direta da própria VPS. Um túnel
+  // SOCKS reverso (-R 127.0.0.1:1080) era aberto daqui, mas fazia o agente
+  // parar quando este computador entrava em repouso. Removido: apenas o túnel
+  // RPC (-L) é necessário para o painel.
 }
 function remoteBackend(command,args={}){return new Promise((resolve,reject)=>{
   startRemoteTunnel();
@@ -1307,6 +1295,6 @@ else {
     }
   }).catch(record);
   app.on('window-all-closed',()=>{window=null;app.quit();});
-  app.on('will-quit',()=>{if(metaCallbackServer)metaCallbackServer.close();if(followerWindow&&!followerWindow.isDestroyed())followerWindow.destroy();if(backendChild&&!backendChild.killed)backendChild.kill();if(remoteTunnelChild&&!remoteTunnelChild.killed)remoteTunnelChild.kill();if(remoteSocksChild&&!remoteSocksChild.killed)remoteSocksChild.kill();if(localLlmChild&&!localLlmChild.killed)localLlmChild.kill();});
+  app.on('will-quit',()=>{if(metaCallbackServer)metaCallbackServer.close();if(followerWindow&&!followerWindow.isDestroyed())followerWindow.destroy();if(backendChild&&!backendChild.killed)backendChild.kill();if(remoteTunnelChild&&!remoteTunnelChild.killed)remoteTunnelChild.kill();if(localLlmChild&&!localLlmChild.killed)localLlmChild.kill();});
 }
 process.on('uncaughtException', record);
