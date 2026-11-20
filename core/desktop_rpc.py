@@ -86,6 +86,36 @@ def _response_templates(memory):
     """Roteiro editável pelo operador e usado como conhecimento local do agente."""
     return FlowStudio(memory).templates()
 
+
+def _find_lead_by_username(memory, username, thread=''):
+    """Encontra o lead mais adequado para um username do Instagram.
+
+    Prioriza leads com mais mensagens no histórico (para não perder contexto).
+    Busca por contact (username ou thread) e por name (username).
+    """
+    username = str(username or '').strip().lstrip('@').lower()
+    if not username:
+        return None
+    candidates = []
+    for row in memory.list_leads():
+        detail = memory.get_lead_detail(row[0])
+        if not detail:
+            continue
+        contact = str(detail.get('contact', '')).strip().lower().lstrip('@')
+        name = str(detail.get('name', '')).strip().lower()
+        if contact == username or name == username or contact == ('instagram:thread:' + str(thread).strip().lower()):
+            candidates.append(detail)
+    if not candidates:
+        return None
+    # Prioriza o lead com mais mensagens no histórico
+    def _msg_count(lead):
+        try:
+            return len(memory.list_conversations(int(lead['id']), 200))
+        except Exception:
+            return 0
+    candidates.sort(key=_msg_count, reverse=True)
+    return candidates[0]
+
 def _save_response_templates(memory, templates):
     memory.set_setting('sales.response_library.v1', json.dumps(templates, ensure_ascii=False))
 
@@ -456,8 +486,7 @@ def execute(command, args):
             username = str(args.get('username','')).strip().lstrip('@').lower()
             if not thread or not re.fullmatch(r'[a-z0-9._]{1,30}', username):
                 raise ValueError('Conversa do Instagram inválida para importação.')
-            lead = next((memory.get_lead_detail(row[0]) for row in memory.list_leads()
-                         if str(memory.get_lead_detail(row[0]).get('contact','')).strip().lower().lstrip('@') == username), None)
+            lead = _find_lead_by_username(memory, username, thread)
             if lead is None:
                 lead_id = memory.add_lead(username, username, 'Histórico importado do navegador interno')
             else:
@@ -662,10 +691,16 @@ def execute(command, args):
             result=ProfileMemory(memory).message_allowed(username, text)
             # Não reenvie a mensagem de abertura da prospecção para um perfil
             # com quem já existe diálogo (o fluxo deve continuar, não reiniciar).
-            if result.get('allowed') and ProfileMemory(memory).already_contacted(username):
-                from core.conversation_context import is_opening
-                if is_opening(text):
-                    return {'allowed': False, 'reason': 'already-contacted-opening', 'hash': result.get('hash','')}
+            ac=ProfileMemory(memory).already_contacted(username)
+            from core.conversation_context import is_opening
+            io=is_opening(text)
+            # Log para diagnóstico: sempre registra o resultado
+            memory.audit('debug.campaign_guard', '@'+username, 'ok',
+                        'allowed=%s ac=%s io=%s text=%.60s' % (result.get('allowed'), ac, io, text))
+            if result.get('allowed') and ac and io:
+                memory.audit('debug.campaign_guard_blocked', '@'+username, 'blocked',
+                            'allowed=%s ac=%s io=%s text=%.60s' % (result.get('allowed'), ac, io, text))
+                return {'allowed': False, 'reason': 'already-contacted-opening', 'hash': result.get('hash','')}
             return result
         if command == 'followupRecords':
             cursor=memory.db.execute("select f.id,f.lead_id,f.due_at,f.task,f.done,coalesce(f.draft,'') as draft,coalesce(f.status,'draft') as status,coalesce(f.channel,'manual') as channel,l.name,l.contact from followups f join leads l on l.id=f.lead_id order by f.due_at asc limit 100")
@@ -712,12 +747,7 @@ def execute(command, args):
             username=str(args.get('username','')).strip().lstrip('@').lower()
             if username and not re.fullmatch(r'[a-z0-9._]{1,30}',username):
                 raise ValueError('Usuário Instagram inválido')
-            lead=None
-            for row in memory.list_leads():
-                detail=memory.get_lead_detail(row[0])
-                existing=str(detail.get('contact','')).strip().lower().lstrip('@')
-                if existing==contact.lower() or (username and existing==username):
-                    lead=detail; break
+            lead=_find_lead_by_username(memory, username, thread)
             if lead is None:
                 lead=memory.add_lead(username or 'Contato Instagram',username or contact,'Conversa lida pelo navegador interno')
             lead_id=int(lead['id'] if isinstance(lead,dict) else lead)
