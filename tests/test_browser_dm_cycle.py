@@ -218,10 +218,14 @@ class BrowserDmCycleTests(unittest.TestCase):
                 {"id": "d" * 64, "direction": "incoming", "text": "Sim"},
             ]
             next_cycle = execute("browserScreenCycle", self._payload(second))
-            self.assertTrue(next_cycle["new_message"])
+            # A resposta já está visível na tela (bolha "c"); o contexto bloqueia
+            # o reenvio para não repetir mensagem em conversa em andamento.
+            self.assertFalse(next_cycle["new_message"])
+            self.assertIn("duplicate", next_cycle.get("reason", ""))
             with Memory(Path(folder) / "agent.sqlite3") as memory:
                 history = list(reversed(memory.list_conversations(cycle["lead_id"], 20)))
                 self.assertEqual(sum(1 for role, text, _ in history if role == "user" and text == "Sim"), 2)
+                # Nenhuma nova bolha do assistente é acrescentada pelo segundo ciclo.
                 self.assertEqual(sum(1 for role, text, _ in history if role == "assistant" and text == cycle["text"]), 1)
 
     def test_short_competitor_name_advances_from_the_previous_question(self):

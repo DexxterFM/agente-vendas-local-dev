@@ -605,7 +605,15 @@ def execute(command, args):
             username=str(args.get('username','')).strip().lstrip('@').lower()
             if not username:
                 raise ValueError('Usuário Instagram inválido')
-            return ProfileMemory(memory).message_allowed(username, str(args.get('text') or '')[:1200])
+            text=str(args.get('text') or '')[:1200]
+            result=ProfileMemory(memory).message_allowed(username, text)
+            # Não reenvie a mensagem de abertura da prospecção para um perfil
+            # com quem já existe diálogo (o fluxo deve continuar, não reiniciar).
+            if result.get('allowed') and ProfileMemory(memory).already_contacted(username):
+                from core.conversation_context import is_opening
+                if is_opening(text):
+                    return {'allowed': False, 'reason': 'already-contacted-opening', 'hash': result.get('hash','')}
+            return result
         if command == 'followupRecords':
             cursor=memory.db.execute("select f.id,f.lead_id,f.due_at,f.task,f.done,coalesce(f.draft,'') as draft,coalesce(f.status,'draft') as status,coalesce(f.channel,'manual') as channel,l.name,l.contact from followups f join leads l on l.id=f.lead_id order by f.due_at asc limit 100")
             return [dict(zip([col[0] for col in cursor.description],row)) for row in cursor.fetchall()]
@@ -745,6 +753,15 @@ def execute(command, args):
                     memory.audit('instagram.message_duplicate_skipped', '@'+username, 'skipped',
                                  'Cadastro do perfil bloqueou mensagem repetida: '+guard['reason'])
                     return {'active':True,'new_message':False,'reason':guard['reason']}
+                # Contexto da conversa: não repetir abertura em diálogo em andamento
+                # nem reenviar mensagem já vista na tela ou no histórico.
+                from core.conversation_context import can_send
+                allowed, reason = can_send(memory, lead_id, username, draft, screen_history)
+                if not allowed:
+                    memory.set_setting(key,'sent')
+                    memory.audit('instagram.message_context_blocked', '@'+username, 'skipped',
+                                 'Contexto bloqueou mensagem: '+reason)
+                    return {'active':True,'new_message':False,'reason':reason}
             from core.competitor_catalog import CompetitorCatalog
             comparison=CompetitorCatalog(memory).lookup('\n'.join(item['text'] for item in screen_history[-8:] if item['role']=='user'))
             result={'active':True,'new_message':True,'lead_id':lead_id,'text':draft,'contact':contact,'message_key':key,'draft_version':BROWSER_DRAFT_VERSION}

@@ -18,6 +18,7 @@ from urllib.parse import urlparse
 from core.config import load_config
 from core.desktop_rpc import execute
 from core.memory import Memory
+from core.profile_memory import ProfileMemory
 from scripts.vps import internal_browser as browser
 from scripts.vps.internal_browser import COMMENT_TEXTS
 
@@ -1202,12 +1203,33 @@ def _process_thread(source: str) -> dict[str, Any]:
         return {"processed": True, "replied": False, "reason": "agent-paused"}
     if str(_page("location.href") or "") != snap["url"]:
         return {"processed": True, "replied": False, "reason": "conversation-changed"}
-    sent = []
-    bubbles = [item.strip() for item in BUBBLE_SPLIT.split(str(cycle["text"])) if item.strip()]
-    for index, bubble in enumerate(bubbles):
-        sent.append(_send_bubble(bubble, snap["url"]))
-        if index + 1 < len(bubbles):
-            _wait(.7 + random.random() * 1.9)
+    # Respeita a memória de perfis e o contexto: não reenvia mensagens já
+    # enviadas nem repete abertura em conversa em andamento.
+    config = load_config()
+    with Memory(config.db_path) as _mem:
+        from core.conversation_context import can_send
+        context_allowed, context_reason = can_send(
+            _mem, cycle.get("lead_id"), snap["username"], str(cycle["text"]),
+            snap["messages"],
+        )
+        if not context_allowed:
+            execute("browserScreenConfirm", {"message_key": cycle["message_key"], "lead_id": cycle["lead_id"], "text": cycle["text"], "thread_id": snap["thread_id"]})
+            return {"processed": True, "replied": False, "reason": "contexto-bloqueia-" + context_reason}
+        guard = ProfileMemory(_mem).message_allowed(snap["username"], str(cycle["text"]))
+        if not guard.get("allowed", True):
+            execute("browserScreenConfirm", {"message_key": cycle["message_key"], "lead_id": cycle["lead_id"], "text": cycle["text"], "thread_id": snap["thread_id"]})
+            return {"processed": True, "replied": False, "reason": "memoria-bloqueia-reenvio", "hash": guard.get("hash", "")}
+        sent = []
+        bubbles = [item.strip() for item in BUBBLE_SPLIT.split(str(cycle["text"])) if item.strip()]
+        for index, bubble in enumerate(bubbles):
+            sent.append(_send_bubble(bubble, snap["url"]))
+            if index + 1 < len(bubbles):
+                _wait(.7 + random.random() * 1.9)
+        # Registra na memória do perfil que a mensagem foi enviada, respeitando o contexto aprovado.
+        try:
+            ProfileMemory(_mem).observe(snap["username"], message=str(cycle["text"]), stage="dm-reply")
+        except Exception:
+            pass
     execute("browserScreenConfirm", {"message_key": cycle["message_key"], "lead_id": cycle["lead_id"], "text": cycle["text"], "thread_id": snap["thread_id"]})
     return {"processed": True, "replied": True, "source": source, "thread_id": snap["thread_id"], "sent": len(sent)}
 
