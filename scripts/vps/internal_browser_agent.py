@@ -1473,8 +1473,12 @@ def cycle(mode: str | None = None) -> dict[str, Any]:
     if current_mode not in ("sales", "prospecting"):
         current_mode = "sales"
 
+    closed_tabs: dict[str, int] = {"closed": 0}
+
     def done(payload: dict[str, Any], job: bool = False, detail: str = "") -> dict[str, Any]:
         result = {"active": True, "mode": current_mode, **payload}
+        if closed_tabs.get("closed"):
+            result["closed_tabs"] = closed_tabs["closed"]
         if job:
             nxt = execute("browserModeComplete", {"mode": current_mode, "detail": detail})
         else:
@@ -1497,6 +1501,13 @@ def cycle(mode: str | None = None) -> dict[str, Any]:
     status = browser.status()
     if not status.get("running") or not status.get("ready"):
         return done({"browser": "offline"})
+    # Fecha abas auxiliares acumuladas por navegações de prospecção e links
+    # target="_blank" (meta.com/about etc.). Preserva a aba de trabalho e
+    # quaisquer abas de verificação de código em uso pelo operador.
+    try:
+        closed_tabs = browser.close_auxiliary_tabs()
+    except browser.InternalBrowserError:
+        closed_tabs = {"closed": 0}
     snap = browser.snapshot()
     try:
         page_watchdog = browser.stalled_page_watchdog()

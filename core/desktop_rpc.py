@@ -964,6 +964,9 @@ def execute(command, args):
         if command == 'internalBrowserTargets':
             from scripts.vps.internal_browser import targets
             return targets()
+        if command == 'internalBrowserCloseAuxiliaryTabs':
+            from scripts.vps.internal_browser import close_auxiliary_tabs
+            return close_auxiliary_tabs()
         if command == 'internalBrowserSelectTarget':
             from scripts.vps.internal_browser import select_target
             return select_target(str(args.get('id') or ''))

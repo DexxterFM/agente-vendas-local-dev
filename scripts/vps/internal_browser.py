@@ -376,6 +376,46 @@ def cleanup_stale_tabs() -> dict[str, int]:
     return {"closed": closed}
 
 
+def close_auxiliary_tabs() -> dict[str, int]:
+    """Fecha abas auxiliares acumuladas, mantendo apenas a página de trabalho.
+
+    Navegações de prospecção e links com target="_blank" (por exemplo
+    meta.com/about) abrem novas abas que nunca são fechadas. Com o tempo isso
+    acumula guias e degrada o navegador. Esta função preserva:
+      - a aba ativa escolhida por ``_target()`` (página de trabalho);
+      - abas de verificação de código (SMS/e-mail), que o operador pode usar;
+      - a aba fixada manualmente no painel.
+    Todas as outras abas do tipo ``page`` são fechadas.
+    """
+    pages = _http("/json/list")
+    if not isinstance(pages, list):
+        return {"closed": 0}
+    try:
+        active = str(_target().get("id") or "")
+    except InternalBrowserError:
+        active = ""
+    try:
+        pinned = _pin_path().read_text().strip()
+    except OSError:
+        pinned = ""
+    protected = {id for id in (active, pinned) if id}
+    closed = 0
+    for item in pages:
+        if not isinstance(item, dict) or item.get("type") != "page":
+            continue
+        target_id = str(item.get("id") or "")
+        if target_id in protected:
+            continue
+        if _is_verification_window(item):
+            continue
+        try:
+            _http("/json/close/" + urllib.parse.quote(target_id, safe=""), method="GET")
+            closed += 1
+        except InternalBrowserError:
+            continue
+    return {"closed": closed}
+
+
 @contextmanager
 def browser_task_lock(timeout: float = 2.0):
     """Serializa ciclos do worker entre processos no Linux (fcntl)."""

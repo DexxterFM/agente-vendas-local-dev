@@ -467,6 +467,29 @@ class InternalBrowserTests(unittest.TestCase):
         self.assertEqual({"closed": 1}, result)
         self.assertTrue(any("/json/close/aux" in str(call) for call in request.call_args_list))
 
+    @patch("scripts.vps.internal_browser._target", return_value={"id": "home"})
+    @patch("scripts.vps.internal_browser._pin_path")
+    @patch("scripts.vps.internal_browser._http")
+    def test_close_auxiliary_tabs_keeps_active_and_verification(self, request, pin_path, target):
+        pin_path.return_value.read_text.return_value = ""
+        request.return_value = [
+            {"id": "home", "type": "page", "url": "https://www.instagram.com/"},
+            {"id": "profile", "type": "page", "url": "https://www.instagram.com/camilebrancopsicopedagoga/"},
+            {"id": "meta", "type": "page", "url": "https://www.meta.com/about/"},
+            {"id": "verify", "type": "page", "url": "https://www.instagram.com/challenge/123/"},
+            {"id": "ui", "type": "browser_ui", "url": "https://www.instagram.com/"},
+        ]
+
+        result = internal_browser.close_auxiliary_tabs()
+
+        self.assertEqual({"closed": 2}, result)
+        closed = [str(c) for c in request.call_args_list if "/json/close/" in str(c)]
+        self.assertEqual(2, len(closed))
+        self.assertTrue(any("profile" in c for c in closed))
+        self.assertTrue(any("meta" in c for c in closed))
+        self.assertFalse(any("home" in c for c in closed))
+        self.assertFalse(any("verify" in c for c in closed))
+
     def test_browser_task_lock_is_usable_as_context_manager(self):
         with internal_browser.browser_task_lock(timeout=0.1) as acquired:
             self.assertIsInstance(acquired, bool)
