@@ -751,14 +751,24 @@ def _prospecting_cycle() -> dict[str, Any]:
             }
         # Após a mensagem inicial, pergunta se a clínica já usa algum app para
         # gestão. Isso encaixa o lead no fluxo de descoberta (sem app / com app).
+        # Cada balão é enviado separadamente: o marcador [[AGENT_BUBBLE]] nunca
+        # pode ser digitado na conversa como texto visível ao cliente.
         welcome_question = "Você merece! Me conta: já possui algum app para a gestão da sua clínica? 😊"
         intro_with_question = intro + '\n[[AGENT_BUBBLE]]\n' + welcome_question
+        bubbles = [item.strip() for item in BUBBLE_SPLIT.split(intro_with_question) if item.strip()]
         surface = _open_profile_dm(username)
-        if surface.get("mode") == "thread" and surface.get("url"):
-            send_result = _send_bubble(intro_with_question, str(surface["url"]))
-        else:
-            send_result = _send_overlay_bubble(intro_with_question)
-        actions["dm"] = bool(send_result.get("sent")) if isinstance(send_result, dict) else True
+        sent_results = []
+        for index, bubble in enumerate(bubbles):
+            if surface.get("mode") == "thread" and surface.get("url"):
+                sent_results.append(_send_bubble(bubble, str(surface["url"])))
+            else:
+                sent_results.append(_send_overlay_bubble(bubble))
+            if index + 1 < len(bubbles):
+                _wait(.7 + random.random() * 1.9)
+        actions["dm"] = bool(sent_results and all(
+            bool(result.get("sent")) if isinstance(result, dict) else True
+            for result in sent_results
+        ))
         measured = ", ".join(f"{name}={'ok' if value else 'falha'}" for name, value in actions.items())
         note = "Interações medidas: " + measured
         execute("campaignConfirm", {"id": action_id, "state": "sent", "note": note[:1000]})

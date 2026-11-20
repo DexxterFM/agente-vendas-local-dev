@@ -475,7 +475,11 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
         self.assertEqual("prospecting-sent", result["browser"])
         self.assertEqual("overlay", result["mode"])
         open_dm.assert_called_once_with("clinica.teste")
-        send_overlay.assert_called_once_with("Olá! Tudo bem?")
+        self.assertEqual(send_overlay.call_count, 2)
+        self.assertEqual(send_overlay.call_args_list, [
+            call("Olá! Tudo bem?"),
+            call("Você merece! Me conta: já possui algum app para a gestão da sua clínica? 😊"),
+        ])
         action.assert_not_called()
         self.assertIn(
             call("campaignConfirm", {"id": 7, "state": "sent", "note": "Interações medidas: dm=ok"}),
@@ -613,7 +617,11 @@ class InternalBrowserAgentMetadataTests(unittest.TestCase):
         engage_comment.assert_called_once_with(3)
         engage_repost.assert_called_once_with(3)
         self.assertGreaterEqual(ready.call_count, 2)
-        send_overlay.assert_called_once_with("Saudação aprovada para clínica")
+        self.assertEqual(send_overlay.call_count, 2)
+        self.assertEqual(send_overlay.call_args_list, [
+            call("Saudação aprovada para clínica"),
+            call("Você merece! Me conta: já possui algum app para a gestão da sua clínica? 😊"),
+        ])
         self.assertIn(
             call("campaignProfileIntro", {"username": "clinica.teste", "text": "Clínica TEA atendimento infantil equipe multidisciplinar"}),
             execute.call_args_list,
