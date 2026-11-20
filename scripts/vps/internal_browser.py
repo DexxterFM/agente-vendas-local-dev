@@ -555,7 +555,7 @@ def metadata() -> dict[str, Any]:
         return false;
       };
       const controlLabel=element=>norm(element.getAttribute('aria-label')||element.getAttribute('title'));
-      const controls=[...document.querySelectorAll('[aria-label],[title]')].filter(element=>/^(?:notifications|notificações|messages|mensagens)(?:\s*\(?\d{1,3}\)?)?$/i.test(controlLabel(element)));
+      const controls=[...document.querySelectorAll('[aria-label],[title]')].filter(element=>/^(?:notifications|notificações|messages|mensagens|direct|direct messages|mensagens diretas)(?:\s*\(?\d{1,3}\)?)?$/i.test(controlLabel(element)));
       const inspect=(pattern)=>{
         const matches=controls.filter(element=>pattern.test(norm(element.getAttribute('aria-label'))));
         let pending=false;
