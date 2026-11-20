@@ -751,7 +751,7 @@ def _prospecting_cycle() -> dict[str, Any]:
         # Após a mensagem inicial, pergunta se a clínica já usa algum app para
         # gestão. Isso encaixa o lead no fluxo de descoberta (sem app / com app).
         welcome_question = "Você merece! Me conta: já possui algum app para a gestão da sua clínica? 😊"
-        intro_with_question = intro + BUBBLE_SPLIT + welcome_question
+        intro_with_question = intro + '\n[[AGENT_BUBBLE]]\n' + welcome_question
         surface = _open_profile_dm(username)
         if surface.get("mode") == "thread" and surface.get("url"):
             send_result = _send_bubble(intro_with_question, str(surface["url"]))
@@ -1475,12 +1475,12 @@ def cycle(mode: str | None = None) -> dict[str, Any]:
         "frontend_unread_rows": int(last_event.get("unread_rows") or 0),
     }
 
-    if current_mode == "prospecting":
+    if current_mode == "prospecting" and not aggregate["message_pending"]:
         # Nenhuma leitura de conversa neste turno: a prospecção usa sozinha o
         # documento autenticado e devolve a fila ao atendimento ao terminar.
         if (urlparse(url).path.rstrip("/") in {"", "/"}
                 and bool(state.get("prospecting_active"))
-                and not aggregate["message_pending"] and not aggregate["notification_pending"]):
+                and not aggregate["notification_pending"]):
             prospecting_result = _prospecting_cycle()
             browser_state = str(prospecting_result.get("browser") or "")
             job = browser_state in {"prospecting-sent", "prospecting-skipped"}

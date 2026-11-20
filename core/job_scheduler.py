@@ -16,7 +16,7 @@ KEY_MODE = "sales.agent.job_mode"
 KEY_IDLE = "sales.agent.job_mode_idle_cycles"
 KEY_CHANGED = "sales.agent.job_mode_changed_at"
 KEY_LAST_JOB = "sales.agent.job_mode_last_job"
-MAX_IDLE_CYCLES = 4
+MAX_IDLE_CYCLES = 2
 
 
 def _now() -> str:
