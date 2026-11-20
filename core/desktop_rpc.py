@@ -1162,10 +1162,15 @@ def execute(command, args):
             # A pessoa respondeu ao primeiro balão ("eu quero"): parabenizar e
             # pedir a escolha da versão antes de entregar qualquer link. A frase
             # vem da biblioteca editável, com o texto aprovado como padrão.
+            assistant_with_gift = next(
+                (str(row[1]).strip() for row in reversed(history)
+                 if row[0] == 'assistant' and re.search(r'\b(?:presente|eu quero|diga)\b', str(row[1]), re.I)),
+                previous_assistant,
+            )
             gift_acceptance = bool(
                 latest_user
-                and previous_assistant
-                and re.search(r'\b(?:presente|eu quero|diga)\b', previous_assistant, re.I)
+                and (previous_assistant or assistant_with_gift)
+                and re.search(r'\b(?:presente|eu quero|diga)\b', assistant_with_gift, re.I)
                 and re.fullmatch(
                     r'(?:(?:eu\s+)?quero|sim|s[ií]m|claro|manda|me\s+manda|pode\s+(?:enviar|mandar)(?:\s+o)?\s*(?:link)?)'
                     r'[!,. ]*(?:por\s+favor)?[.! 😊👍]*',
