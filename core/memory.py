@@ -74,8 +74,8 @@ class Memory:
             # Memória dedicada de perfis do Instagram e do fluxo de diálogo.
             # Cada mensagem enviada é um passo do fluxo, registrada pelo hash do
             # texto normalizado para impedir reenvio (risco de denúncia por spam).
-            "create table if not exists instagram_profiles (id integer primary key, username text not null unique, kind text not null default '', segment text not null default '', specialties text not null default '[]', thread_id text not null default '', stage text not null default '', created_at text not null, updated_at text not null)",
-            "create table if not exists instagram_profile_messages (id integer primary key, profile_id integer not null, flow_step text not null default '', hash text not null, text text not null default '', direction text not null default 'outgoing', thread_id text not null default '', created_at text not null, unique(profile_id, hash))",
+            "create table if not exists instagram_profiles (id integer primary key, username text not null unique, kind text not null default '', segment text not null default '', specialties text not null default '[]', thread_id text not null default '', stage text not null default '', current_stage text not null default 'OPENING', created_at text not null, updated_at text not null)",
+            "create table if not exists instagram_profile_messages (id integer primary key, profile_id integer not null, flow_step text not null default '', hash text not null, text text not null default '', direction text not null default 'outgoing', sender_type text not null default 'agent', thread_id text not null default '', created_at text not null, unique(profile_id, hash))",
         )
         for statement in statements:
             self.db.execute(statement)
@@ -102,6 +102,15 @@ class Memory:
                 (next_step_for_stage(str(stage or "new")), lead_id),
             )
         self.db.execute("update followups set status='draft' where status is null or status=''")
+        # Migração segura: colunas novas para memória de perfis do Instagram
+        try:
+            self.db.execute("alter table instagram_profiles add column current_stage text not null default 'OPENING'")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            self.db.execute("alter table instagram_profile_messages add column sender_type text not null default 'agent'")
+        except sqlite3.OperationalError:
+            pass
 
     def _create_indexes(self) -> None:
         self.db.execute("create index if not exists idx_leads_stage on leads(stage)")

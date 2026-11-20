@@ -394,6 +394,16 @@ def execute(command, args):
             memory.set_setting('sales.agent.worker.heartbeat_at',heartbeat)
             memory.set_setting('sales.agent.worker.cycle',json.dumps(cycle,separators=(',',':')))
             return {'heartbeat_at':heartbeat,'cycle':cycle}
+        if command == 'rateLimitCheck':
+            from core.job_scheduler import HumanRateLimiter
+            limiter = HumanRateLimiter(memory)
+            allowed, reason, wait = limiter.can_perform_action(str(args.get('action_type', '')))
+            return {'allowed': allowed, 'reason': reason, 'wait_seconds': wait}
+        if command == 'rateLimitRecord':
+            from core.job_scheduler import HumanRateLimiter
+            limiter = HumanRateLimiter(memory)
+            limiter.record_action(str(args.get('action_type', '')))
+            return {'recorded': True}
         if command == 'prospectingPacing':
             from core.prospecting_pacing import ProspectingPacing
             pacing = ProspectingPacing(memory)
@@ -997,6 +1007,20 @@ def execute(command, args):
         if command == 'internalBrowserCloseAuxiliaryTabs':
             from scripts.vps.internal_browser import close_auxiliary_tabs
             return close_auxiliary_tabs()
+        if command == 'internalBrowserEnsureSingleTab':
+            from scripts.vps.internal_browser import ensure_single_tab_and_viewport
+            width = int(args.get('width', 1280))
+            height = int(args.get('height', 800))
+            ensure_single_tab_and_viewport(width, height)
+            return {'ok': True, 'width': width, 'height': height}
+        if command == 'internalBrowserHumanClick':
+            from scripts.vps.internal_browser import human_click
+            human_click(float(args.get('x', 0)), float(args.get('y', 0)))
+            return {'ok': True}
+        if command == 'internalBrowserHumanType':
+            from scripts.vps.internal_browser import human_type_text
+            human_type_text(str(args.get('text', '')))
+            return {'ok': True}
         if command == 'internalBrowserSelectTarget':
             from scripts.vps.internal_browser import select_target
             return select_target(str(args.get('id') or ''))
@@ -1197,7 +1221,7 @@ def execute(command, args):
             studio = FlowStudio(memory)
             approved = studio.match(latest_user, previous_assistant, custom_only=True)
             if approved:
-                return str(approved.get('response') or '').strip()
+                return str(approved).strip()
             # Um "não" curto não é recusa universal: ele responde à última
             # pergunta do agente. A mensagem anterior define a resposta, para
             # que recusar um comparativo não reinicie a descoberta do produto.
@@ -1425,7 +1449,7 @@ def execute(command, args):
             # do modelo livre; ajustes do operador já foram tratados acima.
             approved = studio.match(latest_user, previous_assistant, custom_only=False)
             if approved:
-                return str(approved.get('response') or '').strip()
+                return str(approved).strip()
             snippets=[{'source':d['source'],'text':d['text'][:650]} for d in context['retrieved_documents'][:3]]
             guidance={'personality':context['learning']['personality']['profile'],'installation':context['learning']['installation'],'trial_offer':trial_offer,'step':context['recommended_step'],'references':snippets,'approved_responses':studio.guidance(8)}
             try:

@@ -135,10 +135,11 @@ class InstagramProfileMemory:
 
     # ------------------------------------------------------------- mensagens
     def record_sent(self, username, text, *, flow_step="reply", direction="outgoing",
-                    thread_id="") -> bool:
+                    thread_id="", sender_type="agent") -> bool:
         """Grava uma mensagem enviada como passo do fluxo.
 
         Retorna True se é uma mensagem nova; False se já estava registrada.
+        sender_type: 'agent' (bot) ou 'operator' (humano).
         """
         username = _clean_username(username)
         if not username or not text:
@@ -153,13 +154,52 @@ class InstagramProfileMemory:
             if existing:
                 return False
             self.memory.db.execute(
-                "insert into instagram_profile_messages(profile_id,flow_step,hash,text,direction,thread_id,created_at) "
-                "values(?,?,?,?,?,?,?)",
+                "insert into instagram_profile_messages(profile_id,flow_step,hash,text,direction,sender_type,thread_id,created_at) "
+                "values(?,?,?,?,?,?,?,?)",
                 (profile_id, str(flow_step)[:40], digest, str(text)[:3500],
-                 str(direction)[:12], str(thread_id)[:120], _now()),
+                 str(direction)[:12], str(sender_type)[:12], str(thread_id)[:120], _now()),
             )
             self.memory.db.commit()
         return True
+
+    def record_message(self, username, text, *, flow_step="reply", direction="outgoing",
+                       sender_type="agent", thread_id="") -> bool:
+        """Alias de record_sent com suporte explícito a sender_type."""
+        return self.record_sent(
+            username, text, flow_step=flow_step, direction=direction,
+            thread_id=thread_id, sender_type=sender_type,
+        )
+
+    def get_stage(self, username) -> str:
+        username = _clean_username(username)
+        if not username:
+            return "OPENING"
+        row = self.memory.db.execute(
+            "select current_stage from instagram_profiles where username=?", (username,)
+        ).fetchone()
+        if not row or not row[0]:
+            return "OPENING"
+        return str(row[0])
+
+    def set_stage(self, username, stage) -> None:
+        username = _clean_username(username)
+        if not username:
+            return
+        with self.memory._lock:
+            self.ensure_profile(username)
+            self.memory.db.execute(
+                "update instagram_profiles set current_stage=?, updated_at=? where username=?",
+                (str(stage)[:40], _now(), username),
+            )
+            self.memory.db.commit()
+
+    def get_recent_global_hashes(self, limit=20) -> set:
+        """Hashes de mensagens recentes (qualquer perfil) para evitar repetir variação."""
+        rows = self.memory.db.execute(
+            "select hash from instagram_profile_messages order by id desc limit ?",
+            (int(limit),),
+        ).fetchall()
+        return {str(r[0]) for r in rows if r[0]}
 
     def already_sent(self, username, text) -> bool:
         username = _clean_username(username)

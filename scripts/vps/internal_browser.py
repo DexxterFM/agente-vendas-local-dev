@@ -376,6 +376,105 @@ def cleanup_stale_tabs() -> dict[str, int]:
     return {"closed": closed}
 
 
+def ensure_single_tab_and_viewport(width: int = 1280, height: int = 800) -> None:
+    """Garante apenas 1 aba ativa e trava o tamanho da área de visualização."""
+    targets_res = _http("/json/list")
+    page_targets = [
+        t for t in (targets_res if isinstance(targets_res, list) else [])
+        if t.get("type") == "page"
+    ]
+    if len(page_targets) > 1:
+        primary_id = None
+        # Tenta usar a aba fixada ou a primeira
+        try:
+            primary_id = str(_target().get("id") or "")
+        except Exception:
+            primary_id = page_targets[0].get("targetId") if page_targets else None
+        if not primary_id:
+            primary_id = page_targets[0].get("targetId") if page_targets else None
+        for t in page_targets:
+            if t.get("targetId") != primary_id:
+                try:
+                    _http("/json/close/" + urllib.parse.quote(str(t.get("id") or ""), safe=""), method="GET")
+                except InternalBrowserError:
+                    pass
+        if primary_id:
+            try:
+                _http("/json/activate/" + urllib.parse.quote(str(primary_id), safe=""), method="GET")
+            except InternalBrowserError:
+                pass
+
+    # Trava viewport via CDP
+    try:
+        page = _target()
+        ws = DevTools(str(page.get("webSocketDebuggerUrl") or ""))
+        ws.call("Emulation.setDeviceMetricsOverride", {
+            "width": width,
+            "height": height,
+            "deviceScaleFactor": 1,
+            "mobile": False,
+        })
+        ws.close()
+    except Exception:
+        pass
+
+
+def human_click(x: float, y: float) -> None:
+    """Move o cursor em passos com leve jitter antes de clicar como humano."""
+    import random as _random
+    import time as _time
+    start_x = getattr(human_click, "_last_mouse_x", x - _random.uniform(40, 120))
+    start_y = getattr(human_click, "_last_mouse_y", y - _random.uniform(30, 90))
+    steps = _random.randint(4, 7)
+    page = _target()
+    ws = DevTools(str(page.get("webSocketDebuggerUrl") or ""))
+    for step in range(1, steps + 1):
+        t = step / steps
+        jitter_x = _random.uniform(-2.5, 2.5) if step < steps else 0.0
+        jitter_y = _random.uniform(-2.5, 2.5) if step < steps else 0.0
+        cur_x = start_x + (x - start_x) * t + jitter_x
+        cur_y = start_y + (y - start_y) * t + jitter_y
+        ws.call("Input.dispatchMouseEvent", {
+            "type": "mouseMoved",
+            "x": round(cur_x, 1),
+            "y": round(cur_y, 1),
+        })
+        _time.sleep(_random.uniform(0.015, 0.045))
+    ws.call("Input.dispatchMouseEvent", {"type": "mousePressed", "x": x, "y": y, "button": "left", "clickCount": 1})
+    _time.sleep(_random.uniform(0.03, 0.09))
+    ws.call("Input.dispatchMouseEvent", {"type": "mouseReleased", "x": x, "y": y, "button": "left", "clickCount": 1})
+    ws.close()
+    human_click._last_mouse_x = x
+    human_click._last_mouse_y = y
+
+
+def human_type_text(text: str) -> None:
+    """Digita via eventos de teclado CDP com cadência gaussiana humana."""
+    import random as _random
+    import time as _time
+    page = _target()
+    ws = DevTools(str(page.get("webSocketDebuggerUrl") or ""))
+    for ch in text:
+        ws.call("Input.dispatchKeyEvent", {
+            "type": "keyDown",
+            "text": ch,
+            "unmodifiedText": ch,
+        })
+        _time.sleep(_random.uniform(0.012, 0.035))
+        ws.call("Input.dispatchKeyEvent", {
+            "type": "keyUp",
+            "text": ch,
+            "unmodifiedText": ch,
+        })
+        delay = max(0.035, _random.gauss(0.082, 0.024))
+        if ch in ".?!,;":
+            delay += _random.uniform(0.18, 0.45)
+        elif ch == " ":
+            delay += _random.uniform(0.02, 0.08)
+        _time.sleep(delay)
+    ws.close()
+
+
 def close_auxiliary_tabs() -> dict[str, int]:
     """Fecha abas auxiliares acumuladas, mantendo apenas a página de trabalho.
 

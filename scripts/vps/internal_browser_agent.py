@@ -705,6 +705,17 @@ def _prospecting_cycle() -> dict[str, Any]:
             browser.action({"kind": "navigate", "url": f"https://www.instagram.com/{username}/"})
             _wait_page_ready()
             engagement = _engagement_metadata()
+            # Rate limit: follow
+            try:
+                from core.job_scheduler import HumanRateLimiter
+                rl_mem = load_config()
+                with Memory(rl_mem.db_path) as _rlm:
+                    rl = HumanRateLimiter(_rlm).can_perform_action("follow")
+                    if not rl[0]:
+                        _wait(min(float(rl[2] or 0), 5.0))
+                    HumanRateLimiter(_rlm).record_action("follow")
+            except Exception:
+                pass
             actions["follow"], engagement = _engage_step(
                 action_id, "follow", "follow", "follow_state", "following"
             )
@@ -714,6 +725,17 @@ def _prospecting_cycle() -> dict[str, Any]:
             actions["like"], engagement = _engage_step(
                 action_id, "like", "like", "like_state", "liked"
             )
+            # Rate limit: comment
+            try:
+                from core.job_scheduler import HumanRateLimiter
+                rl_mem = load_config()
+                with Memory(rl_mem.db_path) as _rlm:
+                    rl = HumanRateLimiter(_rlm).can_perform_action("comment")
+                    if not rl[0]:
+                        _wait(min(float(rl[2] or 0), 5.0))
+                    HumanRateLimiter(_rlm).record_action("comment")
+            except Exception:
+                pass
             actions["comment"], engagement = _engage_comment(action_id)
             actions["repost"], engagement = _engage_repost(action_id)
             # Entra no perfil que recebeu as ações, lê nome+bio e escolhe a
@@ -731,6 +753,20 @@ def _prospecting_cycle() -> dict[str, Any]:
             execute("campaignStage", {"id": action_id, "stage": "dm"})
         # O cadastro persistente decide se esta mensagem já foi aplicada a este
         # perfil. Sem esta barreira a retentativa reenvia a mesma saudação.
+        # Rate limit: prospect_dm
+        try:
+            from core.job_scheduler import HumanRateLimiter
+            rl_mem = load_config()
+            with Memory(rl_mem.db_path) as _rlm:
+                rl = HumanRateLimiter(_rlm).can_perform_action("prospect_dm")
+                if not rl[0]:
+                    _wait(min(float(rl[2] or 0), 5.0))
+                    rl2 = HumanRateLimiter(_rlm).can_perform_action("prospect_dm")
+                    if not rl2[0]:
+                        execute("campaignConfirm", {"id": action_id, "state": "pending", "note": "Rate limit: " + str(rl2[1])})
+                        return {"prospecting": True, "browser": "prospecting-paced", "wait_seconds": rl2[2]}
+        except Exception:
+            pass
         guard = execute("campaignMessageGuard", {"username": username, "text": intro})
         if not guard.get("allowed", True):
             reason = str(guard.get("reason") or "duplicate-message")
@@ -785,6 +821,13 @@ def _prospecting_cycle() -> dict[str, Any]:
         measured = ", ".join(f"{name}={'ok' if value else 'falha'}" for name, value in actions.items())
         note = "Interações medidas: " + measured
         execute("campaignConfirm", {"id": action_id, "state": "sent", "note": note[:1000]})
+        try:
+            from core.job_scheduler import HumanRateLimiter
+            rl_mem = load_config()
+            with Memory(rl_mem.db_path) as _rlm:
+                HumanRateLimiter(_rlm).record_action("prospect_dm")
+        except Exception:
+            pass
         _audit_action(action_id, "dm", "confirmed" if actions["dm"] else "unconfirmed", note[:400])
         execute("campaignProfileObserve", {
             "username": username,
@@ -1242,6 +1285,22 @@ def _process_thread(source: str) -> dict[str, Any]:
         if not guard.get("allowed", True):
             execute("browserScreenConfirm", {"message_key": cycle["message_key"], "lead_id": cycle["lead_id"], "text": cycle["text"], "thread_id": snap["thread_id"]})
             return {"processed": True, "replied": False, "reason": "memoria-bloqueia-reenvio", "hash": guard.get("hash", "")}
+        # Rate limiter: respeita cooldown e cotas humanas para dm_reply.
+        try:
+            from core.job_scheduler import HumanRateLimiter
+            rl_mem = load_config()
+            with Memory(rl_mem.db_path) as _rlm:
+                rl = HumanRateLimiter(_rlm).can_perform_action("dm_reply")
+                if not rl[0]:
+                    wait = float(rl[2] or 0)
+                    if wait > 0:
+                        _wait(min(wait, 10.0))
+                    rl2 = HumanRateLimiter(_rlm).can_perform_action("dm_reply")
+                    if not rl2[0]:
+                        execute("browserScreenConfirm", {"message_key": cycle["message_key"], "lead_id": cycle["lead_id"], "text": cycle["text"], "thread_id": snap["thread_id"]})
+                        return {"processed": True, "replied": False, "reason": "rate-limit-" + str(rl2[1])}
+        except Exception:
+            pass
         sent = []
         bubbles = [item.strip() for item in BUBBLE_SPLIT.split(str(cycle["text"])) if item.strip()]
         for index, bubble in enumerate(bubbles):
@@ -1261,6 +1320,11 @@ def _process_thread(source: str) -> dict[str, Any]:
         # Registra na memória do perfil que a mensagem foi enviada, respeitando o contexto aprovado.
         try:
             ProfileMemory(_mem).observe(snap["username"], message=str(cycle["text"]), stage="dm-reply")
+            try:
+                from core.job_scheduler import HumanRateLimiter
+                HumanRateLimiter(_mem).record_action("dm_reply")
+            except Exception:
+                pass
         except Exception:
             pass
     execute("browserScreenConfirm", {"message_key": cycle["message_key"], "lead_id": cycle["lead_id"], "text": cycle["text"], "thread_id": snap["thread_id"]})
@@ -1501,6 +1565,11 @@ def cycle(mode: str | None = None) -> dict[str, Any]:
     status = browser.status()
     if not status.get("running") or not status.get("ready"):
         return done({"browser": "offline"})
+    # Garante aba única e viewport fixo antes de qualquer interação.
+    try:
+        browser.ensure_single_tab_and_viewport(1280, 800)
+    except Exception:
+        pass
     # Fecha abas auxiliares acumuladas por navegações de prospecção e links
     # target="_blank" (meta.com/about etc.). Preserva a aba de trabalho e
     # quaisquer abas de verificação de código em uso pelo operador.

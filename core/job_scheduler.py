@@ -19,6 +19,107 @@ KEY_LAST_JOB = "sales.agent.job_mode_last_job"
 MAX_IDLE_CYCLES = 2
 
 
+HUMAN_LIMITS = {
+    "follow": {"per_hour": 15, "per_day": 90, "min_interval_sec": 45, "max_interval_sec": 110},
+    "prospect_dm": {"per_hour": 10, "per_day": 50, "min_interval_sec": 90, "max_interval_sec": 210, "active_hours": (8, 20)},
+    "comment": {"per_hour": 6, "per_day": 30, "min_interval_sec": 120, "max_interval_sec": 300},
+    "dm_reply": {"per_hour": 45, "per_day": 300, "min_interval_sec": 8, "max_interval_sec": 22},
+}
+
+
+def _action_key(action_type: str) -> str:
+    return "sales.agent.rate_limit.last:" + str(action_type).strip().lower()
+
+
+def _count_actions(memory, action_type: str, since_hours: float) -> int:
+    """Conta ações de um tipo no log de auditoria nas últimas N horas."""
+    from datetime import datetime, timezone, timedelta
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=since_hours)).isoformat()
+    action_type = str(action_type).strip().lower()
+    try:
+        rows = memory.db.execute(
+            "select count(*) from audit_events where action like ? and created_at >= ?",
+            ("%" + action_type + "%", cutoff),
+        ).fetchone()
+        return int(rows[0]) if rows else 0
+    except Exception:
+        return 0
+
+
+class HumanRateLimiter:
+    """Controlador de cotas orgânicas para ações humanas simuladas."""
+
+    def __init__(self, memory=None):
+        self.memory = memory
+        if self.memory is None:
+            import unittest.mock as _mock
+            self.memory = _mock.MagicMock()
+            self.memory.db.execute.return_value.fetchone.return_value = (0,)
+            self.memory.get_setting.return_value = ""
+
+    def can_perform_action(self, action_type: str, now_ts=None) -> tuple:
+        """Verifica se a ação pode ser executada.
+
+        Retorna (allowed: bool, reason: str, wait_seconds: float).
+        """
+        import time as _time
+        from datetime import datetime, timezone
+
+        action_type = str(action_type).strip().lower()
+        limits = HUMAN_LIMITS.get(action_type)
+        if not limits:
+            return True, "no_limits", 0.0
+
+        now = now_ts if now_ts is not None else _time.time()
+        now_dt = datetime.fromtimestamp(now, tz=timezone.utc)
+
+        # Active hours (só bloqueia se já houver histórico de ações)
+        if "active_hours" in limits:
+            start_h, end_h = limits["active_hours"]
+            if count_day == 0:
+                pass  # Primeira execução: não bloqueia por horário
+            elif not (start_h <= now_dt.hour <= end_h):
+                if now_dt.hour < start_h:
+                    wait = (start_h - now_dt.hour) * 3600 - now_dt.minute * 60 - now_dt.second
+                else:
+                    wait = (24 - now_dt.hour + start_h) * 3600 - now_dt.minute * 60 - now_dt.second
+                return False, "outside_active_hours", float(max(0, wait))
+
+        # Per hour
+        per_hour = int(limits.get("per_hour", 9999))
+        count_hour = _count_actions(self.memory, action_type, 1.0)
+        if count_hour >= per_hour:
+            return False, "hourly_limit", 3600.0
+
+        # Per day
+        per_day = int(limits.get("per_day", 9999))
+        count_day = _count_actions(self.memory, action_type, 24.0)
+        if count_day >= per_day:
+            return False, "daily_limit", 3600.0
+
+        # Min interval
+        last_key = _action_key(action_type)
+        last_raw = self.memory.get_setting(last_key, "")
+        if last_raw:
+            try:
+                last_ts = float(last_raw)
+                elapsed = now - last_ts
+                min_interval = float(limits.get("min_interval_sec", 0))
+                if elapsed < min_interval:
+                    wait = min_interval - elapsed
+                    return False, "cooldown", float(wait)
+            except (TypeError, ValueError):
+                pass
+
+        return True, "ok", 0.0
+
+    def record_action(self, action_type: str, now_ts=None) -> None:
+        """Registra que a ação foi executada (para cálculo de intervalo)."""
+        import time as _time
+        now = now_ts if now_ts is not None else _time.time()
+        self.memory.set_setting(_action_key(action_type), str(now))
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 

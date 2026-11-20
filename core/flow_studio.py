@@ -13,6 +13,7 @@ import json
 import re
 import unicodedata
 import uuid
+from typing import Optional
 from datetime import datetime, timezone
 
 LIBRARY_KEY = 'sales.response_library.v1'
@@ -45,6 +46,19 @@ FIELD_LIMITS = {
     'images': 1200,
     'match': 400,
 }
+
+
+def _tokenize(text: str) -> set:
+    cleaned = re.sub(r"[^\w\sáéíóúâêôãõç]", " ", (text or "").lower())
+    stopwords = {"a", "o", "as", "os", "de", "do", "da", "e", "em", "um", "uma", "que", "com", "para", "por", "oi", "olá", "ola"}
+    return {w for w in cleaned.split() if len(w) > 2 and w not in stopwords}
+
+
+def _jaccard_similarity(a: str, b: str) -> float:
+    ta, tb = _tokenize(a), _tokenize(b)
+    if not ta or not tb:
+        return 0.0
+    return len(ta & tb) / len(ta | tb)
 
 # Frases enviadas como primeiro contato depois que o perfil seguiu a conta.
 # IDs fixos permitem que o editor altere o texto sem mudar a campanha.
@@ -1115,10 +1129,18 @@ class FlowStudio:
         return validated
 
     # -------------------------------------------------------------- uso no draft
-    def match(self, user_text: str, previous_assistant: str = '', *, custom_only: bool = True):
-        """Encontra uma resposta aprovada para a mensagem recebida."""
+    def match(self, user_text: str, previous_assistant: str = '', stage: Optional[str] = None, *, custom_only: bool = True):
+        """Encontra uma resposta aprovada para a mensagem recebida.
+
+        Primeiro testa os templates explícitos/regex existentes (mantendo
+        compatibilidade total com os testes atuais). Em seguida, compara
+        text com os pares aprendidos do operador filtrando por
+        item['stage'] in (stage, "ANY"). Se _jaccard_similarity(text, item['trigger']) >= 0.72,
+        retorna item['reply'].
+        """
         if not str(user_text or '').strip():
             return None
+        # 1. Templates explícitos/regex existentes
         best = None
         for index, item in enumerate(self.templates()):
             if custom_only and not item.get('custom'):
@@ -1132,7 +1154,79 @@ class FlowStudio:
             candidate = (score, shared, -index, item)
             if best is None or candidate[:3] > best[:3]:
                 best = candidate
-        return best[3] if best else None
+        if best is not None:
+            item = best[3]
+            return str(item.get('response') or '').strip() if isinstance(item, dict) else str(item).strip()
+
+        # 2. Pares aprendidos do operador (learn_from_operator)
+        learned = self._learned_pairs()
+        for item in learned:
+            item_stage = str(item.get('stage') or 'ANY')
+            if stage is not None and item_stage not in (stage, 'ANY'):
+                continue
+            trigger = str(item.get('trigger') or '')
+            reply = str(item.get('reply') or '').strip()
+            if not trigger or not reply:
+                continue
+            if _jaccard_similarity(user_text, trigger) >= 0.72:
+                return reply
+        return None
+
+    def _learned_pairs(self) -> list:
+        """Retorna os pares aprendidos do operador persistidos no banco."""
+        # Cache em memória para instâncias sem __init__ (ex: testes)
+        if not hasattr(self, '_learned_cache'):
+            self._learned_cache = None
+        if self._learned_cache is not None:
+            return self._learned_cache
+        raw = ''
+        try:
+            raw = self.memory.get_setting('sales.flow.learned_pairs', '')
+        except Exception:
+            raw = ''
+        if not raw or not isinstance(raw, str):
+            self._learned_cache = []
+            return self._learned_cache
+        try:
+            data = json.loads(raw)
+            if isinstance(data, list):
+                self._learned_cache = [item for item in data if isinstance(item, dict)]
+                return self._learned_cache
+        except (TypeError, ValueError):
+            pass
+        self._learned_cache = []
+        return self._learned_cache
+
+    def learn_from_operator(self, trigger_text: str, response_text: str, stage: str = "ANY") -> dict:
+        """Sanitiza e persiste um par aprendido do operador humano."""
+        # Sanitiza menções @usuario e espaços extras do response_text
+        sanitized = re.sub(r'@\w+', '', str(response_text or '')).strip()
+        sanitized = ' '.join(sanitized.split())
+        if not sanitized:
+            return {'applied': False, 'reason': 'resposta vazia após sanitização'}
+        trigger = ' '.join(str(trigger_text or '').split())
+        if not trigger:
+            return {'applied': False, 'reason': 'gatilho vazio'}
+        pairs = self._learned_pairs()
+        pair = {
+            'id': 'learned-' + hashlib.sha256((trigger + sanitized).encode('utf-8')).hexdigest()[:12],
+            'source': 'operator_learned',
+            'stage': stage,
+            'trigger': trigger,
+            'reply': sanitized,
+        }
+        # Atualiza se já existe
+        existing = next((p for p in pairs if p.get('trigger') == trigger and p.get('stage') == stage), None)
+        if existing:
+            existing['reply'] = sanitized
+        else:
+            pairs.append(pair)
+        try:
+            self.memory.set_setting('sales.flow.learned_pairs', json.dumps(pairs, ensure_ascii=False))
+        except Exception:
+            pass
+        self._learned_cache = pairs
+        return {'applied': True, 'pair': pair}
 
     @staticmethod
     def _score(item, user_text, previous_assistant):
