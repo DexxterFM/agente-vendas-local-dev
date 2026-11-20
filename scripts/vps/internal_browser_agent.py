@@ -160,7 +160,7 @@ def _open_notifications() -> bool:
         browser.action({"kind": "click", "x": float(point["x"]), "y": float(point["y"])})
     except (KeyError, TypeError, ValueError, browser.InternalBrowserError):
         return False
-    _wait(.9)
+    _wait(.3)
     return True
 
 
@@ -748,11 +748,15 @@ def _prospecting_cycle() -> dict[str, Any]:
                 "prospecting": True, "browser": "prospecting-duplicate",
                 "username": username, "reason": reason,
             }
+        # Após a mensagem inicial, pergunta se a clínica já usa algum app para
+        # gestão. Isso encaixa o lead no fluxo de descoberta (sem app / com app).
+        welcome_question = "Você merece! Me conta: já possui algum app para a gestão da sua clínica? 😊"
+        intro_with_question = intro + BUBBLE_SPLIT + welcome_question
         surface = _open_profile_dm(username)
         if surface.get("mode") == "thread" and surface.get("url"):
-            send_result = _send_bubble(intro, str(surface["url"]))
+            send_result = _send_bubble(intro_with_question, str(surface["url"]))
         else:
-            send_result = _send_overlay_bubble(intro)
+            send_result = _send_overlay_bubble(intro_with_question)
         actions["dm"] = bool(send_result.get("sent")) if isinstance(send_result, dict) else True
         measured = ", ".join(f"{name}={'ok' if value else 'falha'}" for name, value in actions.items())
         note = "Interações medidas: " + measured
@@ -1228,7 +1232,7 @@ def _notification_candidates() -> list[dict[str, Any]]:
     """Lê somente perfis associados explicitamente a novo seguidor."""
     opened = _open_notifications()
     if opened:
-        _wait(0.5)
+        _wait(0.2)
     if not opened:
         # Algumas versões deixam os eventos da central renderizados na página
         # inicial e o ícone não muda a rota. Se já há botões Follow Back
@@ -1361,11 +1365,11 @@ def _capture_notification_actions() -> dict[str, int]:
     try:
         if not _open_home():
             browser.action({"kind": "navigate", "url": HOME_URL})
-            _wait(1.0)
+            _wait(0.3)
     except browser.InternalBrowserError:
         try:
             browser.action({"kind": "navigate", "url": HOME_URL})
-            _wait(1.0)
+            _wait(0.3)
         except browser.InternalBrowserError:
             pass
     return {"notification_candidates": len(candidates), "notification_queued": queued, "notification_followed": followed, "notification_welcomed": welcomed}
@@ -1519,7 +1523,7 @@ def cycle(mode: str | None = None) -> dict[str, Any]:
         # o estado visual de não lida exposto pelo próprio navegador interno.
         if actionable and _open_target(actionable[0]):
             processed = _process_thread("unread-row-metadata")
-            cooldown = 300 if processed.get("reason") == "no-pending-incoming" else 60
+            cooldown = 30 if processed.get("reason") == "no-pending-incoming" else 10
             _RECENT_UNREAD_TARGETS[_unread_target_key(actionable[0])] = time.monotonic() + cooldown
             return done({"browser": "message", **aggregate, **processed},
                         job=bool(processed.get("replied")), detail="message")
@@ -1531,7 +1535,7 @@ def cycle(mode: str | None = None) -> dict[str, Any]:
             if not _open_target(target):
                 continue
             processed = _process_thread("message-event-fallback")
-            cooldown = 300 if processed.get("reason") == "no-pending-incoming" else 60
+            cooldown = 30 if processed.get("reason") == "no-pending-incoming" else 10
             _RECENT_UNREAD_TARGETS[_unread_target_key(target)] = time.monotonic() + cooldown
             if processed.get("replied") or processed.get("reason") != "no-pending-incoming":
                 return done({"browser": "message", **aggregate, **processed},
