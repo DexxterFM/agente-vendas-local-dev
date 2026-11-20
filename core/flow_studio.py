@@ -94,6 +94,14 @@ INSTALL_FOLLOWUP_TEMPLATES = [
         'links': '', 'images': '',
         'match': 'suporte para duvidas | whatsapp assintencia | 51 8054-2244',
     },
+    {
+        'id': 'install-activation-congratulations', 'stage': 'follow-up',
+        'question': 'Parabéns pela ativação do app',
+        'response': 'Parabéns pela ativação! Seu app está pronto para uso. Se tiver dúvidas, entre em contato pelo WhatsApp de assistência: 51 8054-2244. Estamos à disposição!',
+        'context': 'Enviado após a validação do token de ativação. Inicia o fluxo de pós-venda.',
+        'links': '', 'images': '',
+        'match': 'ativação | ativou | parabéns pela ativação | token validado | token usado',
+    },
 ]
 
 # Texto aprovado pelo operador para quem usa aplicativo gratuito. Cada balão
@@ -125,7 +133,7 @@ BUILTIN_TEMPLATES = [
     {'id': 'welcome-app', 'stage': 'acolhimento', 'question': 'A pessoa agradeceu o elogio', 'response': 'Você merece! Me conta: já possui algum app para a gestão da sua clínica? 😊', 'context': 'Use depois de um agradecimento simples; não diga que a pessoa compartilhou algo.', 'links': '', 'images': '', 'match': 'obrigado | obrigada | agradeceu | valeu'},
     {'id': 'qualified-greeting', 'stage': 'descoberta', 'question': 'Lead qualificado responde apenas com oi, olá ou uma saudação', 'response': 'Tudo bem! Espero que sim 😊 Por acaso já utiliza algum app ou programa para administrar sua clínica? Se já usa, qual?', 'context': 'Trate a saudação como continuidade da conversa; não reinicie a apresentação do ERP.', 'links': '', 'images': '', 'match': 'oi | olá | bom dia | boa tarde | boa noite'},
     {'id': 'no-app', 'stage': 'apresentação', 'question': 'A pessoa diz que ainda não usa app', 'response': 'Então chegou o momento de conhecer algo que pode salvar muitas horas do seu dia e deixar mais tempo para cuidar dos pacientes. Quer que eu mostre como funciona? 😊', 'context': 'Apresente benefícios antes de falar do período de teste.', 'links': '', 'images': '', 'match': 'não uso | ainda não | nunca usei | não usamos'},
-    {'id': 'existing-app', 'stage': 'descoberta', 'question': 'A pessoa diz que já usa um sistema', 'response': 'Que bom! Qual app ou programa vocês usam hoje para organizar a gestão?', 'context': 'Aguarde o nome do concorrente antes de apresentar comparativo.', 'links': '', 'images': '', 'match': 'já uso | já usamos | temos sistema | usamos o sistema'},
+    {'id': 'existing-app', 'stage': 'descoberta', 'question': 'A pessoa diz que já usa um sistema', 'response': 'Que bom que já utiliza! Me conta: vocês ainda pagam mensalidade por esse sistema ou já possuem um app profissional próprio da empresa? 😊', 'context': 'Trate como objeção: pergunte se paga mensalidade ou tem app próprio. Aguarde a resposta antes de apresentar comparativo.', 'links': '', 'images': '', 'match': 'já uso | já usamos | já usei | já utilizo | sistema atual | nosso sistema', 'custom': True},
     {'id': 'three-months', 'stage': 'proposta', 'question': 'Lead qualificado confirma que quer conhecer a opção indicada', 'response': 'Perfeito! Vou te enviar o link da opção ideal para ativar os 3 meses gratuitos. Assim que concluir, me avise por aqui 😊', 'context': 'Use somente o link configurado para Clínica Multiprofissional ou Profissional, conforme o perfil identificado.', 'links': '', 'images': '', 'match': 'eu quero | pode enviar o link | manda o link'},
 ]
 

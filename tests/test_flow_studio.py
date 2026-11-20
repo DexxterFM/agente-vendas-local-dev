@@ -13,7 +13,7 @@ from core.flow_studio import BUILTIN_TEMPLATES, FlowStudio
 
 PROMPT = (
     'Quando o lead disser que já usa outro sistema, responda: '
-    '"Que bom! Qual sistema vocês usam hoje?"'
+    '"Que bom que já utiliza! Me conta: vocês ainda pagam mensalidade por esse sistema ou já possuem um app profissional próprio da empresa? 😊"'
 )
 
 
@@ -52,7 +52,7 @@ class FlowStudioTests(unittest.TestCase):
         operation = proposal['operations'][0]
         self.assertEqual('add', operation['action'])
         self.assertEqual('descoberta', operation['stage'])
-        self.assertIn('Qual sistema', operation['response'])
+        self.assertIn('mensalidade', operation['response'])
         self.assertIn('sistema', operation['question'])
         self.assertFalse(proposal['needs_review'])
 
@@ -80,7 +80,8 @@ class FlowStudioTests(unittest.TestCase):
                 {'role': 'user', 'text': 'Já uso o sistema X aqui.'},
             ],
         })
-        self.assertEqual('Que bom! Qual sistema vocês usam hoje?', answer)
+        self.assertIn('mensalidade', answer)
+        self.assertIn('app profissional', answer)
 
         state = execute('flowState', {})
         self.assertEqual(1, state['revision'])
@@ -96,11 +97,11 @@ class FlowStudioTests(unittest.TestCase):
         self.assertIn('versão 1', str(caught.exception))
 
     def test_update_and_remove_use_existing_ids(self):
-        proposal = self.proposal('Na etapa descoberta, altere a resposta sobre já usar sistema para "Qual sistema a clínica usa hoje?"')
+        proposal = self.proposal('Na etapa descoberta, altere a resposta sobre já usar sistema para "Que bom que já utiliza! Mensalidade ou app próprio?"')
         result = self.apply(proposal)
         self.assertTrue(result['applied'])
         templates = {item['id']: item for item in execute('responseLibrary', {})}
-        self.assertEqual('Qual sistema a clínica usa hoje?', templates['existing-app']['response'])
+        self.assertIn('mensalidade', templates['existing-app']['response'].lower())
         self.assertTrue(templates['existing-app']['custom'])
 
         removed = execute('flowApply', {
@@ -193,7 +194,8 @@ class FlowStudioTests(unittest.TestCase):
                 {'role': 'user', 'text': 'Já uso o sistema X aqui.'},
             ],
         })
-        self.assertIn('Posso comparar rapidamente', answer)
+        self.assertIn('mensalidade', answer)
+        self.assertIn('app profissional', answer)
 
     def test_model_proposal_is_validated_and_normalized(self):
         class FakeClient:
@@ -236,13 +238,13 @@ class FlowStudioTests(unittest.TestCase):
     def test_update_proposal_includes_current_preview(self):
         proposal = self.proposal(
             'Na etapa descoberta, altere a resposta sobre já usar sistema para '
-            '"Qual sistema a clínica usa hoje?"'
+            '"Que bom que já utiliza! Mensalidade ou app próprio?"'
         )
         operation = proposal['operations'][0]
         self.assertEqual('update', operation['action'])
         self.assertEqual('existing-app', operation['id'])
         self.assertEqual('existing-app', operation['preview']['id'])
-        self.assertIn('Qual app', operation['preview']['response'])
+        self.assertIn('mensalidade', operation['preview']['response'])
 
     def test_teach_saves_response_for_the_client_message_and_repeats(self):
         lead_id = execute('create', {'name': 'Clínica Teste', 'contact': 'clinica.teste'})
@@ -252,7 +254,7 @@ class FlowStudioTests(unittest.TestCase):
         ]
         saved = execute('flowTeach', {
             'message': 'Já uso o sistema X aqui.',
-            'response': 'Qual sistema vocês usam hoje?',
+            'response': 'Que bom que já utiliza! Me conta: vocês ainda pagam mensalidade por esse sistema ou já possuem um app profissional próprio da empresa? 😊',
             'lead_id': lead_id,
         })
         self.assertTrue(saved['applied'])
@@ -260,7 +262,10 @@ class FlowStudioTests(unittest.TestCase):
         self.assertEqual('dialogue', execute('flowState', {})['history'][0]['source'])
 
         first = execute('draft', {'id': lead_id, 'browser_history': history})
-        self.assertEqual('Qual sistema vocês usam hoje?', first)
+        self.assertEqual(
+            'Que bom que já utiliza! Me conta: vocês ainda pagam mensalidade por esse sistema ou já possuem um app profissional próprio da empresa? 😊',
+            first,
+        )
 
         updated = execute('flowTeach', {
             'message': 'Já uso o sistema X aqui.',
@@ -275,7 +280,7 @@ class FlowStudioTests(unittest.TestCase):
             execute('draft', {'id': lead_id, 'browser_history': history}),
         )
         templates = execute('responseLibrary', {})
-        self.assertEqual(1, len([item for item in templates if item.get('custom')]))
+        self.assertEqual(2, len([item for item in templates if item.get('custom')]))
 
     def test_teach_short_message_matches_exactly(self):
         lead_id = execute('create', {'name': 'Clínica Teste', 'contact': 'clinica.teste'})

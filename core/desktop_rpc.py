@@ -1060,6 +1060,10 @@ def execute(command, args):
                     re.I,
                 ):
                     return 'Oi! Posso enviar agora o link para ativar os 3 meses grátis? 😊'
+            # Quando o lead apenas confirma ("sim") que usa algum app, pergunte
+            # qual sistema usa (fluxo de descoberta sem objeção de mensalidade).
+            if latest_user and re.fullmatch(r'(?:sim|s[ií])[.! 😊]*', latest_user.strip(), re.I) and previous_assistant and re.search(r'\b(?:app|aplicativo|programa|sistema|gest[aã]o)\b', previous_assistant, re.I):
+                return 'Que bom! Qual app ou programa vocês usam hoje para organizar a gestão?'
             # Ajustes aprovados pelo operador no Estúdio de fluxos ou direto no
             # balão da conversa têm prioridade sobre o roteiro genérico, mas
             # nunca sobre as regras de segurança, cobrança, humano e reclamação
@@ -1281,7 +1285,13 @@ def execute(command, args):
                 return (f'Entendi, vocês usam o {product} 👍 '
                         'O que mais pesa hoje no uso dele: agenda, prontuários, coordenação da equipe ou financeiro?')
             if history and history[-1][0]=='user' and latest_user and __import__('re').search(r'\b(usamos|uso|utilizamos|sistema|app|programa)\b',latest_user.casefold()):
-                return 'Entendi! Posso comparar rapidamente as funcionalidades de agenda e financeiro com o ERP Clínica TEA e, se fizer sentido para vocês, te envio o link para começar os 3 meses grátis. Quer que eu te mostre?'
+                # Quando o lead confirma que já usa um sistema, trate como objeção
+                # antes do fallback genérico de comparação.
+                if re.search(r'\b(?:j[aá]\s*uso|j[aá]\s*usamos|j[aá]\s*usei|j[aá]\s*utilizo)\b', latest_user, re.I):
+                    return ('Que bom que já utiliza! Me conta: vocês ainda pagam mensalidade por esse sistema ou já possuem um app profissional próprio da empresa? 😊'
+                            + BROWSER_BUBBLE_SEPARATOR
+                            + 'Dependendo da resposta, posso mostrar como o ERP Clínica TEA pode complementar ou substituir o que vocês usam hoje.')
+                return 'Entendi! Posso comparar rapidamente as funcionalidades de agenda e financeiro com o ERP Clínica TEA e, se fizer sentido para vocês, te envia o link para começar os 3 meses grátis. Quer que eu te mostre?'
             if (latest_user and re.search(r'\b(que legal|bacana|interessante|gostei|adorei)\b',latest_user,re.I)):
                 return ('Fico feliz que tenha gostado! '
                         'Vocês usam algum app ou programa para organizar os atendimentos hoje?')

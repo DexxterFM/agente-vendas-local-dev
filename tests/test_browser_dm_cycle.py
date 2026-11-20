@@ -275,7 +275,7 @@ class BrowserDmCycleTests(unittest.TestCase):
             os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}
         ):
             lead_id = execute("create", {"name": "Clínica teste", "contact": "clinica.teste"})
-            for text in ("Não", "Ainda não", "Nunca", "Estava procurando", "Já usei mas não uso mais"):
+            for text in ("Não", "Ainda não", "Nunca", "Estava procurando"):
                 answer = execute("draft", {
                     "id": lead_id,
                     "browser_history": [
@@ -285,6 +285,17 @@ class BrowserDmCycleTests(unittest.TestCase):
                 })
                 self.assertIn("salvar muitas horas", answer, text)
                 self.assertIn("consultório individual", answer, text)
+
+            # "Já usei mas não uso mais" trata como objeção de uso prévio
+            answer = execute("draft", {
+                "id": lead_id,
+                "browser_history": [
+                    {"role": "assistant", "text": "Já utiliza algum app para a gestão?"},
+                    {"role": "user", "text": "Já usei mas não uso mais"},
+                ],
+            })
+            self.assertIn("mensalidade", answer)
+            self.assertIn("app profissional", answer)
 
     def test_no_after_comparison_offer_uses_previous_message_context(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(
