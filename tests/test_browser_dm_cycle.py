@@ -502,6 +502,35 @@ class BrowserDmCycleTests(unittest.TestCase):
             self.assertIn("3 meses grátis", individual_link)
             self.assertEqual(5, len(individual_link.split(BROWSER_BUBBLE_SEPARATOR)))
 
+    def test_operator_message_context_drives_price_and_activation_flow(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}
+        ):
+            lead_id = execute("create", {"name": "Clínica teste", "contact": "clinica.teste"})
+
+            # Operador (outgoing → assistant) enviou o link; cliente ativou.
+            activation = execute("draft", {
+                "id": lead_id,
+                "browser_history": [
+                    {"role": "assistant", "text": "Seu link de instalação: https://erpclinicatea.com/login/admin?convite_tres_meses=1"},
+                    {"role": "user", "text": "Já ativei, deu certo!"},
+                ],
+            })
+            self.assertIn("ativação", activation.lower())
+            self.assertIn("pronto", activation.lower())
+
+            # Operador falou de mensalidade; cliente pergunta o preço.
+            price = execute("draft", {
+                "id": lead_id,
+                "browser_history": [
+                    {"role": "assistant", "text": "Temos um teste gratuito, sem mensalidade por enquanto."},
+                    {"role": "user", "text": "Qual é o preço depois dos 3 meses?"},
+                ],
+            })
+            # payment_concern captura "depois dos 3 meses", então validamos o
+            # roteiro de cobrança aprovado, sem cobrança automática.
+            self.assertIn("cobrança automática", price.lower())
+
     def test_persona_answers_name_and_location(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(
             os.environ, {"SALES_AGENT_DB": str(Path(folder) / "agent.sqlite3")}

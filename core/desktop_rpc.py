@@ -198,6 +198,40 @@ def _free_app_offer(memory):
             + BROWSER_BUBBLE_SEPARATOR
             + phrase('free-app-offer-2'))
 
+def _phrase_from_library(memory, template_id, default):
+    """Busca um texto editável na biblioteca de fluxos, com fallback aprovado."""
+    try:
+        saved = {
+            str(item.get('id') or ''): str(item.get('response') or '').strip()
+            for item in _response_templates(memory) if isinstance(item, dict)
+        }
+        return (saved.get(template_id) or default)[:1200]
+    except Exception:
+        return default[:1200]
+
+
+def _activation_confirmation_reply(memory):
+    """Fluxo de pós-ativação enviado quando o cliente confirma que ativou."""
+    return _phrase_from_library(
+        memory,
+        'install-activation-congratulations',
+        'Parabéns pela ativação! Seu app está pronto para uso. Se tiver dúvidas, entre em contato pelo WhatsApp de assistência: 51 8054-2244. Estamos à disposição!',
+    )
+
+
+def _price_reply(memory):
+    """Condições comerciais aprovadas quando o cliente pergunta preço/valor."""
+    return (
+        'O ERP Clínica TEA tem um período de teste gratuito de 3 meses. 😊'
+        + BROWSER_BUBBLE_SEPARATOR
+        + _phrase_from_library(
+            memory,
+            'install-security',
+            'É uma ativação segura: seus dados são criptografados, sem uso de cartão e sem dados bancários.',
+        )
+    )
+
+
 def _mentions_free_app(text):
     """Reconhece quem usa aplicativo gratuito para gestão."""
     text = str(text or '')
@@ -1064,6 +1098,29 @@ def execute(command, args):
                     + BROWSER_BUBBLE_SEPARATOR
                     + 'Nosso compromisso é atender você com excelência, para que tenha uma experiência realmente transformadora na forma de administrar sua clínica. 😊'
                 )
+            # Confirmação de ativação: o cliente ativou o token/link enviado
+            # (pelo agente ou pelo operador no celular). Envia o fluxo de
+            # pós-ativação aprovado.
+            activation_confirm = bool(latest_user and re.search(
+                r'\b(?:j[aá]\s*(?:ativei|ativado|consegui|instalei|fiz o cadastro)|ativei|ativado|consegui ativar|instalei|j[aá]\s*estou usando|deu certo|funcionou)\b',
+                latest_user,
+                re.I,
+            ))
+            link_or_token_context = bool(previous_assistant and re.search(
+                r'\b(?:link|token|ativar|instala[cç][aã]o|3 meses|c[oó]digo)\b',
+                previous_assistant,
+                re.I,
+            ))
+            if activation_confirm and (link_or_token_context or memory.get_setting('sales.agent.trial_segment:'+str(int(args['id'])), '')):
+                return _activation_confirmation_reply(memory)
+            # Pergunta de preço/valor: condições aprovadas do teste gratuito.
+            price_question = bool(latest_user and re.search(
+                r'\b(?:pre[çc]o|valor|quanto custa|quanto (?:fica|sai)|plano pago|assinar|mensalidade|taxa|gr[aá]tis mesmo|\b3 meses\b.*\bcusta)\b',
+                latest_user,
+                re.I,
+            ) and not payment_concern)
+            if price_question:
+                return _price_reply(memory)
             # Quem usa app gratuito recebe a oferta aprovada pelo operador.
             # Este ramo vem antes do match livre para que uma edição salva com
             # match amplo não devolva apenas um dos dois balões da oferta.
