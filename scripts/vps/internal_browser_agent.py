@@ -40,24 +40,36 @@ NOTIFICATION_SCAN_COOLDOWN_SECONDS = 300
 # não executa nenhuma ação que consulte o Instagram.
 RATE_LIMIT_PAUSE_MIN = 15
 RATE_LIMIT_PAUSE_MAX = 30
+# Depois que a pausa expira, aguarda este cooldown antes de aceitar uma nova
+# detecção. A página do Instagram pode continuar exibindo a mensagem de erro
+# mesmo após o bloqueio ter passado; sem o cooldown o texto antigo dispara uma
+# nova pausa em loop e o agente nunca volta a operar.
+RATE_LIMIT_RECHECK_COOLDOWN = 60
 _rate_limit_paused_until: float = 0.0
+_rate_limit_recheck_after: float = 0.0
 
 
 def _is_rate_limited_paused() -> bool:
     """Retorna True se o agente está em pausa por rate limit do Instagram."""
-    global _rate_limit_paused_until
+    global _rate_limit_paused_until, _rate_limit_recheck_after
     if _rate_limit_paused_until > 0 and time.time() < _rate_limit_paused_until:
         return True
     if _rate_limit_paused_until > 0:
+        # A pausa acabou de expirar: limpa o estado e abre a janela de rechecagem.
         _rate_limit_paused_until = 0.0
+        _rate_limit_recheck_after = time.time() + RATE_LIMIT_RECHECK_COOLDOWN
     return False
 
 
 def _set_rate_limit_pause() -> None:
     """Define uma pausa de 15-30 min quando o Instagram retorna HTTP 429."""
-    global _rate_limit_paused_until
+    global _rate_limit_paused_until, _rate_limit_recheck_after
+    # Respeita o cooldown pós-pausa: não reinicia a contagem por texto antigo.
+    if _rate_limit_recheck_after > time.time():
+        return
     pause_seconds = random.uniform(RATE_LIMIT_PAUSE_MIN * 60, RATE_LIMIT_PAUSE_MAX * 60)
     _rate_limit_paused_until = time.time() + pause_seconds
+    _rate_limit_recheck_after = 0.0
     print(f"[RATE_LIMIT] Instagram bloqueou o IP (HTTP 429). Pausa de {pause_seconds/60:.0f} min.", flush=True)
 
 
@@ -1780,6 +1792,15 @@ def _browser_ready() -> tuple[bool, str]:
         return False, "browser-offline"
     if not status.get("running"):
         return False, "browser-offline"
+    # Se a pausa acabou de expirar, navegue para a home para limpar a mensagem
+    # de erro 429 que ficou presa na página. Sem isso, o texto antigo seria
+    # relido como um novo bloqueio e reiniciaria a pausa em loop.
+    if _rate_limit_recheck_after > time.time():
+        try:
+            browser.action({"kind": "navigate", "url": HOME_URL})
+            _wait(1.5)
+        except browser.InternalBrowserError:
+            pass
     try:
         login = browser.login_state()
     except browser.InternalBrowserError:

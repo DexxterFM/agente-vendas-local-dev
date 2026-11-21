@@ -603,11 +603,14 @@ def login_state() -> dict[str, Any]:
     """
     def run(page: DevTools):
         page.call("Runtime.enable")
-        # Sonda same-origin: um único fetch ao endpoint que o Instagram limita.
-        # Cada chamada RPC abre uma conexão DevTools nova, então eventos de Log
-        # passados não são confiáveis; o fetch devolve o status atual direto.
+        # IMPORTANTE: não fazer `fetch` ao Instagram aqui. O painel chama
+        # internalBrowserFrame a cada ~1.2s, e uma sonda same-origin gerava
+        # ~50 requisições/minuto ao endpoint já limitado, mantendo o HTTP 429
+        # ativo para sempre. A detecção usa somente o DOM da página já aberta:
+        # o próprio Instagram exibe "too many requests"/"bloqueado" quando o
+        # IP está bloqueado. Nenhuma requisição de rede é gerada.
         value = page.call("Runtime.evaluate", {
-            "expression": r'''(async()=>{
+            "expression": r'''(()=>{
               const path=location.pathname.toLowerCase();
               const text=(document.body?.innerText||'').toLowerCase();
               const inputs=[...document.querySelectorAll('input')].map(e=>(e.type+' '+(e.placeholder||'')+' '+(e.getAttribute('aria-label')||'')).toLowerCase());
@@ -616,18 +619,13 @@ def login_state() -> dict[str, Any]:
               const hasChallenge=/challenge|checkpoint|two_factor|two_step|verification|confirm/.test(path);
               const hasLoginForm=/accounts\/login|accounts\/password|\/login/.test(path)||hasPassword;
               const authenticated=/\/direct\/|\/direct\/inbox|\/inbox/.test(path)||(document.querySelector('a[href*="/direct/inbox"]')&&!hasLoginForm);
-              const blocked=/too many requests|rate limit|try again later|bloquead|suspicious|spam/.test(text);
-              let probe=0;
-              try{
-                const r=await fetch('/accounts/login/',{credentials:'same-origin',cache:'no-store'});
-                probe=r.status;
-              }catch(e){probe=-1;}
-              return {path:location.pathname,hasOneTap:!!hasOneTap,hasChallenge:!!hasChallenge,hasLoginForm:!!hasLoginForm,authenticated:!!authenticated,blockedText:!!blocked,probe:probe};
+              const blocked=/too many requests|rate limit|try again later|bloquead|suspicious|spam|429/.test(text);
+              return {path:location.pathname,hasOneTap:!!hasOneTap,hasChallenge:!!hasChallenge,hasLoginForm:!!hasLoginForm,authenticated:!!authenticated,blockedText:!!blocked};
             })()''',
             "returnByValue": True,
-            "awaitPromise": True,
+            "awaitPromise": False,
         }).get("result", {}).get("value") or {}
-        rate_limited = int(value.get("probe") or 0) == 429
+        rate_limited = bool(value.get("blockedText"))
         state = "unknown"
         if value.get("authenticated"):
             state = "authenticated"
@@ -637,13 +635,12 @@ def login_state() -> dict[str, Any]:
             state = "login_form"
         elif value.get("hasOneTap"):
             state = "profile_confirmation"
-        if rate_limited or value.get("blockedText"):
+        if rate_limited:
             state = "rate_limited"
         return {
             "state": state,
             "path": str(value.get("path") or "")[:200],
             "rate_limited": bool(rate_limited),
-            "probe": int(value.get("probe") or 0),
             "one_tap": bool(value.get("hasOneTap")),
             "challenge": bool(value.get("hasChallenge")),
             "login_form": bool(value.get("hasLoginForm")),

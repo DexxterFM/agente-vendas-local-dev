@@ -391,8 +391,7 @@ class InternalBrowserTests(unittest.TestCase):
                         "hasChallenge": False,
                         "hasLoginForm": False,
                         "authenticated": False,
-                        "blockedText": False,
-                        "probe": 429,
+                        "blockedText": True,
                     }}}
                 return {}
 
@@ -402,10 +401,12 @@ class InternalBrowserTests(unittest.TestCase):
 
         self.assertEqual("rate_limited", result["state"])
         self.assertTrue(result["rate_limited"])
-        self.assertEqual(429, result["probe"])
         self.assertTrue(result["one_tap"])
         self.assertNotIn("text", result)
-        self.assertTrue(any("/accounts/login/" in item for item in expressions))
+        # Nenhuma sonda de rede: a detecção é feita somente pelo DOM da página,
+        # para não gerar tráfego que manteria o HTTP 429 ativo.
+        self.assertTrue(all("fetch(" not in item for item in expressions))
+        self.assertTrue(all("/accounts/login/" not in item for item in expressions))
 
     @patch("scripts.vps.internal_browser._with_page")
     def test_login_state_classifies_authenticated_surface(self, with_page):
