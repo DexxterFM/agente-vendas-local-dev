@@ -1635,6 +1635,11 @@ def execute(command, args):
             if command == 'flowHistory': return studio.history(12)
             if command == 'flowLessons': return studio.lessons(8)
             return studio.state()
+        if command == 'flowMap':
+            # Mapa completo do fluxo esperado da interação (estágios, gatilhos,
+            # respostas e interrupções), com o texto editável anexado.
+            from core.flow_map import build_flow_map
+            return build_flow_map(_response_templates(memory))
         if command == 'flowChat':
             studio = FlowStudio(memory)
             kwargs = {}
