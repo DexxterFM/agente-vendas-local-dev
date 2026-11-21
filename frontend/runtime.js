@@ -55,7 +55,7 @@ async function vpsInternalBrowserView(){
  const renderFrame=frame=>{
    const state=frame.status||{},visual=frame.visual||{},image=frame.image||{},login=frame.login||{},list=(frame.targets||{}).targets||[];
    layout.style.gridTemplateColumns='minmax(0,1fr) 250px';inputForm.hidden=false;stage.style.minHeight='520px';screen.style.minWidth='760px';
-   if(!state.running){status.textContent='Navegador interno indisponível';status.style.color='';return;}
+   if(!state||state.running===false){if(!state){if(!screen.dataset.stableFrame)status.textContent='Lendo a sessão interna…';return;}status.textContent='Navegador interno indisponível';status.style.color='';return;}
    const options=list.map(t=>`<option value="${safe(t.id)}" ${t.selected?'selected':''}>${safe(t.title||'Janela')} · ${safe(t.url||'')}${t.verification?' · verificação':''}</option>`).join('');
    if(picker&&picker.innerHTML!==options)picker.innerHTML=options;
    const selected=list.find(t=>t.selected)||null;
@@ -65,15 +65,46 @@ async function vpsInternalBrowserView(){
    if(!image||!image.png||Number(image.width)<200||Number(image.height)<200){if(!screen.dataset.stableFrame)status.textContent='Aguardando a imagem da sessão interna';return;}
    screen.dataset.remoteWidth=String(Number(image.width)||1280);
    screen.dataset.remoteHeight=String(Number(image.height)||800);
-   const stamp=String(image.png.length)+':'+String(image.width)+'x'+String(image.height);
-   if(screen.dataset.frameHash!==stamp){screen.src='data:image/png;base64,'+image.png;screen.dataset.frameHash=stamp;}
+   // Assinatura do quadro: amostra do conteúdo, não só o tamanho. Dois quadros
+   // diferentes podem ter exatamente o mesmo número de bytes num PNG estável,
+   // e a tela ficava congelada exibindo a página anterior (parecia "sem
+   // navegação"). A amostra pega início, meio e fim do base64.
+   const png=String(image.png),len=png.length,mid=len>>1;
+   const stamp=len+':'+png.slice(0,64)+':'+png.slice(mid,mid+64)+':'+png.slice(-64);
+   if(screen.dataset.frameHash!==stamp){screen.src='data:image/png;base64,'+png;screen.dataset.frameHash=stamp;}
    screen.dataset.stableFrame='true';
+ };
+ const legacyFrame=async()=>{
+   const out={};
+   out.status=await call('internalBrowserStatus').catch(()=>null);
+   if(!out.status||!out.status.running)return out;
+   out.visual=await call('internalBrowserVisualState').catch(()=>({}));
+   out.image=await call('internalBrowserScreenshot').catch(()=>null);
+   out.targets=await call('internalBrowserTargets').catch(()=>({targets:[]}));
+   out.login=await call('internalBrowserLoginState').catch(()=>({}));
+   return out;
+ };
+ // O quadro único (internalBrowserFrame) mantém imagem e clique no mesmo
+ // instante, mas é um comando novo no RPC. Se o serviço da VPS ainda estiver
+ // rodando a versão antiga (frontend copiado, core não), ele responde
+ // "Comando inválido" e a tela ficava vazia. Aqui há retrocesso automático
+ // para as cinco chamadas isoladas, então a navegação nunca desaparece.
+ let frameMode='single';
+ const loadFrame=async()=>{
+   if(frameMode==='single'){
+     try{return await call('internalBrowserFrame');}
+     catch(error){frameMode='legacy';}
+   }
+   return legacyFrame();
  };
  const refresh=async()=>{
    if(refreshing||disposed||!document.body.contains(screen))return;
    refreshing=true;
-   try{renderFrame(await call('internalBrowserFrame'));}
-   catch(error){status.textContent=error&&error.message?error.message:'Falha ao ler a sessão interna';}
+   try{renderFrame(await loadFrame());}
+   catch(error){
+     // Mantém o último quadro bom em vez de apagar a sessão da tela.
+     if(!screen.dataset.stableFrame)status.textContent=error&&error.message?error.message:'Falha ao ler a sessão interna';
+   }
    finally{refreshing=false;}
  };
  const settled=new Set(['navigate','back','forward','reload']);
