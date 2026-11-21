@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:radial-gradient(circle at 75% -10%,#12324a 0,transparent 45%),#07111f;color:#eff6ff;font:13px 'Segoe UI',Arial,sans-serif;padding:34px 40px;width:1280px}
+  .head{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:1px solid #203551;padding-bottom:18px;margin-bottom:26px}
+  .head h1{font:700 27px 'Segoe UI';letter-spacing:-.5px}.head h1 span{color:#16d8d2}
+  .head .sub{color:#8b9bb0;font-size:12px;margin-top:6px}
+  .stats{display:flex;gap:26px}.stat{text-align:center}.stat b{display:block;font:700 24px 'Segoe UI';color:#6effef}.stat span{font-size:9px;color:#8b9bb0;text-transform:uppercase;letter-spacing:.08em}
+  .flow{display:grid;gap:0}
+  .stage{display:grid;grid-template-columns:56px 1fr;gap:16px}
+  .rail{display:flex;flex-direction:column;align-items:center}
+  .num{width:38px;height:38px;border-radius:50%;border:2px solid #16d8d2;background:#0a1c2b;color:#6effef;display:grid;place-items:center;font:700 15px 'Segoe UI';box-shadow:0 0 16px #16d8d255;flex-shrink:0}
+  .line{flex:1;width:2px;background:linear-gradient(180deg,#16d8d2,#153047);min-height:30px;margin:5px 0}
+  .card{border:1px solid #29405a;border-radius:14px;background:linear-gradient(135deg,#0d1c2d,#0a1624);padding:15px 18px;margin-bottom:14px}
+  .top{display:flex;justify-content:space-between;align-items:flex-start}
+  .label{font-size:9px;letter-spacing:.1em;color:#6effef;text-transform:uppercase}
+  .card h3{font:700 17px 'Segoe UI';margin:3px 0 0}
+  .stageid{font:10px monospace;color:#8b9bb0;background:#08131f;border:1px solid #1f3350;border-radius:6px;padding:3px 8px}
+  .obj{color:#b9c8d8;font-size:11.5px;line-height:1.5;margin:9px 0 12px}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .block h4{font-size:9px;text-transform:uppercase;letter-spacing:.07em;color:#8b9bb0;margin-bottom:7px}
+  .bubble{background:#0a2230;border-left:3px solid #16d8d2;border-radius:0 8px 8px 0;padding:6px 10px;color:#d8e8f2;font-size:11px;line-height:1.4;margin-bottom:5px}
+  .wait{color:#cfdce8;font-size:11px;line-height:1.45}
+  .wait b{color:#ffb52d}
+  .trans{background:#08151f;border:1px solid #1b2f45;border-radius:7px;padding:5px 8px;font-size:10px;margin-bottom:4px;display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+  .intent{color:#a88aff;font-weight:700}.trig{color:#ffb52d}.next{color:#3ee48c;font-weight:700}.act{color:#6effef;background:#0a2c38;border-radius:5px;padding:1px 6px;font-size:9px}
+  .inter{margin-top:10px}
+  .inter h2{font:700 16px 'Segoe UI';margin-bottom:10px}
+  .igrid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+  .icard{border:1px solid #3a2a52;border-radius:12px;background:#120e22;padding:13px}
+  .icard strong{font-size:12px;color:#f0e6ff;display:block;margin-bottom:4px}
+  .icard .bubble{border-left-color:#a88aff;background:#1a1330;color:#e6d9ff;font-size:10px}
+  .foot{margin-top:20px;border-top:1px solid #203551;padding-top:12px;color:#5f7f96;font-size:10px;display:flex;justify-content:space-between}
+</style>
+</head>
+<body>
+<div class="head">
+  <div><h1>🗺 Mapa do <span>Fluxo de Diálogo</span></h1><div class="sub">Agente de Vendas Local · ERP Clínica TEA · interação esperada do cliente entre cada etapa</div></div>
+  <div class="stats"><div class="stat"><b>6</b><span>etapas</span></div><div class="stat"><b>12</b><span>transições</span></div><div class="stat"><b>4</b><span>interrupções</span></div></div>
+</div>
+<div class="flow">
+
+  <div class="stage"><div class="rail"><div class="num">1</div><div class="line"></div></div><div class="card">
+    <div class="top"><div><div class="label">ETAPA 1</div><h3>Abertura / Presente</h3></div><span class="stageid">OPENING</span></div>
+    <p class="obj">Agradecer o seguir e despertar interesse com um presente, sem revelar a oferta antes do interesse.</p>
+    <div class="cols"><div class="block"><h4>O que o agente envia</h4><div class="bubble">Obrigado por seguir! Parabéns pelo trabalho da clínica! Tenho um presente para a sua equipe. Diga "eu quero" que te mando para você. 😊</div></div>
+    <div class="block"><h4>O que espera / para onde avança</h4><p class="wait"><b>Espera:</b> o cliente manifestar interesse.</p><div class="trans"><span class="intent">eu quero</span><span class="trig">sim · claro · manda</span><span class="next">→ EDITION_SELECT</span></div></div></div>
+  </div></div>
+
+  <div class="stage"><div class="rail"><div class="num">2</div><div class="line"></div></div><div class="card">
+    <div class="top"><div><div class="label">ETAPA 2</div><h3>Descoberta / Qualificação</h3></div><span class="stageid">DISCOVERY</span></div>
+    <p class="obj">Entender se a pessoa usa algum sistema, se é clínica com equipe ou atendimento individual.</p>
+    <div class="cols"><div class="block"><h4>O que o agente envia</h4><div class="bubble">Você merece! Me conta: já possui algum app para a gestão da sua clínica? 😊</div><div class="bubble">Tudo bem! Por acaso vocês já usam algum app ou programa para a gestão?</div></div>
+    <div class="block"><h4>Transições</h4><div class="trans"><span class="intent">não uso</span><span class="next">→ OFFER</span></div><div class="trans"><span class="intent">já uso</span><span class="next">→ DISCOVERY</span></div><div class="trans"><span class="intent">clínica / equipe</span><span class="next">→ OFFER</span></div><div class="trans"><span class="intent">individual / sozinho</span><span class="next">→ OFFER</span></div></div></div>
+  </div></div>
+
+  <div class="stage"><div class="rail"><div class="num">3</div><div class="line"></div></div><div class="card">
+    <div class="top"><div><div class="label">ETAPA 3</div><h3>Apresentação / Oferta</h3></div><span class="stageid">OFFER</span></div>
+    <p class="obj">Apresentar o ERP Clínica TEA e os 3 meses grátis, conduzindo à escolha da edição.</p>
+    <div class="cols"><div class="block"><h4>O que o agente envia</h4><div class="bubble">Chegou o momento de conhecer algo que pode salvar muitas horas do seu dia. 😊</div><div class="bubble">Você atende em clínica com equipe ou em consultório individual?</div></div>
+    <div class="block"><h4>Transição</h4><div class="trans"><span class="intent">eu quero / pode enviar</span><span class="next">→ EDITION_SELECT</span></div></div></div>
+  </div></div>
+
+  <div class="stage"><div class="rail"><div class="num">4</div><div class="line"></div></div><div class="card">
+    <div class="top"><div><div class="label">ETAPA 4</div><h3>Escolha da Edição</h3></div><span class="stageid">EDITION_SELECT</span></div>
+    <p class="obj">Confirmar se é versão Profissional (individual) ou Multiprofissional (clínica com equipe).</p>
+    <div class="cols"><div class="block"><h4>O que o agente envia</h4><div class="bubble">Perfeito! Para eu gerar seu acesso gratuito de 3 meses, seu atendimento é individual (Profissional) ou clínica com equipe (Multiprofissional)?</div></div>
+    <div class="block"><h4>Transições</h4><div class="trans"><span class="intent">clínica / equipe</span><span class="next">→ TOKEN_SENT</span><span class="act">gerar token Multi</span></div><div class="trans"><span class="intent">profissional / sozinho</span><span class="next">→ TOKEN_SENT</span><span class="act">gerar token Pro</span></div></div></div>
+  </div></div>
+
+  <div class="stage"><div class="rail"><div class="num">5</div><div class="line"></div></div><div class="card">
+    <div class="top"><div><div class="label">ETAPA 5</div><h3>Link + Token + Avisos</h3></div><span class="stageid">TOKEN_SENT</span></div>
+    <p class="obj">Entregar o link, o código de ativação e os avisos em bolhas separadas, com pausa entre elas.</p>
+    <div class="cols"><div class="block"><h4>Bolhas enviadas (separadas)</h4><div class="bubble">Perfeito! A versão escolhida é a ideal para você.</div><div class="bubble">Seu link de instalação: https://erpclinicatea.com/login/admin?...</div><div class="bubble">Seu código de ativação: ERPDEMO-XXXX-xxxx-xxxx</div><div class="bubble">Aviso: válido por 3 dias 😢</div><div class="bubble">Ativação segura · dados criptografados · sem cartão</div><div class="bubble">Suporte · WhatsApp 51 8054-2244</div></div>
+    <div class="block"><h4>Transições</h4><div class="trans"><span class="intent">ativei / instalei</span><span class="next">→ POST_ACTIVATION</span></div><div class="trans"><span class="intent">obrigado</span><span class="next">→ TOKEN_SENT</span></div><div class="trans"><span class="intent">preço / valor</span><span class="next">→ TOKEN_SENT</span></div></div></div>
+  </div></div>
+
+  <div class="stage"><div class="rail"><div class="num">6</div></div><div class="card">
+    <div class="top"><div><div class="label">ETAPA 6</div><h3>Pós-ativação</h3></div><span class="stageid">POST_ACTIVATION</span></div>
+    <p class="obj">Agradecer e manter o suporte disponível após a ativação.</p>
+    <div class="block"><h4>O que o agente envia</h4><div class="bubble">Parabéns pela ativação! Seu app está pronto para uso. Dúvidas? WhatsApp 51 8054-2244.</div></div>
+  </div></div>
+
+</div>
+
+<div class="inter">
+  <h2>⚡ Interrupções globais <span style="color:#8b9bb0;font-weight:400;font-size:11px">— ocorrem em qualquer etapa e sobrepõem o roteiro</span></h2>
+  <div class="igrid">
+    <div class="icard"><strong>Não tenho interesse / parar</strong><span class="intent" style="font-size:9px">OPT_OUT</span><p class="wait">"não quero · pare de mandar · tirar da lista"</p><div class="bubble">Sem problemas! Agradeço a atenção e desejo sucesso nos atendimentos.</div></div>
+    <div class="icard"><strong>Falar com humano / reclamação</strong><span class="intent" style="font-size:9px">HUMAN_HANDOFF</span><p class="wait">"atendente · humano · reclamação · urgente"</p><div class="bubble">Entendi! Direcionando para um especialista humano.</div></div>
+    <div class="icard"><strong>Financeiro / cobrança</strong><span class="intent" style="font-size:9px">BILLING_FLOW</span><p class="wait">"boleto · pix · fatura · pagar · cartão"</p><div class="bubble">Não realizamos cobranças automáticas. Nossa equipe financeira valida tudo com você.</div></div>
+    <div class="icard"><strong>Parceria / divulgação</strong><span class="intent" style="font-size:9px">PARTNERSHIP</span><p class="wait">"parceria · divulgação · afiliado · patrocínio"</p><div class="bubble">Que legal! Vou encaminhar seu perfil para nossa área comercial.</div></div>
+  </div>
+</div>
+<div class="foot"><span>Agente de Vendas Local · mapa derivado do código real (SalesFlowEngine + FlowStudio)</span><span>Atualizado 21/11/2026</span></div>
+</body>
+</html>
