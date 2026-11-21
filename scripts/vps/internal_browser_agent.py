@@ -609,7 +609,7 @@ def _send_overlay_bubble(text: str) -> dict[str, Any]:
         # anterior em vez de duplicar a mensagem.
         _clear_composer()
         return {"sent": True, "method": "overlay-already-present"}
-    _wait(.15 + random.random() * .25)
+    _wait(.7 + random.random() * 1.2)
     existing = _page("(()=>{const e=document.activeElement;return String(e?.value||e?.innerText||e?.textContent||'').trim()})()")
     if existing:
         _clear_composer()
@@ -623,12 +623,12 @@ def _send_overlay_bubble(text: str) -> dict[str, Any]:
     # Envio apenas pela tecla Enter do teclado de acessibilidade: nenhum
     # clique no botão visual de enviar.
     browser.action({"kind": "key", "key": "Enter"})
-    _wait(.28)
+    _wait(1.0 + random.random() * 1.5)
     still_draft = _page("(()=>{const e=document.activeElement;return (e?.value||e?.innerText||e?.textContent||'').trim()})()")
     if str(still_draft or "").strip() == composer_text:
         browser.action({"kind": "key", "key": "Enter"})
     for _ in range(12):
-        _wait(.5)
+        _wait(1.0 + random.random() * 1.0)
         if str(_page("location.href") or "") != url:
             raise browser.InternalBrowserError("Conversa mudou antes da confirmação")
         state = _overlay_state(composer_text)
@@ -1208,7 +1208,7 @@ def _send_bubble(text: str, expected_url: str) -> dict[str, Any]:
         raise browser.InternalBrowserError("Conversa mudou antes da preparação do envio")
     _focus_composer()
     before = _message_count(composer_text)
-    _wait(.15 + random.random() * .25)
+    _wait(.7 + random.random() * 1.2)
     existing = _page("(()=>{const e=document.activeElement;return String(e?.value||e?.innerText||e?.textContent||'').trim()})()")
     if existing:
         _clear_composer()
@@ -1222,7 +1222,7 @@ def _send_bubble(text: str, expected_url: str) -> dict[str, Any]:
     # Envio apenas pela tecla Enter do teclado de acessibilidade: nenhum
     # clique no botão visual de enviar.
     browser.action({"kind": "key", "key": "Enter"})
-    _wait(.28)
+    _wait(1.0 + random.random() * 1.5)
     still_draft = _page("(()=>{const e=document.activeElement;return (e?.value||e?.innerText||e?.textContent||'').trim()})()")
     if str(still_draft or "").strip() == composer_text:
         # Reidratação da interface pode perder o primeiro Enter. Repete a

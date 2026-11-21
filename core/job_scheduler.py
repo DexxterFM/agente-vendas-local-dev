@@ -20,10 +20,10 @@ MAX_IDLE_CYCLES = 2
 
 
 HUMAN_LIMITS = {
-    "follow": {"per_hour": 15, "per_day": 90, "min_interval_sec": 45, "max_interval_sec": 110},
-    "prospect_dm": {"per_hour": 10, "per_day": 50, "min_interval_sec": 90, "max_interval_sec": 210, "active_hours": (8, 20)},
-    "comment": {"per_hour": 6, "per_day": 30, "min_interval_sec": 120, "max_interval_sec": 300},
-    "dm_reply": {"per_hour": 45, "per_day": 300, "min_interval_sec": 8, "max_interval_sec": 22},
+    "follow": {"per_hour": 8, "per_day": 40, "min_interval_sec": 120, "max_interval_sec": 300},
+    "prospect_dm": {"per_hour": 6, "per_day": 30, "min_interval_sec": 180, "max_interval_sec": 420, "active_hours": (8, 20)},
+    "comment": {"per_hour": 4, "per_day": 20, "min_interval_sec": 240, "max_interval_sec": 600},
+    "dm_reply": {"per_hour": 15, "per_day": 60, "min_interval_sec": 60, "max_interval_sec": 180, "active_hours": (8, 22)},
 }
 
 

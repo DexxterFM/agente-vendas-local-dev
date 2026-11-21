@@ -34,7 +34,7 @@ def stop(*_args):
 
 
 def main() -> None:
-    interval = max(10, min(300, int(os.getenv("SALES_AGENT_CYCLE_SECONDS", "30"))))
+    interval = max(30, min(600, int(os.getenv("SALES_AGENT_CYCLE_SECONDS", "90"))))
     auto_dispatch = os.getenv("SALES_AGENT_AUTO_DISPATCH", "false").strip().lower() == "true"
     postflow_sync = os.getenv("POSTFLOW_SYNC_ENABLED", "false").strip().lower() == "true"
     postflow_interval = max(30, min(900, int(os.getenv("POSTFLOW_SYNC_INTERVAL_SECONDS", "90"))))
