@@ -1333,25 +1333,29 @@ def _process_thread(source: str) -> dict[str, Any]:
             pass
         sent = []
         bubbles = [item.strip() for item in BUBBLE_SPLIT.split(str(cycle["text"])) if item.strip()]
-        # Enviar APENAS a primeira bolha por ciclo. As demais bolhas do draft
-        # ficam para o próximo ciclo, quando o cliente responder. Isso evita
-        # o agente disparar várias mensagens seguidas sem interação do cliente.
-        if bubbles:
-            first_bubble = bubbles[0]
-            sent.append(_send_bubble(first_bubble, snap["url"]))
-            # Cada bolha enviada é registrada como passo do fluxo no banco dedicado do perfil.
+        # Envia cada frase em uma bolha separada, com pausa entre elas para
+        # parecer comportamento humano e evitar bloqueio do IP pelo Instagram.
+        # O draft de instalação (link + token + avisos) precisa chegar inteiro
+        # ao cliente, porém dividido em partes — nunca como uma mensagem única.
+        for index, bubble in enumerate(bubbles):
+            sent.append(_send_bubble(bubble, snap["url"]))
             try:
                 from core.instagram_profile_memory import infer_flow_step
                 InstagramProfileMemory(_mem).record_sent(
-                    snap["username"], first_bubble,
-                    flow_step=infer_flow_step(first_bubble),
+                    snap["username"], bubble,
+                    flow_step=infer_flow_step(bubble),
                     thread_id=snap["thread_id"],
                 )
             except Exception:
                 pass
+            if index + 1 < len(bubbles):
+                # Pausa de 8 a 18 segundos entre bolhas: longa o suficiente para
+                # não parecer envio mecânico, curta o bastante para a sequência
+                # permanecer coerente na conversa.
+                _wait(8 + random.random() * 10)
         # Registra na memória do perfil que a mensagem foi enviada, respeitando o contexto aprovado.
         try:
-            ProfileMemory(_mem).observe(snap["username"], message=first_bubble if bubbles else '', stage="dm-reply")
+            ProfileMemory(_mem).observe(snap["username"], message=str(cycle["text"]), stage="dm-reply")
             try:
                 from core.job_scheduler import HumanRateLimiter
                 HumanRateLimiter(_mem).record_action("dm_reply")
@@ -1359,10 +1363,7 @@ def _process_thread(source: str) -> dict[str, Any]:
                 pass
         except Exception:
             pass
-    # Confirma apenas a bolha efetivamente enviada (não todo o draft), para
-    # que o dedup por message_key funcione corretamente e o próximo ciclo
-    # gere uma nova resposta baseada no histórico atualizado.
-    execute("browserScreenConfirm", {"message_key": cycle["message_key"], "lead_id": cycle["lead_id"], "text": first_bubble if bubbles else str(cycle["text"]), "thread_id": snap["thread_id"]})
+    execute("browserScreenConfirm", {"message_key": cycle["message_key"], "lead_id": cycle["lead_id"], "text": str(cycle["text"]), "thread_id": snap["thread_id"]})
     return {"processed": True, "replied": True, "source": source, "thread_id": snap["thread_id"], "sent": len(sent)}
 
 
