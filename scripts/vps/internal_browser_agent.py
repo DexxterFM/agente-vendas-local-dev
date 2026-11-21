@@ -35,6 +35,31 @@ _RECENT_UNREAD_TARGETS: dict[str, float] = {}
 _LAST_NOTIFICATION_SCAN = 0.0
 NOTIFICATION_SCAN_COOLDOWN_SECONDS = 300
 
+# Pausa automática quando o Instagram retorna HTTP 429 (rate limit).
+# O IP da VPS fica bloqueado por 15-30 min; durante esse período o agente
+# não executa nenhuma ação que consulte o Instagram.
+RATE_LIMIT_PAUSE_MIN = 15
+RATE_LIMIT_PAUSE_MAX = 30
+_rate_limit_paused_until: float = 0.0
+
+
+def _is_rate_limited_paused() -> bool:
+    """Retorna True se o agente está em pausa por rate limit do Instagram."""
+    global _rate_limit_paused_until
+    if _rate_limit_paused_until > 0 and time.time() < _rate_limit_paused_until:
+        return True
+    if _rate_limit_paused_until > 0:
+        _rate_limit_paused_until = 0.0
+    return False
+
+
+def _set_rate_limit_pause() -> None:
+    """Define uma pausa de 15-30 min quando o Instagram retorna HTTP 429."""
+    global _rate_limit_paused_until
+    pause_seconds = random.uniform(RATE_LIMIT_PAUSE_MIN * 60, RATE_LIMIT_PAUSE_MAX * 60)
+    _rate_limit_paused_until = time.time() + pause_seconds
+    print(f"[RATE_LIMIT] Instagram bloqueou o IP (HTTP 429). Pausa de {pause_seconds/60:.0f} min.", flush=True)
+
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
@@ -1542,6 +1567,30 @@ def cycle(mode: str | None = None) -> dict[str, Any]:
     state = execute("agentStatus", {})
     if not state.get("active"):
         return {"active": False, "browser": "paused"}
+    # Pausa automática por HTTP 429: nenhuma ação consulta o Instagram até
+    # que o bloqueio do IP passe (15-30 min). O login_state detecta o 429 e
+    # dispara _set_rate_limit_pause(); aqui só respeitamos a janela ativa.
+    if _is_rate_limited_paused():
+        remaining = int(_rate_limit_paused_until - time.time())
+        return {
+            "active": True, "browser": "rate-limit-pause", "mode": "sales",
+            "pause_remaining_min": remaining // 60,
+            "reason": f"Instagram HTTP 429: aguardando {remaining // 60} min para evitar bloqueio do IP",
+        }
+    # Sonda o estado de login; se o Instagram acabou de retornar 429, ativa a
+    # pausa agora (antes de qualquer scroll/DM/prospecção neste ciclo).
+    try:
+        login = browser.login_state()
+        if login.get("rate_limited"):
+            _set_rate_limit_pause()
+            remaining = int(_rate_limit_paused_until - time.time())
+            return {
+                "active": True, "browser": "rate-limit-pause", "mode": "sales",
+                "pause_remaining_min": remaining // 60,
+                "reason": f"Instagram HTTP 429 detectado: pausa de {remaining // 60} min",
+            }
+    except browser.InternalBrowserError:
+        pass
     mode_state = execute("browserModeStatus", {})
     current_mode = str(mode or mode_state.get("mode") or "sales").strip().lower()
     if current_mode not in ("sales", "prospecting"):
@@ -1719,6 +1768,11 @@ def _mark_sync() -> None:
 
 
 def _browser_ready() -> tuple[bool, str]:
+    # Se o Instagram já retornou HTTP 429 recentemente, o agente fica em pausa
+    # automática por 15-30 min para evitar bloqueio prolongado do IP.
+    if _is_rate_limited_paused():
+        remaining = int(_rate_limit_paused_until - time.time())
+        return False, f"rate-limit-pause-{remaining // 60}min"
     try:
         status = browser.status()
     except browser.InternalBrowserError:
@@ -1730,6 +1784,11 @@ def _browser_ready() -> tuple[bool, str]:
     except browser.InternalBrowserError:
         login = {}
     state = str(login.get("state") or login.get("status") or "")
+    if login.get("rate_limited"):
+        # IP bloqueado pelo Instagram: ativa pausa automática de 15-30 min.
+        _set_rate_limit_pause()
+        remaining = int(_rate_limit_paused_until - time.time())
+        return False, f"rate-limited-{remaining // 60}min"
     if state in ("rate_limited", "login_form", "challenge", "one_tap", "profile_confirmation"):
         return False, "login-" + state
     if login.get("authenticated") is False and not state:
