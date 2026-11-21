@@ -1567,14 +1567,14 @@ def cycle(mode: str | None = None) -> dict[str, Any]:
         return done({"browser": "offline"})
     # Garante aba única e viewport fixo antes de qualquer interação.
     try:
-        browser.ensure_single_tab_and_viewport(1280, 800)
+        browser.settle_workspace(1280, 800)
     except Exception:
         pass
     # Fecha abas auxiliares acumuladas por navegações de prospecção e links
     # target="_blank" (meta.com/about etc.). Preserva a aba de trabalho e
     # quaisquer abas de verificação de código em uso pelo operador.
     try:
-        closed_tabs = browser.close_auxiliary_tabs()
+        closed_tabs = {"closed": 0}  # settle_workspace já fechou as auxiliares
     except browser.InternalBrowserError:
         closed_tabs = {"closed": 0}
     snap = browser.snapshot()

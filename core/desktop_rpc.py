@@ -1013,6 +1013,12 @@ def execute(command, args):
             height = int(args.get('height', 800))
             ensure_single_tab_and_viewport(width, height)
             return {'ok': True, 'width': width, 'height': height}
+        if command == 'internalBrowserSettleWorkspace':
+            from scripts.vps.internal_browser import settle_workspace
+            return settle_workspace(int(args.get('width', 1280)), int(args.get('height', 800)))
+        if command == 'internalBrowserFrame':
+            from scripts.vps.internal_browser import frame
+            return frame()
         if command == 'internalBrowserHumanClick':
             from scripts.vps.internal_browser import human_click
             human_click(float(args.get('x', 0)), float(args.get('y', 0)))

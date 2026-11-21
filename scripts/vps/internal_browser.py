@@ -11,6 +11,7 @@ import os
 import re
 import socket
 import struct
+import threading
 import time
 import urllib.parse
 import urllib.request
@@ -25,6 +26,12 @@ except ImportError:  # a unidade da VPS instala python3-websocket-client
 
 
 DEBUG_URL = "http://127.0.0.1:9222"
+
+# O painel (HTTP), o worker e o servidor RPC são threads e processos
+# distintos. Cada chamada abre um WebSocket DevTools próprio; sem
+# serialização, eventos de Input de sessões concorrentes se intercalam e o
+# clique cai na aba errada.
+_DEVTOOLS_LOCK = threading.RLock()
 _PRIMARY_HOSTS = {"instagram.com", "www.instagram.com"}
 _ACCESS_HOSTS = _PRIMARY_HOSTS | {
     "accounts.instagram.com", "m.instagram.com",
@@ -297,11 +304,15 @@ def _target() -> dict[str, Any]:
         if page is None:
             page = next((item for item in reversed(primary)), None)
     if page:
-        try:
-            pin.parent.mkdir(parents=True, exist_ok=True)
-            pin.write_text(str(page.get('id') or ''))
-        except OSError:
-            pass
+        page_id = str(page.get('id') or '')
+        # Reescrever o pin a cada leitura fazia o painel e o worker disputarem a
+        # identidade da aba. Só grava quando a escolha muda.
+        if page_id and page_id != pinned:
+            try:
+                pin.parent.mkdir(parents=True, exist_ok=True)
+                pin.write_text(page_id)
+            except OSError:
+                pass
         _activate(page)
         return page
     created = _http("/json/new?" + urllib.parse.quote("https://www.instagram.com/", safe="/:?=&"), method="PUT")
@@ -312,12 +323,16 @@ def _target() -> dict[str, Any]:
 
 
 def _with_page(callback):
-    page = _target()
-    ws = DevTools(str(page.get("webSocketDebuggerUrl") or ""))
-    try:
-        return callback(ws)
-    finally:
-        ws.close()
+    # Serializa o acesso: um único WebSocket ativo por vez. Sem isso, a captura
+    # de tela do painel e o clique do operador corriam em sessões paralelas e
+    # podiam mirar abas diferentes no mesmo instante.
+    with _DEVTOOLS_LOCK:
+        page = _target()
+        ws = DevTools(str(page.get("webSocketDebuggerUrl") or ""))
+        try:
+            return callback(ws)
+        finally:
+            ws.close()
 
 
 def targets() -> dict[str, Any]:
@@ -376,47 +391,75 @@ def cleanup_stale_tabs() -> dict[str, int]:
     return {"closed": closed}
 
 
-def ensure_single_tab_and_viewport(width: int = 1280, height: int = 800) -> None:
-    """Garante apenas 1 aba ativa e trava o tamanho da área de visualização."""
-    targets_res = _http("/json/list")
-    page_targets = [
-        t for t in (targets_res if isinstance(targets_res, list) else [])
-        if t.get("type") == "page"
-    ]
-    if len(page_targets) > 1:
-        primary_id = None
-        # Tenta usar a aba fixada ou a primeira
-        try:
-            primary_id = str(_target().get("id") or "")
-        except Exception:
-            primary_id = page_targets[0].get("targetId") if page_targets else None
-        if not primary_id:
-            primary_id = page_targets[0].get("targetId") if page_targets else None
-        for t in page_targets:
-            if t.get("targetId") != primary_id:
-                try:
-                    _http("/json/close/" + urllib.parse.quote(str(t.get("id") or ""), safe=""), method="GET")
-                except InternalBrowserError:
-                    pass
-        if primary_id:
-            try:
-                _http("/json/activate/" + urllib.parse.quote(str(primary_id), safe=""), method="GET")
-            except InternalBrowserError:
-                pass
+def _page_targets() -> list[dict[str, Any]]:
+    """Lista somente destinos do tipo ``page`` (abas reais, sem workers)."""
+    pages = _http("/json/list")
+    if not isinstance(pages, list):
+        return []
+    return [item for item in pages if isinstance(item, dict) and item.get("type") == "page"]
 
-    # Trava viewport via CDP
+
+def _closable(item: dict[str, Any], keep: set[str]) -> bool:
+    """Uma aba só pode ser fechada se não for de trabalho, login ou verificação."""
+    target_id = str(item.get("id") or "")
+    if not target_id or target_id in keep:
+        return False
+    if _is_verification_window(item) or _is_instagram_login_window(item):
+        return False
+    return True
+
+
+def settle_workspace(width: int = 1280, height: int = 800) -> dict[str, int]:
+    """Devolve o navegador a uma única aba de trabalho e ao viewport fixo.
+
+    A versão anterior comparava ``targetId`` — chave que não existe em
+    ``/json/list`` (o identificador é ``id``). Como todos os valores vinham
+    ``None``, a comparação era verdadeira para *todas* as páginas, inclusive a
+    aba de trabalho, que era fechada a cada ciclo; o ciclo seguinte abria outra
+    com ``/json/new``. O resultado eram várias guias acumuladas e a sessão
+    perdendo a referência do que estava na tela.
+
+    Aqui a comparação é feita por ``id``, a aba de trabalho nunca é fechada e
+    as janelas de login e de verificação por código continuam abertas.
+    """
     try:
-        page = _target()
-        ws = DevTools(str(page.get("webSocketDebuggerUrl") or ""))
-        ws.call("Emulation.setDeviceMetricsOverride", {
-            "width": width,
-            "height": height,
-            "deviceScaleFactor": 1,
-            "mobile": False,
-        })
-        ws.close()
+        keep = {str(_target().get("id") or "")}
+    except InternalBrowserError:
+        return {"closed": 0, "kept": 0}
+    try:
+        pinned = _pin_path().read_text().strip()
+    except OSError:
+        pinned = ""
+    keep.discard("")
+    if pinned:
+        keep.add(pinned)
+    closed = 0
+    for item in _page_targets():
+        if not _closable(item, keep):
+            continue
+        try:
+            _http("/json/close/" + urllib.parse.quote(str(item.get("id") or ""), safe=""), method="GET")
+            closed += 1
+        except InternalBrowserError:
+            continue
+    try:
+        def run(page: "DevTools"):
+            page.call("Emulation.setDeviceMetricsOverride", {
+                "width": int(width),
+                "height": int(height),
+                "deviceScaleFactor": 1,
+                "mobile": False,
+            })
+            return {"ok": True}
+        _with_page(run)
     except Exception:
         pass
+    return {"closed": closed, "kept": len(keep)}
+
+
+def ensure_single_tab_and_viewport(width: int = 1280, height: int = 800) -> dict[str, int]:
+    """Nome antigo preservado para scripts já publicados na VPS."""
+    return settle_workspace(width, height)
 
 
 def human_click(x: float, y: float) -> None:
@@ -1044,7 +1087,23 @@ def stalled_page_watchdog() -> dict[str, Any]:
 def screenshot() -> dict[str, Any]:
     def run(page: DevTools):
         page.call("Page.enable")
-        data = str(page.call("Page.captureScreenshot", {"format": "png"}).get("data") or "")
+        # O painel converte pixels da imagem em pixels CSS. Sem clip, o PNG sai
+        # multiplicado pelo devicePixelRatio do Xvfb: num Xvfb com escala 2 a
+        # imagem tem 2560 px de largura, o painel envia x até 2560 e o limite
+        # interno de 1280 recusa o clique ("Coordenada fora da janela interna").
+        # O clip abaixo fixa a imagem no tamanho CSS da viewport (escala 1).
+        metrics = ((page.call("Runtime.evaluate", {
+            "expression": "({w:window.innerWidth,h:window.innerHeight})",
+            "returnByValue": True,
+        }).get("result") or {}).get("value") or {})
+        viewport_width = max(200, int(metrics.get("w") or 1280))
+        viewport_height = max(200, int(metrics.get("h") or 800))
+        data = str(page.call("Page.captureScreenshot", {
+            "format": "png",
+            "fromSurface": True,
+            "captureBeyondViewport": False,
+            "clip": {"x": 0, "y": 0, "width": viewport_width, "height": viewport_height, "scale": 1},
+        }).get("data") or "")
         try:
             image = base64.b64decode(data)
             if image[:8] != b"\x89PNG\r\n\x1a\n":
@@ -1113,6 +1172,18 @@ def type_with_accessibility_keyboard(page: DevTools, text: str) -> None:
         time.sleep((18 + random.randint(0, 42)) / 1000)
 
 
+def _viewport_bounds(page: "DevTools") -> tuple[float, float]:
+    """Tamanho CSS atual da página usada para validar coordenadas de clique."""
+    try:
+        value = ((page.call("Runtime.evaluate", {
+            "expression": "({w:window.innerWidth,h:window.innerHeight})",
+            "returnByValue": True,
+        }).get("result") or {}).get("value") or {})
+        return float(value.get("w") or 1280), float(value.get("h") or 800)
+    except Exception:
+        return 1280.0, 800.0
+
+
 def action(payload: dict[str, Any]) -> dict[str, Any]:
     """Executa uma interação explícita na sessão interna persistente.
 
@@ -1131,7 +1202,11 @@ def action(payload: dict[str, Any]) -> dict[str, Any]:
     def run(page: DevTools):
         if kind == "click":
             x, y = float(payload.get("x", -1)), float(payload.get("y", -1))
-            if not (0 <= x <= 1280 and 0 <= y <= 900):
+            # Limite real da viewport: o Xvfb pode estar com 800 de altura e o
+            # PNG pode vir em escala 2. Constantes fixas recusavam cliques
+            # legítimos e deslocavam os demais.
+            limit_x, limit_y = _viewport_bounds(page)
+            if not (-1 <= x <= limit_x + 1 and -1 <= y <= limit_y + 1):
                 raise ValueError("Coordenada fora da janela interna")
             page.call("Input.dispatchMouseEvent", {"type": "mousePressed", "x": x, "y": y, "button": "left", "clickCount": 1})
             page.call("Input.dispatchMouseEvent", {"type": "mouseReleased", "x": x, "y": y, "button": "left", "clickCount": 1})
@@ -1202,7 +1277,8 @@ def action(payload: dict[str, Any]) -> dict[str, Any]:
             if not found:
                 return {"ok": False, "clicked": False}
             x, y = float(found.get("x", -1)), float(found.get("y", -1))
-            if not (0 <= x <= 1280 and 0 <= y <= 900):
+            limit_x, limit_y = _viewport_bounds(page)
+            if not (-1 <= x <= limit_x + 1 and -1 <= y <= limit_y + 1):
                 return {"ok": False, "clicked": False}
             time.sleep(0.2)
             page.call("Input.dispatchMouseEvent", {"type": "mouseMoved", "x": x, "y": y})
@@ -1220,3 +1296,29 @@ def action(payload: dict[str, Any]) -> dict[str, Any]:
         return {"ok": True}
 
     return _with_page(run)
+
+
+def frame() -> dict[str, Any]:
+    """Um único RPC para o painel: status, janelas, login, estado e imagem.
+
+    O painel fazia cinco chamadas por quadro (status, visual, screenshot,
+    targets, login). Cada uma abria um WebSocket DevTools próprio e podia
+    escolher uma aba diferente, então a imagem exibida e o clique enviado
+    podiam se referir a janelas distintas — a "ação coordenada" saía errada.
+    Agrupadas sob o mesmo lock, todas descrevem o mesmo instante.
+    """
+    with _DEVTOOLS_LOCK:
+        payload: dict[str, Any] = {"status": status(), "targets": targets()}
+        try:
+            payload["login"] = login_state()
+        except InternalBrowserError:
+            payload["login"] = {"state": "unknown"}
+        try:
+            payload["visual"] = visual_state()
+        except InternalBrowserError:
+            payload["visual"] = {}
+        try:
+            payload["image"] = screenshot()
+        except InternalBrowserError:
+            payload["image"] = {}
+        return payload
