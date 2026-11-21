@@ -27,6 +27,39 @@ async function refreshSystemSummary(){
  return health;
 }
 
+// Filtros "Todas / Respondidas / Aguardando / Qualificadas / Follow-up".
+// Não existia handler nenhum: os contadores eram atualizados, mas clicar não
+// filtrava nada. A classificação reaproveita a etapa já exibida no cartão.
+let filtersBound=false;
+function bindConversationFilters(){
+ if(filtersBound)return;
+ filtersBound=true;
+ const row=el('.filter-row');
+ if(!row)return;
+ const match=(key,stage)=>{
+   const s=String(stage||'').trim().toLowerCase();
+   if(key==='all')return true;
+   if(key==='followup')return s==='followup'||s==='follow-up';
+   if(key==='answered')return s==='warm'||s==='hot'||s==='answered'||s==='respondida';
+   if(key==='waiting')return s==='new'||s==='aguardando'||s==='novo';
+   if(key==='qualified')return s==='hot'||s==='qualificado'||s==='qualificação';
+   return true;
+ };
+ row.querySelectorAll('.filter').forEach(button=>button.onclick=()=>{
+   const key=String(button.dataset.filter||'all');
+   row.querySelectorAll('.filter').forEach(b=>b.classList.toggle('active',b===button));
+   let visible=0;
+   document.querySelectorAll('.conversation-item').forEach(item=>{
+     const pill=item.querySelector('.status-pill');
+     const show=match(key,pill?pill.textContent:'');
+     item.hidden=!show;item.style.display=show?'':'none';
+     if(show)visible++;
+   });
+   const status=el('#chat-handle');
+   if(!visible&&status)status.textContent='Nenhuma conversa neste filtro';
+ });
+}
+
 function renderEmptyConversation(){
  selectedLead=null;
  el('#chat-company').textContent='Nenhuma conversa importada';
@@ -210,11 +243,27 @@ async function bindTokenGenerator(){
   const pro=el('#generate-token-pro');
   if(pro)pro.onclick=()=>generate('professional','profissional');
 }
+// Delegação no documento: os cartões de conversa são recriados a cada
+// refreshLeads(), então handlers presos ao nó se perdiam sempre que a lista
+// era reconstruída. Registrado uma única vez.
+let leadClicksBound=false;
+function bindLeadClicks(){
+ if(leadClicksBound)return;
+ leadClicksBound=true;
+ document.addEventListener('click',event=>{
+   const node=event.target.closest('[data-lead-id]');
+   if(!node)return;
+   event.preventDefault();
+   const id=Number(node.dataset.leadId);
+   if(!Number.isFinite(id))return;
+   selectLead(id).catch(report);
+ });
+}
 async function refreshLeads(){
- const leads=await call('leads');const list=el('.conversation-list');if(!list)return;
+ const leads=(await call('leads')||[]).filter(Boolean);const list=el('.conversation-list');if(!list)return;
  list.innerHTML='<div class="inbox-import-actions"><button class="primary-button" id="import-browser-dms">↻ Importar DMs do Instagram</button><button class="ghost-button" id="new-lead">+ Novo lead</button></div>'+leads.map(l=>`<button class="conversation-item" data-lead-id="${l.id}"><span class="company-avatar">${safe((l.name||'?')[0])}</span><span class="conversation-copy"><strong>${safe(l.name)}</strong><small>${safe(l.contact||'Sem contato')}</small><em class="status-pill">${safe(l.stage||'Novo')}</em></span><time>${safe(String(l.score||0))}</time></button>`).join('')||empty('◌','Ainda não há leads','Abra o navegador interno, entre no Instagram e importe as DMs existentes.');
  el('#lead-table').innerHTML=leads.map(l=>`<tr data-lead-id="${l.id}"><td><strong>${safe(l.name)}</strong></td><td>${safe(l.contact)}</td><td>—</td><td><span class="status-pill">${safe(l.stage)}</span></td><td><b class="score">${safe(l.score)}</b></td><td>${formatTime(l.updated_at)}</td><td>${safe(l.next_action||'—')}</td></tr>`).join('');
- document.querySelectorAll('[data-lead-id]').forEach(node=>node.onclick=()=>selectLead(Number(node.dataset.leadId)).catch(report));
+ bindLeadClicks();
  el('#new-lead').onclick=async()=>{const name=prompt('Nome da empresa ou contato');if(!name)return;const contact=prompt('Instagram ou contato')||'';await call('create',{name,contact});await refreshLeads();};
  el('#import-browser-dms').onclick=async()=>{const action=el('#import-browser-dms');action.disabled=true;action.textContent='Importando DMs…';try{const result=await window.sales.importBrowserInbox();await refreshLeads();report({message:`${result.threads} conversas do Instagram importadas; ${result.messages} mensagens novas e ${result.classified||0} leads classificados na memória.`});}finally{const current=el('#import-browser-dms');if(current){current.disabled=false;current.textContent='↻ Importar DMs do Instagram';}}};
  const warm=leads.filter(l=>String(l.stage||'').toLowerCase()==='warm');const hot=leads.filter(l=>String(l.stage||'').toLowerCase()==='hot');
@@ -224,14 +273,17 @@ async function refreshLeads(){
  else if(!selectedLead||!leads.some(lead=>lead.id===selectedLead.id))await selectLead(leads[0].id);
 }
 async function selectLead(id){
- const leads=await call('leads');selectedLead=leads.find(l=>l.id===id);if(!selectedLead)return;
+ const leads=(await call('leads')||[]).filter(Boolean);selectedLead=leads.find(l=>Number(l.id)===Number(id));if(!selectedLead){report({message:'Lead não encontrado na memória local. Atualize a lista.'});return;}
  el('#chat-company').textContent=selectedLead.name;el('#chat-handle').textContent=selectedLead.contact||'Contato local';el('#profile-company').textContent=selectedLead.name;
  el('.hot-badge').textContent=`${Number(selectedLead.score)>=75?'🔥 Lead quente':'◈ Em desenvolvimento'} · score ${selectedLead.score}`;
  el('.profile-head span').textContent=selectedLead.contact||'Sem Instagram';el('.profile-facts').innerHTML=`<div><dt>Etapa atual</dt><dd>${safe(selectedLead.stage||'Novo')}</dd></div><div><dt>Observações</dt><dd>${safe(selectedLead.notes||'Sem observações')}</dd></div><div><dt>Próxima ação</dt><dd>${safe(selectedLead.next_action||'Definir próximo passo')}</dd></div>`;
  el('.score-bar i').style.width=Math.min(100,Number(selectedLead.score)||0)+'%';el('.score-block strong').textContent=`${selectedLead.score} / 100`;el('.contact-meta').textContent='Atualizado em '+formatTime(selectedLead.updated_at);
- const rows=await call('messages',{id});
+ const rowsRaw=await call('messages',{id}).catch(error=>{report(error);return [];});
+ // O RPC devolve tuplas (role,content,created_at); versões antigas devolvem
+ // objetos. Normalizar aqui evita bubble em branco quando o formato muda.
+ const rows=(Array.isArray(rowsRaw)?rowsRaw:[]).map(r=>Array.isArray(r)?r:[r&&(r.role||r[0]),r&&(r.content||r[1]),r&&(r.created_at||r[2])]).filter(r=>String(r[1]==null?'':r[1]).trim());
  const body=el('#chat-body');
- body.innerHTML=rows.map((r,index)=>`<div class="bubble ${r[0]==='assistant'?'out':'in'}" data-bubble="${index}"><span class="bubble-text">${safe(r[1])}</span><time>${safe(r[2])}</time>${r[0]==='assistant'?`<button class="bubble-adjust" data-adjust="${index}" title="Editar e salvar esta resposta no fluxo">✎ Ajustar</button>`:''}</div>`).join('')||'<p>Sem mensagens registradas nesta conversa.</p>';
+ body.innerHTML=rows.map((r,index)=>`<div class="bubble ${r[0]==='assistant'?'out':'in'}" data-bubble="${index}"><span class="bubble-text">${safe(r[1])}</span><time>${safe(r[2])}</time>${r[0]==='assistant'?`<button class="bubble-adjust" data-adjust="${index}" title="Editar e salvar esta resposta no fluxo">✎ Ajustar</button>`:''}</div>`).join('')||'<p class="empty-chat">Nenhuma mensagem importada para este lead. Clique em “Importar DMs do Instagram”, na lista de conversas, para trazer o histórico desta conta.</p>';
  body.querySelectorAll('[data-adjust]').forEach(button=>button.onclick=()=>openBubbleAdjust(Number(button.dataset.adjust),rows).catch(report));
  el('#draft-text').textContent='Clique em Gerar resposta para usar o contexto desta conversa.';
 }
@@ -664,7 +716,29 @@ async function trialLinksView(){const offer=await call('trialOffer');const polic
 async function researchView(){const content=activatePanel('Pesquisa e aprendizado','Documente métodos, materiais e evidências que devem enriquecer as respostas do agente.');content.innerHTML=`<div class="knowledge-layout"><form id="knowledge-form" class="dialog-form"><h3>Novo material para a memória</h3><label>Título<input name="title" required placeholder="Ex.: Comparativo de agenda clínica"></label><label>Fonte ou URL<input name="source" placeholder="https://..."></label><label>Categoria<select name="category"><option value="playbook">Método de vendas</option><option value="product">Produto</option><option value="comparison">Comparativo</option></select></label><label>Conteúdo e aplicação<textarea name="content" required rows="8" placeholder="Registre fatos, exemplos, regras e como o agente deve aplicar este conteúdo."></textarea></label>${button('Guardar na memória','primary-button')}</form><section class="data-card"><div class="section-heading"><h3>Materiais já guardados</h3><span class="status-pill" id="knowledge-count">0</span></div><div id="knowledge-list"></div></section></div>`;const render=async()=>{const rows=await call('knowledge');el('#knowledge-count').textContent=rows.length;el('#knowledge-list').innerHTML=rows.map(r=>`<article class="knowledge-item"><strong>${safe(r[1])}</strong><p>${safe(r[3]).slice(0,280)}${String(r[3]).length>280?'…':''}</p><small>${safe(r[2]||'Sem tags')} · ${formatTime(r[5])}</small></article>`).join('')||empty('▱','Memória vazia','Adicione o primeiro conteúdo acima.');};el('#knowledge-form').onsubmit=async event=>{event.preventDefault();const data=Object.fromEntries(new FormData(event.target));await call('saveDocument',{source:data.source||'manual:'+data.title,title:data.title,content:data.content,category:data.category});event.target.reset();await render();report({message:'Material salvo na memória comercial.'});};await render();}
 async function tokensView(){const content=activatePanel('Tokens de ativação','Lista de tokens enviados. Verde = ativado, vermelho = não usado.');content.innerHTML=`<section class="data-card"><div class="section-heading"><h3>Tokens</h3><span class="status-pill" id="token-count">0</span></div><div class="history-list" id="token-list"></div></section>`;const editionLabel=e=>e==='multiprofessional'?'Multiprofissional':e==='professional'?'Profissional':e||'—';const fmtDate=v=>{if(!v)return'—';const d=new Date(v);return Number.isNaN(d)?safe(v):d.toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'});};const fmtDuration=(start,end)=>{if(!start||!end)return'—';const ms=new Date(end)-new Date(start);if(Number.isNaN(ms)||ms<0)return'—';const days=Math.floor(ms/86400000);const hours=Math.floor((ms%86400000)/3600000);const mins=Math.floor((ms%3600000)/60000);if(days>0)return days+'d '+hours+'h';if(hours>0)return hours+'h '+mins+'m';return mins+'m';};const refresh=async()=>{try{const data=await call('activationTokenList');const tokens=data.tokens||[];const count=el('#token-count');if(count)count.textContent=tokens.length;const list=el('#token-list');if(list)list.innerHTML=tokens.map(t=>`<div style="display:grid;gap:4px;padding:10px 0;border-bottom:1px solid #1f3350"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="font-family:monospace;font-size:11px">${safe(t.code)}</span><span style="font-size:10px;padding:2px 6px;border-radius:999px;background:${t.edition==='multiprofessional'?'#1a3a5c':'#2a1a3c'};color:${t.edition==='multiprofessional'?'#74fff3':'#a88aff'}">${safe(editionLabel(t.edition))}</span><span style="color:${t.used?'#3ee48c':'#ff7373'};font-weight:600">${t.used?'✓ Ativado':'● Não usado'}</span></div><div style="display:flex;gap:12px;font-size:10px;color:#8b9bb0;flex-wrap:wrap"><span>Emissão: ${fmtDate(t.created_at)}</span>${t.used?`<span>Ativação: ${fmtDate(t.used_at)}</span><span>Tempo até ativação: ${fmtDuration(t.created_at,t.used_at)}</span>`:''}${t.used_by?`<span>Por: ${safe(t.used_by)}</span>`:''}</div></div>`).join('')||'<p class="wa-hint">Nenhum token registrado.</p>'; }catch(error){report(error);}};await refresh();const btn=document.createElement('button');btn.className='ghost-button';btn.textContent='↻ Atualizar';btn.onclick=refresh;content.querySelector('.section-heading')?.appendChild(btn);}
 async function moduleView(type){if(type==='follow-intro')return followIntroView();if(type==='library')return libraryView();if(type==='operator')return operatorView();if(type==='trial-links')return trialLinksView();if(type==='crm')return crmView();if(type==='campaigns')return campaignsView();if(type==='followups')return followupsView();if(type==='integration')return connectionView(false);if(type==='status')return connectionView(true);if(type==='tokens')return tokensView();if(type==='research')return researchView();}
-async function boot(){const agentButton=el('#agent-toggle');const prospectingButton=el('#prospecting-toggle');const refreshAgent=async()=>{const state=await call('agentStatus');agentButton.textContent=state.active?'■ Desativar agente automático':'▶ Ativar agente de vendas';agentButton.className=state.active?'primary-button':'ghost-button';agentButton.setAttribute('aria-pressed',String(state.active));if(prospectingButton){prospectingButton.textContent=state.prospecting_active?'◌ Pausar prospecção ativa':'◌ Ativar prospecção ativa';prospectingButton.className=state.prospecting_active?'primary-button':'ghost-button';prospectingButton.setAttribute('aria-pressed',String(state.prospecting_active));prospectingButton.disabled=!state.active;}};agentButton.onclick=async()=>{const state=await call('agentStatus');const next=await call('setAgentActive',{active:!state.active});if(!next.active)await call('setProspectingActive',{active:false});await refreshAgent();report({message:next.active?'Agente de vendas ativado.':'Agente de vendas desativado.'});};if(prospectingButton)prospectingButton.onclick=async()=>{const state=await call('agentStatus');const next=await call('setProspectingActive',{active:!state.prospecting_active});await refreshAgent();report({message:next.active?'Prospecção ativa liberada.':'Prospecção ativa pausada.'});};bindBrowserControls();bindTokenGenerator();await Promise.all([refreshAgent(),refreshSystemSummary()]);await refreshLeads();el('#generate-btn').onclick=async()=>{if(!selectedLead)return report({message:'Selecione uma conversa primeiro.'});el('#draft-text').textContent='Gerando resposta…';el('#draft-text').textContent=await call('draft',{id:selectedLead.id});};el('#queue-btn').onclick=async()=>{if(!selectedLead)return report({message:'Selecione uma conversa primeiro.'});const r=await call('queue',{id:selectedLead.id,text:el('#draft-text').textContent});report({message:`Resposta ${r.id} preparada na fila.`});};el('#pause-btn').onclick=async()=>{if(!selectedLead)return report({message:'Selecione uma conversa primeiro.'});await call('pause',{id:selectedLead.id});report({message:'Conversa pausada.'});};el('#followup-btn').onclick=async()=>{if(!selectedLead)return report({message:'Selecione uma conversa primeiro.'});await call('followup',{id:selectedLead.id,text:el('#draft-text').textContent});report({message:'Follow-up salvo.'});};document.querySelectorAll('.nav-item[data-view]').forEach(b=>b.addEventListener('click',()=>{const type=b.dataset.view;document.querySelectorAll('.nav-item[data-view]').forEach(item=>item.classList.toggle('active',item===b));if(type==='conversations'){showConversations();return;}moduleView(type).catch(report);}));try{const remote=await window.sales.remoteMode?.();if(remote){const state=await call('internalBrowserStatus');if(state?.running)await vpsInternalBrowserView();}}catch(error){}}
+async function boot(){const agentButton=el('#agent-toggle');const prospectingButton=el('#prospecting-toggle');const refreshAgent=async()=>{const state=await call('agentStatus');agentButton.textContent=state.active?'■ Desativar agente automático':'▶ Ativar agente de vendas';agentButton.className=state.active?'primary-button':'ghost-button';agentButton.setAttribute('aria-pressed',String(state.active));if(prospectingButton){prospectingButton.textContent=state.prospecting_active?'◌ Pausar prospecção ativa':'◌ Ativar prospecção ativa';prospectingButton.className=state.prospecting_active?'primary-button':'ghost-button';prospectingButton.setAttribute('aria-pressed',String(state.prospecting_active));prospectingButton.disabled=!state.active;}};agentButton.onclick=async()=>{const state=await call('agentStatus');const next=await call('setAgentActive',{active:!state.active});if(!next.active)await call('setProspectingActive',{active:false});await refreshAgent();report({message:next.active?'Agente de vendas ativado.':'Agente de vendas desativado.'});};if(prospectingButton)prospectingButton.onclick=async()=>{const state=await call('agentStatus');const next=await call('setProspectingActive',{active:!state.prospecting_active});await refreshAgent();report({message:next.active?'Prospecção ativa liberada.':'Prospecção ativa pausada.'});};bindBrowserControls();bindTokenGenerator();await Promise.all([refreshAgent().catch(report),refreshSystemSummary().catch(report)]);
+bindConversationFilters();
+// Botões do HTML estático que não tinham id nem handler.
+const crmUpdate=el('#crm-update-btn');
+if(crmUpdate)crmUpdate.onclick=()=>{crmUpdate.disabled=true;refreshLeads().catch(report).finally(()=>{crmUpdate.disabled=false;});};
+const crmSeeAll=el('#crm-see-all');
+if(crmSeeAll)crmSeeAll.onclick=()=>moduleView('crm').catch(report);
+const filtersToggle=el('#filters-toggle');
+if(filtersToggle)filtersToggle.onclick=()=>{const row=el('.filter-row');if(!row)return;const hidden=row.style.display==='none';row.style.display=hidden?'':'none';filtersToggle.setAttribute('aria-pressed',String(!hidden));};
+// Uma falha de leitura não pode mais abortar o boot: antes, se refreshLeads()
+// rejeitasse, os handlers de Gerar resposta / fila / pausar / follow-up nunca
+// eram atribuídos e os botões ficavam mortos (sem erro visível).
+await refreshLeads().catch(report);el('#generate-btn').onclick=async()=>{if(!selectedLead)return report({message:'Selecione uma conversa primeiro.'});el('#draft-text').textContent='Gerando resposta…';try{el('#draft-text').textContent=await call('draft',{id:selectedLead.id});}catch(error){el('#draft-text').textContent='Falha ao gerar a resposta.';report(error);}};el('#queue-btn').onclick=async()=>{if(!selectedLead)return report({message:'Selecione uma conversa primeiro.'});try{const r=await call('queue',{id:selectedLead.id,text:el('#draft-text').textContent});report({message:`Resposta ${r.id} preparada na fila.`});}catch(error){report(error);}};el('#pause-btn').onclick=async()=>{if(!selectedLead)return report({message:'Selecione uma conversa primeiro.'});try{await call('pause',{id:selectedLead.id});report({message:'Conversa pausada.'});}catch(error){report(error);}};el('#followup-btn').onclick=async()=>{if(!selectedLead)return report({message:'Selecione uma conversa primeiro.'});el('#followup-btn').disabled=true;try{const created=await call('followup',{id:selectedLead.id,text:el('#draft-text').textContent});report({message:'Follow-up salvo'+(created&&created.id?` (#${created.id})`:'')+'. Veja em Follow-ups.'});}catch(error){report(error);}finally{el('#followup-btn').disabled=false;}};document.querySelectorAll('.nav-item[data-view]').forEach(b=>b.addEventListener('click',()=>{const type=b.dataset.view;document.querySelectorAll('.nav-item[data-view]').forEach(item=>item.classList.toggle('active',item===b));if(type==='conversations'){showConversations();return;}moduleView(type).catch(report);}));try{const remote=await window.sales.remoteMode?.();if(remote){const state=await call('internalBrowserStatus');if(state?.running)await vpsInternalBrowserView();}}catch(error){}}
+// Qualquer handler async sem catch (ou criado por módulo) passa a mostrar o
+// erro no toast. Antes, a rejeição morria em silêncio e o botão parecia
+// "não fazer nada", que era exatamente o sintoma relatado.
+addEventListener('unhandledrejection',event=>{
+ const reason=event.reason;
+ const message=reason&&reason.message?reason.message:String(reason||'Falha inesperada na interface');
+ if(reason&&reason.preventDefault)reason.preventDefault();
+ else event.preventDefault();
+ report({message});
+});
 window.moduleView=moduleView;
 window.showConversations=showConversations;
 boot().catch(report);
