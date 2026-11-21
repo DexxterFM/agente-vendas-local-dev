@@ -823,13 +823,13 @@ def _prospecting_cycle() -> dict[str, Any]:
                 "prospecting": True, "browser": "prospecting-duplicate",
                 "username": username, "reason": reason,
             }
-        # Após a mensagem inicial, pergunta se a clínica já usa algum app para
-        # gestão. Isso encaixa o lead no fluxo de descoberta (sem app / com app).
-        # Cada balão é enviado separadamente: o marcador [[AGENT_BUBBLE]] nunca
+        # Etapa 1 (abertura): envia SOMENTE a intro e aguarda a interação do
+        # cliente. A pergunta de descoberta (etapa 2) é enviada depois, pelo
+        # fluxo de resposta (draft/opening_thanks), quando o cliente responder.
+        # Antes, a intro + pergunta saíam juntas no mesmo ciclo, quebrando o
+        # fluxo e parecendo envio mecânico. O marcador [[AGENT_BUBBLE]] nunca
         # pode ser digitado na conversa como texto visível ao cliente.
-        welcome_question = "Você merece! Me conta: já possui algum app para a gestão da sua clínica? 😊"
-        intro_with_question = intro + '\n[[AGENT_BUBBLE]]\n' + welcome_question
-        bubbles = [item.strip() for item in BUBBLE_SPLIT.split(intro_with_question) if item.strip()]
+        bubbles = [item.strip() for item in BUBBLE_SPLIT.split(intro) if item.strip()]
         surface = _open_profile_dm(username)
         sent_results = []
         config = load_config()

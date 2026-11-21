@@ -1321,12 +1321,10 @@ def execute(command, args):
                 and history
             )
             if qualified_greeting:
-                # A saudação de retorno precisa soar como uma conversa já em
-                # andamento. Separe acolhimento e descoberta em balões para
-                # não despejar duas perguntas de uma vez.
-                return ('Tudo bem! Espero que sim 😊'
-                        + BROWSER_BUBBLE_SEPARATOR
-                        + 'Por acaso já utiliza algum app ou programa para administrar sua clínica?')
+                # Saudação de retorno: acolhe e convida a continuar, sem
+                # despejar a pergunta de descoberta junto. A descoberta entra
+                # no próximo turno, depois que o cliente responder (etapa 2).
+                return 'Tudo bem! Espero que sim 😊 Por acaso vocês já usam algum app ou programa para a gestão?'
             # A pessoa respondeu ao primeiro balão ("eu quero"): parabenizar e
             # pedir a escolha da versão antes de entregar qualquer link. A frase
             # vem da biblioteca editável, com o texto aprovado como padrão.

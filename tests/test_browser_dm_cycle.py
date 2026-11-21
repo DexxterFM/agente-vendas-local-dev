@@ -686,13 +686,13 @@ class BrowserDmCycleTests(unittest.TestCase):
                     {"role": "user", "text": "Boa tarde!"},
                 ],
             })
+            # Uma única mensagem por turno: a descoberta entra depois que o
+            # cliente responder, sem juntar acolhimento + pergunta no mesmo envio.
             self.assertEqual(
-                answer.split(BROWSER_BUBBLE_SEPARATOR),
-                [
-                    "Tudo bem! Espero que sim 😊",
-                    "Por acaso já utiliza algum app ou programa para administrar sua clínica?",
-                ],
+                answer,
+                "Tudo bem! Espero que sim 😊 Por acaso vocês já usam algum app ou programa para a gestão?",
             )
+            self.assertNotIn(BROWSER_BUBBLE_SEPARATOR, answer)
             self.assertNotIn("como posso ajudar", answer.casefold())
 
     def test_new_follower_is_welcomed_once(self):
