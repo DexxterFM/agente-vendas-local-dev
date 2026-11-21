@@ -20,10 +20,15 @@ MAX_IDLE_CYCLES = 2
 
 
 HUMAN_LIMITS = {
-    "follow": {"per_hour": 8, "per_day": 40, "min_interval_sec": 120, "max_interval_sec": 300},
-    "prospect_dm": {"per_hour": 6, "per_day": 30, "min_interval_sec": 180, "max_interval_sec": 420, "active_hours": (8, 20)},
-    "comment": {"per_hour": 4, "per_day": 20, "min_interval_sec": 240, "max_interval_sec": 600},
-    "dm_reply": {"per_hour": 15, "per_day": 60, "min_interval_sec": 60, "max_interval_sec": 180, "active_hours": (8, 22)},
+    # Limites seguros do Instagram (contas novas até 3 meses):
+    # Seguir/deixar de seguir: 10–15/h, máx 100/dia | intervalo mínimo 45s
+    # Comentários: 5–10/h, máx 50–100/dia | intervalo mínimo 45s
+    # DMs: 2–4/h, máx 20–50/dia | intervalo mínimo 45s
+    # Nenhuma ação com menos de 30–45s entre si (padrão mecânico).
+    "follow": {"per_hour": 10, "per_day": 100, "min_interval_sec": 60, "max_interval_sec": 180},
+    "prospect_dm": {"per_hour": 3, "per_day": 30, "min_interval_sec": 120, "max_interval_sec": 300, "active_hours": (8, 20)},
+    "comment": {"per_hour": 6, "per_day": 50, "min_interval_sec": 60, "max_interval_sec": 180},
+    "dm_reply": {"per_hour": 3, "per_day": 30, "min_interval_sec": 120, "max_interval_sec": 300, "active_hours": (8, 22)},
 }
 
 
