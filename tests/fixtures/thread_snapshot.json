@@ -1,0 +1,55 @@
+{
+ "url": "https://www.instagram.com/direct/t/340282366841710300949128156548444444444/",
+ "thread_id": "340282366841710300949128156548444444444",
+ "username": "fono.comgabriela",
+ "messages": [
+  {
+   "text": "Oi! Vi que vocês atendem TEA",
+   "direction": "incoming",
+   "ordinal": 1,
+   "ts": "2026-11-20T14:02:11+00:00"
+  },
+  {
+   "text": "Oi! Tudo bem? Como posso ajudar?",
+   "direction": "outgoing",
+   "ordinal": 1,
+   "ts": ""
+  },
+  {
+   "text": "Queria saber valores e horários",
+   "direction": "incoming",
+   "ordinal": 2,
+   "ts": "2026-11-20T14:05:40.123456+00:00"
+  },
+  {
+   "text": "Queria saber valores e horários",
+   "direction": "incoming",
+   "ordinal": 3,
+   "ts": ""
+  },
+  {
+   "text": "   ",
+   "direction": "incoming",
+   "ordinal": 3,
+   "ts": ""
+  },
+  {
+   "text": "sem id",
+   "direction": "incoming",
+   "ordinal": 1,
+   "ts": ""
+  },
+  {
+   "text": "direção estranha",
+   "direction": "system",
+   "ordinal": 1,
+   "ts": ""
+  },
+  {
+   "text": "há 2 h",
+   "direction": "incoming",
+   "ordinal": 9,
+   "ts": "há 2 h"
+  }
+ ]
+}

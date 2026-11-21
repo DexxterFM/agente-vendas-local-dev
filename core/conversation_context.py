@@ -10,6 +10,8 @@ from __future__ import annotations
 import hashlib
 import re
 
+BUBBLE_SEPARATOR = "\n[[AGENT_BUBBLE]]\n"
+
 # Assinaturas de mensagens de abertura / primeiro contato. Se qualquer uma
 # aparecer numa resposta proposta para uma conversa que já tem histórico, o
 # envio é bloqueado — o agente deve continuar o diálogo, não reiniciá-lo.
@@ -65,41 +67,46 @@ def can_send(memory, lead_id, username, proposed, screen_history=None, *, requir
     Returns:
         (allowed: bool, reason: str)
     """
-    proposed_norm = normalize(proposed)
-    if not proposed_norm:
+    # Divide o texto proposto em balões individuais (multibolha).
+    # O agente pode enviar vários balões separados por BUBBLE_SEPARATOR;
+    # cada um deve ser verificado individualmente contra o histórico.
+    bubbles = [b.strip() for b in str(proposed or '').split('[[AGENT_BUBBLE]]') if b.strip()]
+    if not bubbles:
         return False, 'empty'
 
-    fingerprint_proposed = fingerprint(proposed)
+    # Verifica cada balão individualmente.
+    for bubble in bubbles:
+        bubble_norm = normalize(bubble)
+        if not bubble_norm:
+            continue
 
-    # 1) Reenvio exato: mensagem já aparece na tela.
-    for item in (screen_history or []):
-        if normalize(item.get('text', '')) == proposed_norm:
-            return False, 'duplicate-on-screen'
+        # 1) Reenvio exato: balão já aparece na tela.
+        for item in (screen_history or []):
+            if normalize(item.get('text', '')) == bubble_norm:
+                return False, 'duplicate-on-screen'
 
-    # 2) Reenvio exato: mensagem já está no banco dedicado de perfil do Instagram.
-    #    Esta é a fonte de verdade anti-spam: toda mensagem enviada é um passo do
-    #    fluxo registrado por perfil. Nunca reenviamos um passo já postado.
-    if username:
-        from core.instagram_profile_memory import InstagramProfileMemory
-        profile_allowed, profile_reason = InstagramProfileMemory(memory).can_send(username, proposed)
-        if not profile_allowed:
-            return False, profile_reason
+        # 2) Reenvio exato: balão já está no banco dedicado de perfil do Instagram.
+        if username:
+            from core.instagram_profile_memory import InstagramProfileMemory
+            profile_allowed, profile_reason = InstagramProfileMemory(memory).can_send(username, bubble)
+            if not profile_allowed:
+                return False, profile_reason
 
-    # 3) Reenvio exato: mensagem já está no histórico persistido do lead.
-    db_history = []
-    if lead_id:
-        db_history = list(reversed(memory.list_conversations(int(lead_id), 200)))
-        for _role, text, _created in db_history:
-            if normalize(text) == proposed_norm:
-                return False, 'duplicate-in-history'
+        # 3) Reenvio exato: balão já está no histórico persistido do lead.
+        db_history = []
+        if lead_id:
+            db_history = list(reversed(memory.list_conversations(int(lead_id), 200)))
+            for _role, text, _created in db_history:
+                if normalize(text) == bubble_norm:
+                    return False, 'duplicate-in-history'
 
-    # 4) Mensagem de abertura em conversa já iniciada.
-    combined = list(screen_history or []) + list(db_history)
-    if is_opening(proposed) and has_prior_exchange(combined):
-        return False, 'opening-in-existing-conversation'
+        # 4) Mensagem de abertura em conversa já iniciada.
+        combined = list(screen_history or []) + list(db_history)
+        if is_opening(bubble) and has_prior_exchange(combined):
+            return False, 'opening-in-existing-conversation'
 
-    # 5) Prospecção sem histórico visível: não reinicie uma conversa existente.
-    if require_history and not combined and is_opening(proposed):
-        return False, 'opening-without-history'
+        # 5) Prospecção sem histórico visível: não reinicie uma conversa existente.
+        if require_history and not combined and is_opening(bubble):
+            return False, 'opening-without-history'
 
     return True, ''

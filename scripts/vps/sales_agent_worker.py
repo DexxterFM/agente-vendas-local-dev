@@ -23,6 +23,7 @@ if str(APP_ROOT) not in sys.path:
 from core.desktop_rpc import execute
 from scripts.vps import internal_browser
 from scripts.vps.internal_browser_agent import cycle as internal_browser_cycle
+from scripts.vps.internal_browser_agent import sync_inbox as instagram_sync_inbox
 
 RUNNING = True
 
@@ -38,6 +39,11 @@ def main() -> None:
     postflow_sync = os.getenv("POSTFLOW_SYNC_ENABLED", "false").strip().lower() == "true"
     postflow_interval = max(30, min(900, int(os.getenv("POSTFLOW_SYNC_INTERVAL_SECONDS", "90"))))
     next_postflow_sync = 0.0
+    # Recebimento de DMs pelo navegador: independe da API Meta e do agente
+    # estar ativo. É somente leitura, então pode rodar sempre.
+    message_sync = max(60, min(1800, int(os.getenv("SALES_AGENT_MESSAGE_SYNC_SECONDS", "180"))))
+    sync_threads = max(1, min(12, int(os.getenv("SALES_AGENT_SYNC_THREADS", "5"))))
+    next_message_sync = 0.0
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
     # BrowserOS pertence ao app Windows e não deve ser inicializado no Linux.
@@ -68,6 +74,13 @@ def main() -> None:
             # Fila alternada: somente o modo no turno executa neste ciclo.
             # O agente de vendas (DM) e a prospecção ativa usam o mesmo
             # navegador, então executá-los juntos disputava o mesmo job.
+            if time.monotonic() >= next_message_sync:
+                next_message_sync = time.monotonic() + message_sync
+                try:
+                    sync_result = instagram_sync_inbox(limit_threads=sync_threads)
+                    print(datetime.now(timezone.utc).isoformat(), "message_sync", sync_result, flush=True)
+                except Exception as exc:
+                    print(datetime.now(timezone.utc).isoformat(), "message_sync_error", str(exc)[:200], flush=True)
             mode_state = execute("browserModeStatus", {})
             mode = str(mode_state.get("mode") or "sales")
             if mode == "sales":

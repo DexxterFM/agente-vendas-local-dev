@@ -320,11 +320,13 @@ class Memory:
         return customer_id
 
     # -------------------------------------------------------------- conversas
-    def add_conversation(self, lead_id: int | None, role: str, content: str) -> int:
+    def add_conversation(self, lead_id: int | None, role: str, content: str, created_at: str | None = None) -> int:
+        # `created_at` opcional permite gravar o horário lido da própria
+        # conversa no Instagram; sem ele, mantém o comportamento anterior.
         with self._lock:
             cursor = self.db.execute(
                 "insert into conversations(lead_id,role,content,created_at) values(?,?,?,?)",
-                (lead_id, role, content, _now()),
+                (lead_id, role, content, created_at or _now()),
             )
             conversation_id = int(cursor.lastrowid)
             self.db.commit()

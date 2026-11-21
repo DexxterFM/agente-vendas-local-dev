@@ -501,18 +501,9 @@ def execute(command, args):
                 lead_id = memory.add_lead(username, username, 'Histórico importado do navegador interno')
             else:
                 lead_id = int(lead['id'])
-            stored = 0
-            for item in list(args.get('messages') or [])[-80:]:
-                if not isinstance(item,dict): continue
-                external_id = str(item.get('id','')).strip().lower()
-                direction = str(item.get('direction','')).strip().lower()
-                text = ' '.join(str(item.get('text','')).split())[:3500]
-                if not re.fullmatch(r'[0-9a-f]{64}', external_id) or direction not in ('incoming','outgoing') or not text:
-                    continue
-                key = 'instagram.browser_import:' + hashlib.sha256((thread+'\0'+external_id).encode()).hexdigest()
-                if memory.get_setting(key,'') == 'stored': continue
-                memory.add_conversation(lead_id, 'user' if direction == 'incoming' else 'assistant', text)
-                memory.set_setting(key,'stored'); stored += 1
+            from core.instagram_browser_sync import store_messages
+            outcome = store_messages(memory, lead_id, thread, args.get('messages'))
+            stored = int(outcome.get('stored') or 0)
             memory.set_setting('instagram.thread:'+str(lead_id),thread)
             from core.sales_intelligence import SalesIntelligence
             qualification = SalesIntelligence(memory).qualify_history(lead_id)
@@ -522,6 +513,23 @@ def execute(command, args):
                 'contact':username,
                 'qualification':qualification,
             }
+        if command == 'instagramSyncMessages':
+            # Leitura das DMs pelo navegador interno (CDP). Nenhuma chamada Meta.
+            from core.instagram_browser_sync import browser_sync
+            return browser_sync(
+                memory,
+                username=str(args.get('username','') or ''),
+                thread_id=str(args.get('thread_id','') or ''),
+                limit=int(args.get('limit',6) or 6),
+            )
+        if command == 'instagramSendBrowserReply':
+            # Envio digitado na conversa; sem Graph API.
+            from core.instagram_browser_sync import browser_send
+            return browser_send(memory, int(args.get('id') or 0), str(args.get('text','') or ''))
+        if command == 'instagramMessageStatus':
+            from core.instagram_browser_sync import message_status
+            lead_id = int(args['id']) if str(args.get('id','')).strip() else None
+            return message_status(memory, lead_id)
         if command == 'classifyImportedHistory':
             from core.sales_intelligence import SalesIntelligence
             engine = SalesIntelligence(memory)

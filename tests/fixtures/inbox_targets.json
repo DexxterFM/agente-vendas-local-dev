@@ -1,0 +1,22 @@
+[
+ {
+  "key": "https://www.instagram.com/direct/t/111/",
+  "href": "https://www.instagram.com/direct/t/111/",
+  "label": "fono.comgabriela Ativo agora Unread",
+  "unread": true,
+  "bold": true,
+  "blue": true,
+  "x": 210.0,
+  "y": 140.5
+ },
+ {
+  "key": "https://www.instagram.com/direct/t/222/",
+  "href": "https://www.instagram.com/direct/t/222/",
+  "label": "kelvin.centrointegral há 3 h",
+  "unread": false,
+  "bold": false,
+  "blue": false,
+  "x": 210.0,
+  "y": 196.0
+ }
+]

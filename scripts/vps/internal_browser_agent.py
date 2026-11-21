@@ -931,7 +931,11 @@ def _thread_snapshot() -> dict[str, Any]:
         const direction=coloredBubble||(rect.left>width*.5&&rect.right>width*.84)?'outgoing':'incoming';
         const signature=direction+'\0'+text, ordinal=(seen.get(signature)||0)+1;
         seen.set(signature,ordinal);
-        messages.push({text,direction,ordinal});
+        // Horário absoluto quando a bolha expõe <time datetime>; texto
+        // relativo ("há 2 h") não é data e é descartado depois.
+        const timeNode=node.querySelector('time[datetime],[datetime]');
+        const ts=timeNode?String(timeNode.getAttribute('datetime')||''):'';
+        messages.push({text,direction,ordinal,ts});
       }
       if(scrollRoot){try{scrollRoot.scrollTop=scrollRoot.scrollHeight;}catch(e){}}
       return {url:location.href,thread_id:threadId,username:String(profile).replace(/^@/,'').toLowerCase(),messages:messages.slice(-40)};
@@ -949,7 +953,8 @@ def _thread_snapshot() -> dict[str, Any]:
             continue
         ordinal = int(item.get("ordinal") or 1)
         external_id = hashlib.sha256(f"{thread}\0{direction}\0{text}\0{ordinal}".encode()).hexdigest()
-        messages.append({"id": external_id, "text": text, "direction": direction})
+        stamp = str(item.get("ts") or "")[:40]
+        messages.append({"id": external_id, "text": text, "direction": direction, "ts": stamp})
     return {"url": str(value.get("url") or ""), "thread_id": thread, "username": str(value.get("username") or ""), "messages": messages[-40:]}
 
 
@@ -1692,3 +1697,202 @@ def cycle(mode: str | None = None) -> dict[str, Any]:
     if open_thread_result is not None:
         return done({"browser": "thread", **aggregate, **notification_result, **open_thread_result})
     return done({"browser": "ready", **aggregate, **notification_result})
+
+
+# ---------------------------------------------------------------------------
+# Sincronização de DMs pelo navegador interno (sem API Meta)
+# ---------------------------------------------------------------------------
+
+def _mark_sync() -> None:
+    """Registra o instante da última sincronização para o painel."""
+    try:
+        config = load_config()
+        with Memory(config.db_path) as memory:
+            memory.set_setting("instagram.sync.last", _now().isoformat())
+    except Exception:
+        pass
+
+
+def _browser_ready() -> tuple[bool, str]:
+    try:
+        status = browser.status()
+    except browser.InternalBrowserError:
+        return False, "browser-offline"
+    if not status.get("running"):
+        return False, "browser-offline"
+    try:
+        login = browser.login_state()
+    except browser.InternalBrowserError:
+        login = {}
+    state = str(login.get("state") or login.get("status") or "")
+    if state in ("rate_limited", "login_form", "challenge", "one_tap", "profile_confirmation"):
+        return False, "login-" + state
+    if login.get("authenticated") is False and not state:
+        return False, "login-desconhecido"
+    return True, ""
+
+
+def _wait_thread_snapshot(attempts: int = 14) -> dict[str, Any]:
+    """Aguarda o painel da conversa montar antes de ler as mensagens."""
+    snapshot = _thread_snapshot()
+    if snapshot["thread_id"] and snapshot["username"] and snapshot["messages"]:
+        return snapshot
+    for _ in range(attempts):
+        _wait(.35)
+        snapshot = _thread_snapshot()
+        if snapshot["thread_id"] and snapshot["username"] and snapshot["messages"]:
+            break
+    return snapshot
+
+
+def _import_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
+    if not snapshot.get("thread_id") or not snapshot.get("username") or not snapshot.get("messages"):
+        return {"stored": 0, "reason": "thread-metadata-unavailable"}
+    return execute("browserImportThread", snapshot) or {}
+
+
+def sync_thread(username: str = "", thread_id: str = "") -> dict[str, Any]:
+    """Importa uma conversa específica pela sessão do navegador."""
+    user = re.sub(r"[^a-z0-9._]", "", str(username or "").lstrip("@").lower())[:30]
+    thread = re.sub(r"[^0-9]", "", str(thread_id or ""))[:40]
+    if not user and not thread:
+        return {"stored": 0, "reason": "invalid-target"}
+    ready, reason = _browser_ready()
+    if not ready:
+        return {"stored": 0, "reason": reason}
+    try:
+        browser.settle_workspace(1280, 800)
+    except browser.InternalBrowserError:
+        pass
+    try:
+        if thread:
+            browser.action({"kind": "navigate", "url": f"https://www.instagram.com/direct/t/{thread}/"})
+        else:
+            _open_profile_dm(user)
+        _wait(.9)
+        snapshot = _wait_thread_snapshot()
+    except browser.InternalBrowserError as exc:
+        return {"stored": 0, "reason": str(exc)[:100]}
+    result = _import_snapshot(snapshot)
+    _mark_sync()
+    return {
+        "thread_id": str(snapshot.get("thread_id") or ""),
+        "username": str(snapshot.get("username") or ""),
+        "requested": user,
+        "messages": len(snapshot.get("messages") or []),
+        "stored": int(result.get("stored") or 0),
+        "lead_id": result.get("lead_id"),
+        "reason": str(result.get("reason") or ""),
+    }
+
+
+def sync_inbox(limit_threads: int = 6, only_unread: bool = False) -> dict[str, Any]:
+    """Percorre a caixa de entrada e importa as conversas mais recentes.
+
+    Somente leitura: não envia nada. É o caminho que substitui a API Meta no
+    recebimento, e roda tanto pelo worker (periódico) quanto pelo botão do
+    painel.
+    """
+    ready, reason = _browser_ready()
+    if not ready:
+        return {"threads": 0, "stored": 0, "reason": reason}
+    try:
+        browser.settle_workspace(1280, 800)
+    except browser.InternalBrowserError:
+        pass
+    if not _open_inbox():
+        return {"threads": 0, "stored": 0, "reason": "inbox-unavailable"}
+    _wait(1.1)
+    targets = _inbox_targets()
+    if only_unread:
+        targets = [item for item in targets if item.get("unread")]
+    limit = max(1, min(20, int(limit_threads or 6)))
+    opened = stored = errors = 0
+    processed: list[dict[str, Any]] = []
+    for index, target in enumerate(targets[:limit]):
+        try:
+            if not _open_target(target):
+                errors += 1
+                continue
+            opened += 1
+            _wait(.7)
+            snapshot = _wait_thread_snapshot()
+            result = _import_snapshot(snapshot)
+            stored += int(result.get("stored") or 0)
+            processed.append({
+                "username": str(snapshot.get("username") or ""),
+                "thread_id": str(snapshot.get("thread_id") or ""),
+                "messages": len(snapshot.get("messages") or []),
+                "stored": int(result.get("stored") or 0),
+                "lead_id": result.get("lead_id"),
+            })
+        except Exception:
+            errors += 1
+        finally:
+            if index + 1 < limit:
+                _open_inbox()
+                _wait(.5)
+    _open_inbox()
+    _mark_sync()
+    return {
+        "threads": len(targets),
+        "opened": opened,
+        "stored": stored,
+        "errors": errors,
+        "limit": limit,
+        "processed": processed[:20],
+    }
+
+
+def send_reply(text: str, username: str = "", thread_id: str = "", lead_id: int | None = None) -> dict[str, Any]:
+    """Envia uma resposta digitando na conversa do navegador interno."""
+    body = str(text or "").strip()
+    if not body:
+        return {"sent": False, "bubbles": 0, "reason": "empty-text"}
+    ready, reason = _browser_ready()
+    if not ready:
+        return {"sent": False, "bubbles": 0, "reason": reason}
+    user = re.sub(r"[^a-z0-9._]", "", str(username or "").lstrip("@").lower())[:30]
+    thread = re.sub(r"[^0-9]", "", str(thread_id or ""))[:40]
+    if not user and not thread:
+        return {"sent": False, "bubbles": 0, "reason": "invalid-target"}
+    try:
+        browser.settle_workspace(1280, 800)
+        current = urlparse(str(_page("location.href") or ""))
+        parts = [part for part in current.path.split("/") if part]
+        on_thread = len(parts) == 3 and parts[0] == "direct" and parts[1] == "t"
+        if on_thread and thread and parts[2] != thread:
+            on_thread = False
+        if not on_thread:
+            if thread:
+                browser.action({"kind": "navigate", "url": f"https://www.instagram.com/direct/t/{thread}/"})
+            else:
+                _open_profile_dm(user)
+            _wait(.9)
+        snapshot = _wait_thread_snapshot()
+    except browser.InternalBrowserError as exc:
+        return {"sent": False, "bubbles": 0, "reason": str(exc)[:100]}
+    if not snapshot.get("thread_id"):
+        return {"sent": False, "bubbles": 0, "reason": "thread-unavailable"}
+    if user and snapshot.get("username") and snapshot["username"] != user:
+        return {"sent": False, "bubbles": 0, "reason": "wrong-thread"}
+    surface = str(snapshot.get("url") or _page("location.href") or "")
+    bubbles = [item.strip() for item in BUBBLE_SPLIT.split(body) if item.strip()]
+    sent = 0
+    try:
+        for index, bubble in enumerate(bubbles):
+            _send_bubble(bubble, surface)
+            sent += 1
+            if index + 1 < len(bubbles):
+                _wait(.8 + random.random() * 1.6)
+    except browser.InternalBrowserError as exc:
+        return {
+            "sent": sent > 0, "bubbles": sent, "reason": str(exc)[:100],
+            "thread_id": str(snapshot.get("thread_id") or ""),
+            "username": str(snapshot.get("username") or ""), "lead_id": lead_id,
+        }
+    return {
+        "sent": sent > 0, "bubbles": sent,
+        "thread_id": str(snapshot.get("thread_id") or ""),
+        "username": str(snapshot.get("username") or ""), "lead_id": lead_id,
+    }

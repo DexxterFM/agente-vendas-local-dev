@@ -259,11 +259,49 @@ function bindLeadClicks(){
    selectLead(id).catch(report);
  });
 }
+// Sincroniza a conversa pelo navegador quando o histórico está vazio. Antes, a
+// tela pedia para clicar em "Importar DMs", botão que no modo remoto lançava
+// erro por depender da ponte nativa do aplicativo Windows.
+const autoSyncAt={};
+async function autoSyncLead(id){
+ const stamp=Date.now();
+ if(autoSyncAt[id]&&stamp-autoSyncAt[id]<60000)return;
+ autoSyncAt[id]=stamp;
+ const handle=el('#chat-handle');
+ if(handle)handle.textContent='Buscando o histórico no Instagram…';
+ try{
+   const lead=selectedLead||{};
+   const result=await call('instagramSyncMessages',{username:lead.contact||'',limit:1});
+   if(handle)handle.textContent=result&&result.stored>0?'Histórico importado agora':((result&&result.reason)?('Sem mensagens · '+result.reason):'Nenhuma mensagem encontrada para este perfil');
+   if(result&&Number(result.stored)>0)await selectLead(id);
+ }catch(error){
+   if(handle)handle.textContent='Não foi possível ler o Instagram agora: '+String((error&&error.message)||error);
+ }
+}
+
+async function bindImportButton(){
+ const button=el('#import-browser-dms');
+ if(!button)return;
+ button.onclick=async()=>{
+   button.disabled=true;const label=button.textContent;button.textContent='Lendo o Instagram…';
+   try{
+     const result=await call('instagramSyncMessages',{limit:6});
+     await refreshLeads();
+     report({message:`${result.opened||0} conversa(s) aberta(s); ${result.stored||0} mensagem(ns) nova(s) gravada(s).`});
+   }catch(error){
+     // Fallback para o app Windows, onde a ponte nativa existe.
+     try{const native=await window.sales.importBrowserInbox();await refreshLeads();report({message:`${native.threads||0} conversas importadas.`});}
+     catch(inner){report(error);}
+   }finally{const current=el('#import-browser-dms');if(current){current.disabled=false;current.textContent=label;}}
+ };
+}
+
 async function refreshLeads(){
  const leads=(await call('leads')||[]).filter(Boolean);const list=el('.conversation-list');if(!list)return;
  list.innerHTML='<div class="inbox-import-actions"><button class="primary-button" id="import-browser-dms">↻ Importar DMs do Instagram</button><button class="ghost-button" id="new-lead">+ Novo lead</button></div>'+leads.map(l=>`<button class="conversation-item" data-lead-id="${l.id}"><span class="company-avatar">${safe((l.name||'?')[0])}</span><span class="conversation-copy"><strong>${safe(l.name)}</strong><small>${safe(l.contact||'Sem contato')}</small><em class="status-pill">${safe(l.stage||'Novo')}</em></span><time>${safe(String(l.score||0))}</time></button>`).join('')||empty('◌','Ainda não há leads','Abra o navegador interno, entre no Instagram e importe as DMs existentes.');
  el('#lead-table').innerHTML=leads.map(l=>`<tr data-lead-id="${l.id}"><td><strong>${safe(l.name)}</strong></td><td>${safe(l.contact)}</td><td>—</td><td><span class="status-pill">${safe(l.stage)}</span></td><td><b class="score">${safe(l.score)}</b></td><td>${formatTime(l.updated_at)}</td><td>${safe(l.next_action||'—')}</td></tr>`).join('');
  bindLeadClicks();
+ bindImportButton();
  el('#new-lead').onclick=async()=>{const name=prompt('Nome da empresa ou contato');if(!name)return;const contact=prompt('Instagram ou contato')||'';await call('create',{name,contact});await refreshLeads();};
  el('#import-browser-dms').onclick=async()=>{const action=el('#import-browser-dms');action.disabled=true;action.textContent='Importando DMs…';try{const result=await window.sales.importBrowserInbox();await refreshLeads();report({message:`${result.threads} conversas do Instagram importadas; ${result.messages} mensagens novas e ${result.classified||0} leads classificados na memória.`});}finally{const current=el('#import-browser-dms');if(current){current.disabled=false;current.textContent='↻ Importar DMs do Instagram';}}};
  const warm=leads.filter(l=>String(l.stage||'').toLowerCase()==='warm');const hot=leads.filter(l=>String(l.stage||'').toLowerCase()==='hot');
@@ -282,8 +320,9 @@ async function selectLead(id){
  // O RPC devolve tuplas (role,content,created_at); versões antigas devolvem
  // objetos. Normalizar aqui evita bubble em branco quando o formato muda.
  const rows=(Array.isArray(rowsRaw)?rowsRaw:[]).map(r=>Array.isArray(r)?r:[r&&(r.role||r[0]),r&&(r.content||r[1]),r&&(r.created_at||r[2])]).filter(r=>String(r[1]==null?'':r[1]).trim());
+ if(!rows.length)autoSyncLead(id);
  const body=el('#chat-body');
- body.innerHTML=rows.map((r,index)=>`<div class="bubble ${r[0]==='assistant'?'out':'in'}" data-bubble="${index}"><span class="bubble-text">${safe(r[1])}</span><time>${safe(r[2])}</time>${r[0]==='assistant'?`<button class="bubble-adjust" data-adjust="${index}" title="Editar e salvar esta resposta no fluxo">✎ Ajustar</button>`:''}</div>`).join('')||'<p class="empty-chat">Nenhuma mensagem importada para este lead. Clique em “Importar DMs do Instagram”, na lista de conversas, para trazer o histórico desta conta.</p>';
+ body.innerHTML=rows.map((r,index)=>`<div class="bubble ${r[0]==='assistant'?'out':'in'}" data-bubble="${index}"><span class="bubble-text">${safe(r[1])}</span><time>${safe(r[2])}</time>${r[0]==='assistant'?`<button class="bubble-adjust" data-adjust="${index}" title="Editar e salvar esta resposta no fluxo">✎ Ajustar</button>`:''}</div>`).join('')||'<p class="empty-chat">Nenhuma mensagem nesta conversa ainda. O agente lê o histórico direto do Instagram pelo navegador interno — sem API Meta.</p>';
  body.querySelectorAll('[data-adjust]').forEach(button=>button.onclick=()=>openBubbleAdjust(Number(button.dataset.adjust),rows).catch(report));
  el('#draft-text').textContent='Clique em Gerar resposta para usar o contexto desta conversa.';
 }
@@ -723,6 +762,19 @@ const crmUpdate=el('#crm-update-btn');
 if(crmUpdate)crmUpdate.onclick=()=>{crmUpdate.disabled=true;refreshLeads().catch(report).finally(()=>{crmUpdate.disabled=false;});};
 const crmSeeAll=el('#crm-see-all');
 if(crmSeeAll)crmSeeAll.onclick=()=>moduleView('crm').catch(report);
+const browserSend=el('#browser-send-btn');
+if(browserSend)browserSend.onclick=async()=>{
+ if(!selectedLead)return report({message:'Selecione uma conversa primeiro.'});
+ const text=el('#draft-text').textContent||'';
+ if(!text.trim())return report({message:'Gere ou escreva um rascunho antes de enviar.'});
+ if(!window.confirm('Enviar esta mensagem agora, pelo navegador interno?'))return;
+ browserSend.disabled=true;
+ try{
+   const result=await call('instagramSendBrowserReply',{id:selectedLead.id,text});
+   report({message:result.sent?`Enviado pelo navegador (${result.bubbles||1} bolha(s)).`:'Envio não confirmado: '+String(result.reason||'motivo desconhecido')});
+   if(result.sent)await selectLead(Number(selectedLead.id));
+ }catch(error){report(error);}finally{browserSend.disabled=false;}
+};
 const filtersToggle=el('#filters-toggle');
 if(filtersToggle)filtersToggle.onclick=()=>{const row=el('.filter-row');if(!row)return;const hidden=row.style.display==='none';row.style.display=hidden?'':'none';filtersToggle.setAttribute('aria-pressed',String(!hidden));};
 // Uma falha de leitura não pode mais abortar o boot: antes, se refreshLeads()
